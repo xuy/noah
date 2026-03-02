@@ -70,7 +70,7 @@ export function useSession(): UseSessionReturn {
       addMessage({
         role: "system",
         content:
-          "Session started. I'm ITMan, your IT support assistant. Describe your issue and I'll help diagnose and fix it.",
+          "Hey! I'm Noah, your computer helper. Just tell me what's going on and I'll take care of it.",
       });
     } catch (err) {
       console.error("Failed to create session:", err);

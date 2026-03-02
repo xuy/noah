@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { listen } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useSession } from "./hooks/useSession";
 import { SessionBar } from "./components/SessionBar";
 import { ChatPanel } from "./components/ChatPanel";
@@ -9,11 +10,28 @@ import { SessionHistory } from "./components/SessionHistory";
 import { DebugPanel } from "./components/DebugPanel";
 import { useDebugStore, type DebugEvent } from "./stores/debugStore";
 
+const WINDOW_TITLES = [
+  "Noah \u2014 Your Trusted Support",
+  "Noah \u2014 The \u201CComputer\u201D Guy",
+  "Noah \u2014 Have You Tried Turning It Off?",
+  "Noah \u2014 No Ticket Required",
+  "Noah \u2014 I Won\u2019t Judge Your Browser Tabs",
+  "Noah \u2014 Fixing Things Since Forever",
+  "Noah \u2014 Like a Friend Who\u2019s Good With Computers",
+  "Noah \u2014 Less Jargon, More Fixing",
+];
+
 function App() {
   // Single hook instance that auto-creates session on mount
   const session = useSession();
   const addEvent = useDebugStore((s) => s.addEvent);
   const toggle = useDebugStore((s) => s.toggle);
+
+  // Set a random cheeky window title on mount.
+  useEffect(() => {
+    const title = WINDOW_TITLES[Math.floor(Math.random() * WINDOW_TITLES.length)];
+    getCurrentWindow().setTitle(title).catch(() => {});
+  }, []);
 
   // Listen for debug-log events from the Rust backend.
   useEffect(() => {

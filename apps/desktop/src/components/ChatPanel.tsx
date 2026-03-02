@@ -83,8 +83,8 @@ function ActionCard({
       <div className="max-w-[80%] rounded-xl border border-border-primary bg-bg-assistant-bubble overflow-hidden">
         {/* Header */}
         <div className="px-4 pt-3 pb-1">
-          <span className="text-[10px] font-medium uppercase tracking-wider text-accent-blue">
-            ITMan
+          <span className="text-[10px] font-medium uppercase tracking-wider text-accent-green">
+            Noah
           </span>
         </div>
 
@@ -189,8 +189,8 @@ function InfoCard({
         <div className="flex items-start gap-2.5">
           <span className="text-accent-blue text-base mt-0.5">{"\u2139"}</span>
           <div className="flex-1">
-            <span className="text-[10px] font-medium uppercase tracking-wider text-accent-blue">
-              ITMan
+            <span className="text-[10px] font-medium uppercase tracking-wider text-accent-green">
+              Noah
             </span>
             <div className="text-sm text-text-primary leading-relaxed mt-1">
               {summary}
@@ -231,7 +231,6 @@ function ConfirmationPill({ timestamp }: { timestamp: number }) {
 
 function MessageBubble({ message }: { message: Message }) {
   const isUser = message.role === "user";
-  const isSystem = message.role === "system";
 
   return (
     <div
@@ -245,29 +244,19 @@ function MessageBubble({ message }: { message: Message }) {
           ${
             isUser
               ? "bg-bg-user-bubble text-white rounded-br-sm"
-              : isSystem
-                ? "bg-bg-system-bubble text-text-secondary border border-border-primary rounded-bl-sm"
-                : "bg-bg-assistant-bubble text-text-primary border border-border-primary rounded-bl-sm"
+              : "bg-bg-assistant-bubble text-text-primary border border-border-primary rounded-bl-sm"
           }
         `}
       >
         {!isUser && (
           <div className="flex items-center gap-1.5 mb-1">
-            <span
-              className={`text-[10px] font-medium uppercase tracking-wider ${
-                isSystem ? "text-accent-amber" : "text-accent-blue"
-              }`}
-            >
-              {isSystem ? "System" : "ITMan"}
+            <span className="text-[10px] font-medium uppercase tracking-wider text-accent-green">
+              Noah
             </span>
           </div>
         )}
 
-        <div
-          className={`text-sm leading-relaxed whitespace-pre-wrap break-words ${
-            isSystem ? "font-mono text-xs" : ""
-          }`}
-        >
+        <div className="text-sm leading-relaxed whitespace-pre-wrap break-words">
           {message.content}
         </div>
 
@@ -402,8 +391,8 @@ function ThinkingIndicator() {
     <div className="flex justify-start animate-fade-in">
       <div className="bg-bg-assistant-bubble border border-border-primary rounded-xl rounded-bl-sm px-4 py-3">
         <div className="flex items-center gap-1.5">
-          <span className="text-[10px] font-medium uppercase tracking-wider text-accent-blue mb-1">
-            ITMan
+          <span className="text-[10px] font-medium uppercase tracking-wider text-accent-green mb-1">
+            Noah
           </span>
         </div>
         <div className="flex items-center gap-2">
@@ -470,7 +459,7 @@ export function ChatPanel() {
       <div className="flex-1 overflow-y-auto px-4 py-4">
         {messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-text-muted">
-            <div className="w-16 h-16 rounded-2xl bg-bg-secondary border border-border-primary flex items-center justify-center mb-4">
+            <div className="w-16 h-16 rounded-2xl bg-accent-green/10 border border-accent-green/20 flex items-center justify-center mb-4">
               <svg
                 width="28"
                 height="28"
@@ -479,19 +468,15 @@ export function ChatPanel() {
                 xmlns="http://www.w3.org/2000/svg"
               >
                 <path
-                  d="M14 2L4 7V14C4 20.08 8.38 25.72 14 27C19.62 25.72 24 20.08 24 14V7L14 2Z"
+                  d="M18 4a7 7 0 0 0-7.8 1.7L14 9.6l-1 2.8-2.8 1L6.3 9.5A7 7 0 0 0 8 17.3l7.8 7.8a1.7 1.7 0 0 0 2.4 0l6-6a1.7 1.7 0 0 0 0-2.4L18 4Z"
                   stroke="currentColor"
                   strokeWidth="1.5"
                   fill="none"
-                />
-                <path
-                  d="M12 10H16V18H12V10ZM12 20H16V24H12V20Z"
-                  fill="currentColor"
                   opacity="0.5"
                 />
               </svg>
             </div>
-            <p className="text-sm">Waiting for a session to start...</p>
+            <p className="text-sm">Starting up...</p>
           </div>
         ) : (
           <div className="max-w-2xl mx-auto space-y-3">
@@ -518,7 +503,7 @@ export function ChatPanel() {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Describe your IT issue..."
+              placeholder="Tell Noah what you need help with..."
               rows={1}
               disabled={isProcessing}
               className="flex-1 bg-transparent text-sm text-text-primary placeholder-text-muted px-4 py-2.5 resize-none outline-none min-h-[38px] max-h-[120px]"

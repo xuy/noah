@@ -279,7 +279,7 @@ impl Tool for MacClearAppCache {
             .unwrap_or_else(|_| "unknown".to_string());
 
         // Create a backup path for undo
-        let backup_dir = format!("{}/Library/Caches/.itman_backup_{}", home, app_name);
+        let backup_dir = format!("{}/Library/Caches/.noah_backup_{}", home, app_name);
 
         // Move to backup instead of deleting (for undo)
         let output = Command::new("mv")

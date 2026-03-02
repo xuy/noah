@@ -28,7 +28,7 @@ export function SessionBar({ session }: SessionBarProps) {
       {/* Left: Logo and title */}
       <div className="flex items-center gap-3" data-tauri-drag-region="">
         <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-lg bg-accent-blue flex items-center justify-center">
+          <div className="w-7 h-7 rounded-lg bg-accent-green flex items-center justify-center">
             <svg
               width="16"
               height="16"
@@ -36,19 +36,16 @@ export function SessionBar({ session }: SessionBarProps) {
               fill="none"
               xmlns="http://www.w3.org/2000/svg"
             >
+              {/* Wrench icon */}
               <path
-                d="M8 1L2 4V8C2 11.31 4.55 14.36 8 15C11.45 14.36 14 11.31 14 8V4L8 1Z"
+                d="M10.3 2.2a4.2 4.2 0 0 0-4.5 1L8 5.4 7.4 7l-1.6.6L3.6 5.4a4.2 4.2 0 0 0 1 4.5l4.5 4.5a1 1 0 0 0 1.4 0l3.5-3.5a1 1 0 0 0 0-1.4L10.3 2.2Z"
                 fill="white"
                 fillOpacity="0.9"
-              />
-              <path
-                d="M7 5H9V9H7V5ZM7 10H9V12H7V10Z"
-                fill="#3b82f6"
               />
             </svg>
           </div>
           <span className="text-sm font-semibold tracking-wide text-text-primary">
-            ITMan
+            Noah
           </span>
         </div>
 
@@ -73,7 +70,7 @@ export function SessionBar({ session }: SessionBarProps) {
             transition-colors duration-150 cursor-pointer
             ${
               historyOpen
-                ? "bg-accent-blue/20 text-accent-blue"
+                ? "bg-accent-green/20 text-accent-green"
                 : "text-text-secondary hover:text-text-primary hover:bg-bg-tertiary"
             }
           `}
@@ -157,7 +154,7 @@ export function SessionBar({ session }: SessionBarProps) {
             transition-colors duration-150 cursor-pointer
             ${
               changeLogOpen
-                ? "bg-accent-blue/20 text-accent-blue"
+                ? "bg-accent-green/20 text-accent-green"
                 : "text-text-secondary hover:text-text-primary hover:bg-bg-tertiary"
             }
           `}
@@ -178,7 +175,7 @@ export function SessionBar({ session }: SessionBarProps) {
           </svg>
           Changes
           {changesCount > 0 && (
-            <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-accent-blue text-[10px] text-white font-medium">
+            <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-accent-green text-[10px] text-white font-medium">
               {changesCount}
             </span>
           )}

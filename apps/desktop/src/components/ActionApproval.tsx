@@ -91,7 +91,7 @@ export function ActionApproval() {
 
   if (!pendingApproval) return null;
 
-  const reason = pendingApproval.reason || "ITMan needs your permission to continue.";
+  const reason = pendingApproval.reason || "Noah needs your OK to continue.";
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-bg-overlay backdrop-blur-sm animate-fade-in">
@@ -117,7 +117,7 @@ export function ActionApproval() {
               </svg>
             </div>
             <h2 className="text-sm font-semibold text-text-primary">
-              Can ITMan do this?
+              Can I do this?
             </h2>
           </div>
         </div>
