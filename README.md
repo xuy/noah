@@ -1,168 +1,74 @@
-# Noah 🔧
+# Noah
 
-**Your friendly computer helper.** Noah is an open-source desktop app that diagnoses and fixes computer problems for you. Just describe what's wrong in plain English, and Noah will figure out the situation, tell you what he's going to do, and do it — with one click.
+**IT support that actually fixes things.** Noah is a desktop app that diagnoses and resolves computer problems in plain English. Describe what's wrong, Noah figures it out, shows you the plan, and fixes it — one click.
 
-Built for people who aren't "computer people." Think: small business owners, your aunt who calls you about her printer, anyone who just wants their stuff to work.
+No tickets. No hold music. No Googling error codes.
 
-> *"My internet is slow"* → Noah checks your network, finds your iPhone hotspot is available, connects you, and verifies it's working. One button. Done.
+## The problems Noah solves
 
-## How It Works
+**"My internet is slow"** — Noah checks your network, DNS, and connectivity. Finds the issue (bad DNS server, stale cache, wrong network). Fixes it.
 
-1. **You describe the problem** — in your own words, no jargon needed
-2. **Noah investigates** — runs diagnostics on your computer silently in the background
-3. **Noah tells you what he found** — and what he plans to do about it
-4. **You click "Do it"** — Noah handles the rest and confirms the fix
+**"The printer won't print"** — Noah checks your printers, finds stuck jobs or a crashed print service, clears the queue, restarts the service.
 
-No tickets. No waiting. No confusing menus.
+**"My computer is crawling"** — Noah identifies what's eating your CPU and memory, shows you the offending process, and stops it. Clears out cache bloat if that's the problem.
 
-## 🚀 Getting Started
+**"An app keeps crashing"** — Noah pulls the logs, identifies the pattern, clears corrupted caches, and gets you back to work.
 
-### Option A: Download the App
+**"I've had this problem before"** — Noah remembers. It saves what it learns about your system — device details, past fixes, your preferences — so it gets smarter every session.
 
-1. Go to the [Releases](https://github.com/xuy/noah/releases) page
-2. Download the latest `.dmg` for macOS
-3. Open it and drag Noah to your Applications folder
-4. Launch Noah — on first run, it will ask you for your Anthropic API key
+## How it works
 
-> **Note:** Since Noah isn't signed with an Apple Developer certificate yet, macOS will show a warning. To open it: right-click the app → "Open" → "Open" again. You only need to do this once.
+1. **Describe the problem** in your own words
+2. **Noah investigates** — runs diagnostics silently in the background
+3. **Noah shows you the plan** — what it found and what it wants to do
+4. **You click one button** — Noah handles the rest and confirms the fix
 
-### 🔑 Bring Your Own API Key
+Every action is logged. Dangerous operations require your explicit approval. Noah never touches boot config, firmware, security software, or system-protected files.
 
-Noah uses Claude (by Anthropic) to think through your problems. You'll need your own API key:
+## Get started
 
-1. Get a key from [console.anthropic.com](https://console.anthropic.com)
-2. When you first launch Noah, paste it in the setup screen — done!
+### Download
 
-Your key is saved locally on your machine and never shared with anyone except Anthropic's API directly.
+Go to [Releases](https://github.com/xuy/noah/releases) and grab the latest:
+- **macOS** — `.dmg` (Apple Silicon)
+- **Windows** — `.msi` or `.exe` installer (x64)
 
-**For developers** — you can also set it via environment variable:
-```bash
-export ANTHROPIC_API_KEY="sk-ant-your-key-here"
-```
+> **macOS note:** Noah isn't signed with an Apple Developer certificate yet. Right-click the app, click "Open", then "Open" again. One-time only.
 
-### Option B: Build from Source
+### API key
 
-**Prerequisites:** macOS, Node.js (v18+), pnpm, Rust ([rustup.rs](https://rustup.rs))
+Noah uses Claude (by Anthropic) to reason through problems. You need an API key:
 
-```bash
-git clone https://github.com/xuy/noah.git
-cd noah
-pnpm install
-./run_mac.sh
-```
+1. Get one at [console.anthropic.com](https://console.anthropic.com)
+2. Paste it on Noah's setup screen — done
 
-Or manually:
+Your key stays on your machine. It's only used to talk to Anthropic's API directly.
 
-```bash
-pnpm install
-export ANTHROPIC_API_KEY="your-key"
-pnpm dev
-```
+## What Noah can do
 
-#### Build for Production
+| Category | Mac | Windows |
+|---|---|---|
+| **Network** — status, DNS, connectivity, flush cache, test hosts | Yes | Yes |
+| **Printers** — list, queue, cancel jobs, restart print service | Yes | Yes |
+| **Performance** — CPU/memory/disk, find and stop runaway processes | Yes | Yes |
+| **Apps** — list, logs, clear caches, move files | Yes | Yes |
+| **System** — logs, diagnostics, health checks, shell commands | Yes | Yes |
+| **Services** — list running services, restart stuck ones | — | Yes |
+| **Startup** — identify programs slowing down boot | — | Yes |
+| **Knowledge** — remembers your system, past fixes, and preferences | Yes | Yes |
 
-```bash
-pnpm build
-```
+## Safety
 
-This creates a native `.app` bundle via Tauri.
-
-## 🛠 What Noah Can Do (macOS)
-
-**Network issues**
-- Check Wi-Fi status, DNS, connectivity
-- Flush DNS cache, test specific hosts
-- Connect to hotspots
-
-**Printer problems**
-- List printers, check print queues
-- Cancel stuck jobs, restart print services
-
-**Slow computer**
-- Check memory, CPU, disk usage
-- Find and stop runaway processes
-- Clear caches to free space
-
-**App issues**
-- List installed apps, read app logs
-- Clear app caches, move/copy files
-
-**General diagnostics**
-- Read system logs
-- Run shell commands (safe ones auto-approved, dangerous ones ask you first)
-- System summary and health checks
-
-## 🛡 Safety
-
-Noah is careful:
-
-- **Investigates before acting** — always runs read-only diagnostics first
-- **Tells you the plan** — you see exactly what Noah wants to do before he does it
-- **One-click approval** — "Do it" means do it. No confusing permission dialogs for normal operations
-- **Dangerous commands are flagged** — things like `rm`, `sudo`, or disk formatting require explicit approval with a plain-language explanation of why
-- **Everything is logged** — every action Noah takes is recorded in a session journal you can review
-- **Never touches dangerous stuff** — boot config, firmware, security software, disk partitions, and system integrity protection are off limits. Always.
-
-## Architecture
-
-```
-┌─────────────────────────────────────┐
-│         React + TypeScript UI       │
-│  (Chat, ActionCards, SessionHistory)│
-├─────────────────────────────────────┤
-│              Tauri 2                │
-├─────────────────────────────────────┤
-│          Rust Backend               │
-│  ┌───────────┐  ┌────────────────┐  │
-│  │ Orchestrator│  │  Tool Router  │  │
-│  │ (agentic   │  │  (20+ macOS   │  │
-│  │  loop)     │  │   tools)      │  │
-│  └──────┬─────┘  └───────┬───────┘  │
-│         │                │          │
-│  ┌──────▼─────┐  ┌───────▼───────┐  │
-│  │ Claude API │  │ Local System  │  │
-│  │ (thinking) │  │ (executing)   │  │
-│  └────────────┘  └───────────────┘  │
-├─────────────────────────────────────┤
-│     SQLite (session journal)        │
-└─────────────────────────────────────┘
-```
-
-Key design decision: **The LLM thinks, the local machine acts.** Claude decides what tools to call, but all execution happens locally on your computer via Rust. Your data never leaves your machine (except the conversation with Claude).
-
-## Running Tests
-
-```bash
-pnpm test
-```
-
-This runs both Rust (`cargo test`) and frontend (`vitest`) test suites.
-
-## 📁 Project Structure
-
-```
-apps/desktop/
-  src/                  # React frontend
-    components/         # ChatPanel, SessionBar, ActionApproval, etc.
-    stores/             # Zustand stores (chat, session, debug)
-    hooks/              # useSession, useAgent
-    lib/                # Tauri command wrappers, response parser
-  src-tauri/
-    src/
-      agent/            # Orchestrator, LLM client, tool router, prompts
-      platform/macos/   # All macOS tool implementations
-      safety/           # Journal (change logging), safety tiers
-      commands/         # Tauri command handlers
-crates/
-  itman-tools/          # Tool trait, safety tier types, shared types
-```
-
-## Contributing
-
-This project is built in public. Issues, ideas, and PRs are welcome.
-
-The codebase is intentionally simple — Rust backend with direct Anthropic API calls, React frontend with Zustand, no ORMs, no complex abstractions. If you can read the code, you can contribute.
+- **Looks before it leaps** — always runs read-only diagnostics first
+- **Shows you the plan** — you see exactly what Noah will do before it does it
+- **Flags risky actions** — `rm`, `sudo`, disk formatting, and similar commands require explicit approval with a plain-language explanation
+- **Logs everything** — every action is recorded in a session journal you can review and undo
+- **Hard limits** — boot config, firmware, security software, disk partitions, and system integrity protection are permanently off-limits
 
 ## License
 
 MIT
+
+---
+
+*For development setup, architecture, and contributing guidelines, see [CONTRIBUTING.md](CONTRIBUTING.md).*
