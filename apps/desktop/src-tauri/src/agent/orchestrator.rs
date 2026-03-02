@@ -111,6 +111,11 @@ impl Orchestrator {
         self.llm.has_api_key()
     }
 
+    /// Get a clone of the LLM client for background tasks (e.g. title generation).
+    pub fn llm_clone(&self) -> LlmClient {
+        self.llm.clone()
+    }
+
     // ── Approval flow ──────────────────────────────────────────────────
 
     /// Resolve a pending approval. Returns false if the approval_id was not found.

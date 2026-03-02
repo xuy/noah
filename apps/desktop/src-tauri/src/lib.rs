@@ -19,7 +19,7 @@ use safety::journal;
 pub struct AppState {
     pub orchestrator: Mutex<Orchestrator>,
     pub pending_approvals: PendingApprovals,
-    pub db: Mutex<rusqlite::Connection>,
+    pub db: Arc<Mutex<rusqlite::Connection>>,
     /// Path to the app data directory (for saving config).
     pub app_dir: PathBuf,
 }
@@ -121,7 +121,7 @@ pub fn run() {
             app.manage(AppState {
                 orchestrator: Mutex::new(orchestrator),
                 pending_approvals,
-                db: Mutex::new(db),
+                db: Arc::new(Mutex::new(db)),
                 app_dir,
             });
 

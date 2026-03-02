@@ -171,6 +171,18 @@ pub fn create_session_record(conn: &Connection, id: &str, created_at: &str) -> R
     Ok(())
 }
 
+/// Check if a session still needs a title (i.e. title is NULL).
+pub fn session_needs_title(conn: &Connection, id: &str) -> Result<bool> {
+    let title: Option<String> = conn
+        .query_row(
+            "SELECT title FROM sessions WHERE id = ?1",
+            rusqlite::params![id],
+            |row| row.get(0),
+        )
+        .context("Failed to check session title")?;
+    Ok(title.is_none())
+}
+
 /// Set the session title (typically from the first user message).
 pub fn update_session_title(conn: &Connection, id: &str, title: &str) -> Result<()> {
     conn.execute(

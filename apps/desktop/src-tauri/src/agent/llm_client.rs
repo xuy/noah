@@ -4,6 +4,7 @@ use serde_json::Value;
 
 const API_URL: &str = "https://api.anthropic.com/v1/messages";
 const MODEL: &str = "claude-sonnet-4-20250514";
+const TITLE_MODEL: &str = "claude-haiku-4-5-20251001";
 const API_VERSION: &str = "2023-06-01";
 const MAX_TOKENS: u32 = 4096;
 
@@ -96,6 +97,7 @@ struct ApiRequest {
 
 // ── LLM Client ─────────────────────────────────────────────────────────
 
+#[derive(Clone)]
 pub struct LlmClient {
     api_key: String,
     client: reqwest::Client,
@@ -115,6 +117,51 @@ impl LlmClient {
 
     pub fn has_api_key(&self) -> bool {
         !self.api_key.is_empty()
+    }
+
+    /// Generate a short session title from the first user message using a fast, cheap model.
+    pub async fn generate_title(&self, user_message: &str) -> Result<String> {
+        let body = ApiRequest {
+            model: TITLE_MODEL.to_string(),
+            max_tokens: 30,
+            system: "Generate a short title (max 6 words) for a computer support session based on the user's message. Output only the title, nothing else. No quotes.".to_string(),
+            messages: vec![Message {
+                role: "user".to_string(),
+                content: MessageContent::Text(user_message.to_string()),
+            }],
+            tools: vec![],
+        };
+
+        let resp = self
+            .client
+            .post(API_URL)
+            .header("x-api-key", &self.api_key)
+            .header("anthropic-version", API_VERSION)
+            .header("content-type", "application/json")
+            .json(&body)
+            .send()
+            .await
+            .context("Title generation request failed")?;
+
+        if !resp.status().is_success() {
+            anyhow::bail!("Title generation API error: {}", resp.status());
+        }
+
+        let response: Response = resp
+            .json()
+            .await
+            .context("Failed to parse title response")?;
+
+        let title = response
+            .content
+            .iter()
+            .find_map(|b| match b {
+                ResponseBlock::Text { text } => Some(text.trim().to_string()),
+                _ => None,
+            })
+            .unwrap_or_else(|| user_message.chars().take(60).collect());
+
+        Ok(title)
     }
 
     pub async fn send_message(
