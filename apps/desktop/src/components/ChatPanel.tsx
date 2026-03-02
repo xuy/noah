@@ -333,6 +333,7 @@ function MessageDisplay({
 // ── Humanize tool names for the thinking indicator ──
 
 const TOOL_HUMAN_NAMES: Record<string, string> = {
+  // macOS tools
   mac_network_info: "Checking network",
   mac_ping: "Testing connectivity",
   mac_dns_check: "Checking DNS",
@@ -355,6 +356,32 @@ const TOOL_HUMAN_NAMES: Record<string, string> = {
   mac_restart_cups: "Restarting print service",
   mac_cancel_print_jobs: "Cancelling print jobs",
   mac_move_file: "Moving file",
+  // Windows tools
+  win_network_info: "Checking network",
+  win_ping: "Testing connectivity",
+  win_dns_check: "Checking DNS",
+  win_http_check: "Testing web access",
+  win_flush_dns: "Flushing DNS cache",
+  win_system_info: "Checking system",
+  win_system_summary: "Running diagnostics",
+  win_process_list: "Listing processes",
+  win_disk_usage: "Checking disk space",
+  win_printer_list: "Checking printers",
+  win_print_queue: "Checking print queue",
+  win_app_list: "Listing applications",
+  win_app_logs: "Reading app logs",
+  win_app_data_ls: "Browsing app data",
+  win_read_file: "Reading file",
+  win_read_log: "Reading logs",
+  win_kill_process: "Stopping process",
+  win_clear_caches: "Clearing caches",
+  win_clear_app_cache: "Clearing app cache",
+  win_restart_spooler: "Restarting print service",
+  win_cancel_print_jobs: "Cancelling print jobs",
+  win_move_file: "Moving file",
+  win_startup_programs: "Checking startup programs",
+  win_service_list: "Listing services",
+  win_restart_service: "Restarting service",
 };
 
 function humanizeToolCall(summary: string): string {
