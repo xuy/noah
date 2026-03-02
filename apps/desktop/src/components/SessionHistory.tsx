@@ -1,7 +1,7 @@
-import { useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useSessionStore } from "../stores/sessionStore";
 import * as commands from "../lib/tauri-commands";
-import type { SessionRecord } from "../lib/tauri-commands";
+import type { SessionRecord, ChangeEntry } from "../lib/tauri-commands";
 
 function formatDate(iso: string): string {
   const d = new Date(iso);
@@ -38,46 +38,119 @@ function formatDuration(created: string, ended: string | null): string {
 
 function SessionItem({ session }: { session: SessionRecord }) {
   const isActive = !session.ended_at;
+  const [expanded, setExpanded] = useState(false);
+  const [changes, setChanges] = useState<ChangeEntry[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  const handleClick = useCallback(async () => {
+    const willExpand = !expanded;
+    setExpanded(willExpand);
+
+    if (willExpand && changes.length === 0) {
+      setLoading(true);
+      try {
+        const result = await commands.getChanges(session.id);
+        setChanges(result);
+      } catch (err) {
+        console.error("Failed to load session changes:", err);
+      } finally {
+        setLoading(false);
+      }
+    }
+  }, [expanded, changes.length, session.id]);
 
   return (
-    <div className="px-4 py-3 border-b border-border-primary last:border-b-0">
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex-1 min-w-0">
-          {/* Title */}
-          <p className="text-sm text-text-primary leading-snug truncate">
-            {session.title || "Untitled session"}
-          </p>
+    <div className="border-b border-border-primary last:border-b-0">
+      <button
+        onClick={handleClick}
+        className="w-full px-4 py-3 text-left hover:bg-bg-tertiary/50 transition-colors cursor-pointer"
+      >
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex-1 min-w-0">
+            {/* Title */}
+            <p className="text-sm text-text-primary leading-snug truncate">
+              {session.title || "Untitled session"}
+            </p>
 
-          {/* Meta row */}
-          <div className="flex items-center gap-2 mt-1">
-            <span className="text-[10px] text-text-muted">
-              {formatDate(session.created_at)}
-            </span>
-            <span className="text-[10px] text-text-muted">
-              {formatDuration(session.created_at, session.ended_at)}
-            </span>
+            {/* Meta row */}
+            <div className="flex items-center gap-2 mt-1">
+              <span className="text-[10px] text-text-muted">
+                {formatDate(session.created_at)}
+              </span>
+              <span className="text-[10px] text-text-muted">
+                {formatDuration(session.created_at, session.ended_at)}
+              </span>
+            </div>
+
+            {/* Stats */}
+            <div className="flex items-center gap-3 mt-1.5">
+              {session.message_count > 0 && (
+                <span className="text-[10px] text-text-muted">
+                  {session.message_count} msg{session.message_count !== 1 ? "s" : ""}
+                </span>
+              )}
+              {session.change_count > 0 && (
+                <span className="text-[10px] text-accent-purple">
+                  {session.change_count} change{session.change_count !== 1 ? "s" : ""}
+                </span>
+              )}
+            </div>
           </div>
 
-          {/* Stats */}
-          <div className="flex items-center gap-3 mt-1.5">
-            {session.message_count > 0 && (
-              <span className="text-[10px] text-text-muted">
-                {session.message_count} msg{session.message_count !== 1 ? "s" : ""}
-              </span>
+          <div className="flex items-center gap-2 flex-shrink-0 mt-1">
+            {isActive && (
+              <span className="w-2 h-2 rounded-full bg-status-active" />
             )}
-            {session.change_count > 0 && (
-              <span className="text-[10px] text-accent-purple">
-                {session.change_count} change{session.change_count !== 1 ? "s" : ""}
-              </span>
-            )}
+            <svg
+              width="10"
+              height="10"
+              viewBox="0 0 10 10"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+              className={`text-text-muted transition-transform ${expanded ? "rotate-90" : ""}`}
+            >
+              <path
+                d="M3 1.5L7 5L3 8.5"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
           </div>
         </div>
+      </button>
 
-        {/* Active indicator */}
-        {isActive && (
-          <span className="flex-shrink-0 mt-1 w-2 h-2 rounded-full bg-status-active" />
-        )}
-      </div>
+      {/* Expanded detail */}
+      {expanded && (
+        <div className="px-4 pb-3">
+          {loading ? (
+            <p className="text-[10px] text-text-muted py-1">Loading...</p>
+          ) : changes.length === 0 ? (
+            <p className="text-[10px] text-text-muted py-1">
+              No changes were made in this session.
+            </p>
+          ) : (
+            <div className="space-y-1.5">
+              {changes.map((change) => (
+                <div
+                  key={change.id}
+                  className={`flex items-start gap-2 ${change.undone ? "opacity-50" : ""}`}
+                >
+                  <span className="px-1.5 py-0.5 rounded bg-accent-purple/15 text-accent-purple text-[10px] font-mono flex-shrink-0 mt-0.5">
+                    {change.tool_name}
+                  </span>
+                  <span
+                    className={`text-xs text-text-secondary leading-relaxed ${change.undone ? "line-through" : ""}`}
+                  >
+                    {change.description}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
