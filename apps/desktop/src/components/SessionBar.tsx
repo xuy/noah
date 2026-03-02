@@ -1,5 +1,4 @@
 import { useSessionStore } from "../stores/sessionStore";
-import { useDebugStore } from "../stores/debugStore";
 import { NoahIcon } from "./NoahIcon";
 
 interface SessionBarProps {
@@ -16,11 +15,10 @@ export function SessionBar({ session }: SessionBarProps) {
   const toggleChangeLog = useSessionStore((s) => s.toggleChangeLog);
   const changeLogOpen = useSessionStore((s) => s.changeLogOpen);
   const changesCount = useSessionStore((s) => s.changes.length);
-  const toggleDebug = useDebugStore((s) => s.toggle);
-  const debugOpen = useDebugStore((s) => s.isOpen);
-  const debugCount = useDebugStore((s) => s.events.length);
   const toggleHistory = useSessionStore((s) => s.toggleHistory);
   const historyOpen = useSessionStore((s) => s.historyOpen);
+  const toggleSettings = useSessionStore((s) => s.toggleSettings);
+  const settingsOpen = useSessionStore((s) => s.settingsOpen);
 
   return (
     <header className="flex items-center justify-between px-4 py-2 bg-bg-secondary border-b border-border-primary select-none"
@@ -96,44 +94,6 @@ export function SessionBar({ session }: SessionBarProps) {
       {/* Right: Actions */}
       <div className="flex items-center gap-2">
         <button
-          onClick={toggleDebug}
-          title="Toggle debug panel (⌘D)"
-          className={`
-            flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs
-            transition-colors duration-150 cursor-pointer
-            ${
-              debugOpen
-                ? "bg-accent-purple/20 text-accent-purple"
-                : "text-text-secondary hover:text-text-primary hover:bg-bg-tertiary"
-            }
-          `}
-        >
-          <svg
-            width="14"
-            height="14"
-            viewBox="0 0 14 14"
-            fill="none"
-            xmlns="http://www.w3.org/2000/svg"
-          >
-            <path
-              d="M7 1.5C5.067 1.5 3.5 3.067 3.5 5V5.5L1.5 7V8.5H3.5V9C3.5 10.933 5.067 12.5 7 12.5C8.933 12.5 10.5 10.933 10.5 9V8.5H12.5V7L10.5 5.5V5C10.5 3.067 8.933 1.5 7 1.5Z"
-              stroke="currentColor"
-              strokeWidth="1.2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-            <circle cx="5.5" cy="6.5" r="0.75" fill="currentColor" />
-            <circle cx="8.5" cy="6.5" r="0.75" fill="currentColor" />
-          </svg>
-          Debug
-          {debugCount > 0 && (
-            <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-accent-purple text-[10px] text-white font-medium">
-              {debugCount > 99 ? "99" : debugCount}
-            </span>
-          )}
-        </button>
-
-        <button
           onClick={toggleChangeLog}
           className={`
             flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs
@@ -165,6 +125,36 @@ export function SessionBar({ session }: SessionBarProps) {
               {changesCount}
             </span>
           )}
+        </button>
+
+        <button
+          onClick={toggleSettings}
+          title="Settings"
+          className={`
+            flex items-center justify-center w-7 h-7 rounded-md
+            transition-colors duration-150 cursor-pointer
+            ${
+              settingsOpen
+                ? "bg-accent-green/20 text-accent-green"
+                : "text-text-secondary hover:text-text-primary hover:bg-bg-tertiary"
+            }
+          `}
+        >
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 14 14"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <path
+              d="M5.7 1.5H8.3L8.8 3.1L10.3 3.9L11.9 3.4L13.2 5.6L11.9 6.8V7.2L13.2 8.4L11.9 10.6L10.3 10.1L8.8 10.9L8.3 12.5H5.7L5.2 10.9L3.7 10.1L2.1 10.6L0.8 8.4L2.1 7.2V6.8L0.8 5.6L2.1 3.4L3.7 3.9L5.2 3.1L5.7 1.5Z"
+              stroke="currentColor"
+              strokeWidth="1.1"
+              strokeLinejoin="round"
+            />
+            <circle cx="7" cy="7" r="1.8" stroke="currentColor" strokeWidth="1.1" />
+          </svg>
         </button>
 
         {isActive ? (

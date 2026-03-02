@@ -14,6 +14,7 @@ interface SessionState {
   pendingApproval: ApprovalRequest | null;
   changeLogOpen: boolean;
   historyOpen: boolean;
+  settingsOpen: boolean;
   pastSessions: SessionRecord[];
 
   /** Non-null when viewing a past session (read-only). */
@@ -31,6 +32,8 @@ interface SessionState {
   setChangeLogOpen: (open: boolean) => void;
   toggleHistory: () => void;
   setHistoryOpen: (open: boolean) => void;
+  toggleSettings: () => void;
+  setSettingsOpen: (open: boolean) => void;
   setPastSessions: (sessions: SessionRecord[]) => void;
   viewPastSession: (id: string, currentMessages: Message[]) => void;
   returnToCurrentSession: () => Message[] | null;
@@ -44,6 +47,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   pendingApproval: null,
   changeLogOpen: false,
   historyOpen: false,
+  settingsOpen: false,
   pastSessions: [],
   viewingPastSession: null,
   savedMessages: null,
@@ -88,6 +92,11 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     set((state) => ({ historyOpen: !state.historyOpen })),
 
   setHistoryOpen: (open) => set({ historyOpen: open }),
+
+  toggleSettings: () =>
+    set((state) => ({ settingsOpen: !state.settingsOpen })),
+
+  setSettingsOpen: (open) => set({ settingsOpen: open }),
 
   setPastSessions: (sessions) => set({ pastSessions: sessions }),
 

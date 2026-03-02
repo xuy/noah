@@ -114,6 +114,7 @@ pub fn run() {
             commands::safety::undo_change,
             commands::settings::has_api_key,
             commands::settings::set_api_key,
+            commands::settings::get_app_version,
             commands::artifacts::list_artifacts,
             commands::artifacts::delete_artifact,
         ])

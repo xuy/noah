@@ -19,3 +19,8 @@ pub async fn set_api_key(state: State<'_, AppState>, api_key: String) -> Result<
 
     Ok(())
 }
+
+#[tauri::command]
+pub async fn get_app_version() -> Result<String, String> {
+    Ok(env!("CARGO_PKG_VERSION").to_string())
+}

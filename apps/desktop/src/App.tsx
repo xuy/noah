@@ -9,6 +9,7 @@ import { ActionApproval } from "./components/ActionApproval";
 import { ChangeLog } from "./components/ChangeLog";
 import { SessionHistory } from "./components/SessionHistory";
 import { DebugPanel } from "./components/DebugPanel";
+import { SettingsPanel } from "./components/SettingsPanel";
 import { SetupScreen } from "./components/SetupScreen";
 import { useDebugStore, type DebugEvent } from "./stores/debugStore";
 
@@ -81,6 +82,7 @@ function MainApp() {
       <SessionBar session={session} />
       <ChatPanel />
       <DebugPanel />
+      <SettingsPanel />
       <ActionApproval />
       <ChangeLog />
       <SessionHistory />
