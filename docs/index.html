@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Noah — AI-Powered IT Support</title>
+  <meta name="description" content="Noah diagnoses and fixes computer problems using AI. Free, open-source, runs locally on Mac and Windows." />
+  <link rel="icon" type="image/png" href="images/noah-hero.png" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            noah: { green: '#34D399', dark: '#0F172A', card: '#1E293B' }
+          }
+        }
+      }
+    }
+  </script>
+</head>
+<body class="bg-noah-dark text-gray-100 antialiased">
+
+  <!-- Hero -->
+  <section class="max-w-4xl mx-auto px-6 pt-16 pb-12 text-center">
+    <h1 class="text-4xl sm:text-5xl font-bold tracking-tight mb-4">
+      Meet <span class="text-noah-green">Noah</span>
+    </h1>
+    <p class="text-lg text-gray-400 max-w-2xl mx-auto mb-8">
+      AI-powered IT support that actually fixes your computer.
+      Diagnoses problems, explains what's wrong, and resolves issues — all in plain language.
+    </p>
+    <div class="flex flex-wrap justify-center gap-3 mb-10">
+      <a href="https://github.com/xuy/noah/releases/latest" class="inline-flex items-center gap-2 px-6 py-3 bg-noah-green text-noah-dark font-semibold rounded-xl hover:bg-noah-green/90 transition-colors">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M10 2L10 14M10 14L6 10M10 14L14 10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M3 17H17" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        Download for Mac
+      </a>
+      <a href="https://github.com/xuy/noah/releases/latest" class="inline-flex items-center gap-2 px-6 py-3 bg-noah-card text-gray-200 font-semibold rounded-xl border border-gray-700 hover:border-gray-500 transition-colors">
+        Windows (coming soon)
+      </a>
+    </div>
+    <div class="rounded-2xl overflow-hidden border border-gray-800 shadow-2xl max-w-3xl mx-auto">
+      <img src="images/noah-hero.png" alt="Noah in action — diagnosing network issues" class="w-full" loading="lazy" />
+    </div>
+  </section>
+
+  <!-- How it works -->
+  <section class="max-w-4xl mx-auto px-6 py-16">
+    <h2 class="text-2xl font-bold text-center mb-10">How It Works</h2>
+    <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div class="bg-noah-card rounded-xl p-5 border border-gray-800">
+        <div class="text-2xl mb-3">1.</div>
+        <h3 class="font-semibold mb-1">Describe the problem</h3>
+        <p class="text-sm text-gray-400">"My internet is slow" or "A program keeps crashing" — just say it naturally.</p>
+      </div>
+      <div class="bg-noah-card rounded-xl p-5 border border-gray-800">
+        <div class="text-2xl mb-3">2.</div>
+        <h3 class="font-semibold mb-1">Noah investigates</h3>
+        <p class="text-sm text-gray-400">Runs diagnostic tools, checks your system, and identifies what's wrong.</p>
+      </div>
+      <div class="bg-noah-card rounded-xl p-5 border border-gray-800">
+        <div class="text-2xl mb-3">3.</div>
+        <h3 class="font-semibold mb-1">You approve the fix</h3>
+        <p class="text-sm text-gray-400">Noah explains what it wants to do and asks permission before making changes.</p>
+      </div>
+      <div class="bg-noah-card rounded-xl p-5 border border-gray-800">
+        <div class="text-2xl mb-3">4.</div>
+        <h3 class="font-semibold mb-1">Problem solved</h3>
+        <p class="text-sm text-gray-400">Every change is logged and can be undone. Noah remembers for next time.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Features -->
+  <section class="max-w-4xl mx-auto px-6 py-16">
+    <h2 class="text-2xl font-bold text-center mb-10">Built for Trust</h2>
+    <div class="grid sm:grid-cols-3 gap-6">
+      <div class="text-center">
+        <div class="text-3xl mb-2">&#x1F6E1;</div>
+        <h3 class="font-semibold mb-1">Safety First</h3>
+        <p class="text-sm text-gray-400">Asks before making changes. Hard limits on dangerous operations. Every action logged.</p>
+      </div>
+      <div class="text-center">
+        <div class="text-3xl mb-2">&#x21A9;</div>
+        <h3 class="font-semibold mb-1">Undo Everything</h3>
+        <p class="text-sm text-gray-400">Complete change log with one-click undo. Nothing is permanent unless you want it.</p>
+      </div>
+      <div class="text-center">
+        <div class="text-3xl mb-2">&#x1F9E0;</div>
+        <h3 class="font-semibold mb-1">Gets Smarter</h3>
+        <p class="text-sm text-gray-400">Remembers your system details and past fixes. Gets better the more you use it.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- FAQ -->
+  <section class="max-w-2xl mx-auto px-6 py-16">
+    <h2 class="text-2xl font-bold text-center mb-10">FAQ</h2>
+    <div class="space-y-6">
+      <div>
+        <h3 class="font-semibold mb-1">Is Noah free?</h3>
+        <p class="text-sm text-gray-400">Yes. Noah is open-source (MIT license). You just need an Anthropic API key for the AI ($5/month typical usage).</p>
+      </div>
+      <div>
+        <h3 class="font-semibold mb-1">What can Noah fix?</h3>
+        <p class="text-sm text-gray-400">Network issues, slow performance, crashing apps, printer setup, DNS configuration, disk cleanup, and more. If you'd Google it, Noah can probably fix it.</p>
+      </div>
+      <div>
+        <h3 class="font-semibold mb-1">Is it safe?</h3>
+        <p class="text-sm text-gray-400">Noah asks permission before every change, logs everything, and supports undo. It has hard limits on dangerous operations like modifying boot files or security settings.</p>
+      </div>
+      <div>
+        <h3 class="font-semibold mb-1">Does my data leave my computer?</h3>
+        <p class="text-sm text-gray-400">Noah runs locally. The only external communication is with the Anthropic API (Claude) for AI responses. Your system data and session history stay on your machine.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="max-w-4xl mx-auto px-6 py-8 border-t border-gray-800 text-center">
+    <p class="text-sm text-gray-500">
+      <a href="https://github.com/xuy/noah" class="text-gray-400 hover:text-gray-200 transition-colors">GitHub</a>
+      &middot;
+      <a href="https://github.com/xuy/noah/releases" class="text-gray-400 hover:text-gray-200 transition-colors">Releases</a>
+      &middot;
+      <a href="https://github.com/xuy/noah/issues" class="text-gray-400 hover:text-gray-200 transition-colors">Report a Bug</a>
+    </p>
+    <p class="text-xs text-gray-600 mt-2">Powered by Claude &middot; Built with Tauri</p>
+  </footer>
+
+</body>
+</html>
