@@ -117,7 +117,6 @@ export function SessionHistory() {
   const pastSessions = useSessionStore((s) => s.pastSessions);
   const setPastSessions = useSessionStore((s) => s.setPastSessions);
   const viewPastSession = useSessionStore((s) => s.viewPastSession);
-  const messages = useChatStore((s) => s.messages);
   const setMessages = useChatStore((s) => s.setMessages);
 
   const loadSessions = useCallback(async () => {
@@ -139,13 +138,17 @@ export function SessionHistory() {
           content: r.content,
           timestamp: new Date(r.timestamp).getTime(),
         }));
-        viewPastSession(sessionId, messages);
+        // Read current messages directly from store (avoids stale closure).
+        // Set loaded messages BEFORE marking viewingPastSession so the
+        // re-render never sees an empty message list.
+        const currentMessages = useChatStore.getState().messages;
         setMessages(loaded);
+        viewPastSession(sessionId, currentMessages);
       } catch (err) {
         console.error("Failed to load session messages:", err);
       }
     },
-    [viewPastSession, messages, setMessages],
+    [viewPastSession, setMessages],
   );
 
   // Load sessions when panel opens.
