@@ -52,6 +52,7 @@ pub fn save_api_key(app_dir: &std::path::Path, key: &str) -> Result<(), String> 
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             // Initialise the journal database.
             let app_dir = app

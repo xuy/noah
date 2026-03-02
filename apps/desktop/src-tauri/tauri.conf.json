@@ -33,5 +33,13 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ]
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/xuy/noah/releases/latest/download/latest.json"
+      ],
+      "pubkey": ""
+    }
   }
 }

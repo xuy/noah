@@ -10,6 +10,7 @@ import { ChangeLog } from "./components/ChangeLog";
 import { SessionHistory } from "./components/SessionHistory";
 import { DebugPanel } from "./components/DebugPanel";
 import { SettingsPanel } from "./components/SettingsPanel";
+import { UpdateBanner } from "./components/UpdateBanner";
 import { SetupScreen } from "./components/SetupScreen";
 import { useDebugStore, type DebugEvent } from "./stores/debugStore";
 
@@ -79,6 +80,7 @@ function MainApp() {
 
   return (
     <div className="flex flex-col h-screen bg-bg-primary text-text-primary">
+      <UpdateBanner />
       <SessionBar session={session} />
       <ChatPanel />
       <DebugPanel />
