@@ -109,6 +109,14 @@ impl LlmClient {
         }
     }
 
+    pub fn set_api_key(&mut self, key: String) {
+        self.api_key = key;
+    }
+
+    pub fn has_api_key(&self) -> bool {
+        !self.api_key.is_empty()
+    }
+
     pub async fn send_message(
         &self,
         messages: Vec<Message>,

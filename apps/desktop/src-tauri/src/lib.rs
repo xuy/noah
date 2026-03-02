@@ -4,6 +4,7 @@ mod platform;
 mod safety;
 
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::process::Command;
 use std::sync::Arc;
 use tauri::Manager;
@@ -19,6 +20,28 @@ pub struct AppState {
     pub orchestrator: Mutex<Orchestrator>,
     pub pending_approvals: PendingApprovals,
     pub db: Mutex<rusqlite::Connection>,
+    /// Path to the app data directory (for saving config).
+    pub app_dir: PathBuf,
+}
+
+/// Load the API key: config file first, then env var.
+fn load_api_key(app_dir: &std::path::Path) -> String {
+    // Try config file first
+    let key_path = app_dir.join("api_key.txt");
+    if let Ok(contents) = std::fs::read_to_string(&key_path) {
+        let key = contents.trim().to_string();
+        if !key.is_empty() {
+            return key;
+        }
+    }
+    // Fall back to environment variable
+    std::env::var("ANTHROPIC_API_KEY").unwrap_or_default()
+}
+
+/// Save API key to config file.
+pub fn save_api_key(app_dir: &std::path::Path, key: &str) -> Result<(), String> {
+    let key_path = app_dir.join("api_key.txt");
+    std::fs::write(&key_path, key).map_err(|e| format!("Failed to save API key: {}", e))
 }
 
 /// Gather OS context string to include in the system prompt.
@@ -80,9 +103,8 @@ pub fn run() {
             let mut router = ToolRouter::new();
             platform::register_platform_tools(&mut router);
 
-            // Create the LLM client.
-            let api_key =
-                std::env::var("ANTHROPIC_API_KEY").unwrap_or_default();
+            // Load API key: config file first, then env var.
+            let api_key = load_api_key(&app_dir);
             let llm = LlmClient::new(api_key);
 
             let pending_approvals: PendingApprovals =
@@ -100,6 +122,7 @@ pub fn run() {
                 orchestrator: Mutex::new(orchestrator),
                 pending_approvals,
                 db: Mutex::new(db),
+                app_dir,
             });
 
             Ok(())
@@ -114,6 +137,8 @@ pub fn run() {
             commands::agent::deny_action,
             commands::safety::get_changes,
             commands::safety::undo_change,
+            commands::settings::has_api_key,
+            commands::settings::set_api_key,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

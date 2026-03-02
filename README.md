@@ -17,36 +17,32 @@ No tickets. No waiting. No confusing menus.
 
 ## 🚀 Getting Started
 
-### Prerequisites
+### Option A: Download the App
 
-- **macOS** (primary platform — Windows support coming)
-- **Node.js** (v18+) and **pnpm**
-- **Rust** toolchain (install via [rustup.rs](https://rustup.rs))
-- An **Anthropic API key** (see below)
+1. Go to the [Releases](https://github.com/xuy/noah/releases) page
+2. Download the latest `.dmg` for macOS
+3. Open it and drag Noah to your Applications folder
+4. Launch Noah — on first run, it will ask you for your Anthropic API key
+
+> **Note:** Since Noah isn't signed with an Apple Developer certificate yet, macOS will show a warning. To open it: right-click the app → "Open" → "Open" again. You only need to do this once.
 
 ### 🔑 Bring Your Own API Key
 
 Noah uses Claude (by Anthropic) to think through your problems. You'll need your own API key:
 
-1. Get an API key from [console.anthropic.com](https://console.anthropic.com)
-2. Create a file at `~/.secrets/claude.txt` with your key:
-   ```
-   ANTHROPIC_API_KEY=sk-ant-your-key-here
-   ```
-3. Run Noah using the included script:
-   ```bash
-   ./run_mac.sh
-   ```
+1. Get a key from [console.anthropic.com](https://console.anthropic.com)
+2. When you first launch Noah, paste it in the setup screen — done!
 
-**Or** set the environment variable directly:
+Your key is saved locally on your machine and never shared with anyone except Anthropic's API directly.
+
+**For developers** — you can also set it via environment variable:
 ```bash
 export ANTHROPIC_API_KEY="sk-ant-your-key-here"
-pnpm dev
 ```
 
-That's it. Your key stays on your machine — Noah never sends it anywhere except directly to Anthropic's API.
+### Option B: Build from Source
 
-### Install & Run
+**Prerequisites:** macOS, Node.js (v18+), pnpm, Rust ([rustup.rs](https://rustup.rs))
 
 ```bash
 git clone https://github.com/xuy/noah.git
@@ -63,7 +59,7 @@ export ANTHROPIC_API_KEY="your-key"
 pnpm dev
 ```
 
-### Build for Production
+#### Build for Production
 
 ```bash
 pnpm build

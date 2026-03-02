@@ -73,3 +73,11 @@ export async function endSession(sessionId: string): Promise<void> {
 export async function listSessions(): Promise<SessionRecord[]> {
   return await invoke<SessionRecord[]>("list_sessions");
 }
+
+export async function hasApiKey(): Promise<boolean> {
+  return await invoke<boolean>("has_api_key");
+}
+
+export async function setApiKey(apiKey: string): Promise<void> {
+  await invoke<void>("set_api_key", { apiKey });
+}

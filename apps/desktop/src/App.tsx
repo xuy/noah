@@ -1,6 +1,7 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import * as commands from "./lib/tauri-commands";
 import { useSession } from "./hooks/useSession";
 import { SessionBar } from "./components/SessionBar";
 import { ChatPanel } from "./components/ChatPanel";
@@ -8,6 +9,7 @@ import { ActionApproval } from "./components/ActionApproval";
 import { ChangeLog } from "./components/ChangeLog";
 import { SessionHistory } from "./components/SessionHistory";
 import { DebugPanel } from "./components/DebugPanel";
+import { SetupScreen } from "./components/SetupScreen";
 import { useDebugStore, type DebugEvent } from "./stores/debugStore";
 
 const WINDOW_TITLES = [
@@ -22,6 +24,25 @@ const WINDOW_TITLES = [
 ];
 
 function App() {
+  const [needsSetup, setNeedsSetup] = useState<boolean | null>(null);
+
+  // Check for API key on mount.
+  useEffect(() => {
+    commands.hasApiKey().then((has) => setNeedsSetup(!has));
+  }, []);
+
+  // Show nothing while checking.
+  if (needsSetup === null) return null;
+
+  // Show setup screen if no API key configured.
+  if (needsSetup) {
+    return <SetupScreen onComplete={() => setNeedsSetup(false)} />;
+  }
+
+  return <MainApp />;
+}
+
+function MainApp() {
   // Single hook instance that auto-creates session on mount
   const session = useSession();
   const addEvent = useDebugStore((s) => s.addEvent);

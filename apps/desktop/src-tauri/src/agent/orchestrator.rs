@@ -103,6 +103,14 @@ impl Orchestrator {
         self.sessions.remove(session_id).is_some()
     }
 
+    pub fn set_api_key(&mut self, key: String) {
+        self.llm.set_api_key(key);
+    }
+
+    pub fn has_api_key(&self) -> bool {
+        self.llm.has_api_key()
+    }
+
     // ── Approval flow ──────────────────────────────────────────────────
 
     /// Resolve a pending approval. Returns false if the approval_id was not found.
