@@ -18,7 +18,18 @@ pub struct JournalEntry {
     pub undone: bool,
 }
 
-/// Initialise the journal database, creating the table if it doesn't exist.
+/// A persisted session record for the session history list.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SessionRecord {
+    pub id: String,
+    pub created_at: String,
+    pub ended_at: Option<String>,
+    pub title: Option<String>,
+    pub message_count: i32,
+    pub change_count: i32,
+}
+
+/// Initialise the journal database, creating tables if they don't exist.
 pub fn init_db(path: &str) -> Result<Connection> {
     let conn = Connection::open(path).context("Failed to open journal database")?;
 
@@ -34,9 +45,17 @@ pub fn init_db(path: &str) -> Result<Connection> {
             undone      INTEGER NOT NULL DEFAULT 0
         );
 
-        CREATE INDEX IF NOT EXISTS idx_journal_session ON journal(session_id);",
+        CREATE INDEX IF NOT EXISTS idx_journal_session ON journal(session_id);
+
+        CREATE TABLE IF NOT EXISTS sessions (
+            id            TEXT PRIMARY KEY,
+            created_at    TEXT NOT NULL,
+            ended_at      TEXT,
+            title         TEXT,
+            message_count INTEGER NOT NULL DEFAULT 0
+        );",
     )
-    .context("Failed to create journal table")?;
+    .context("Failed to create database tables")?;
 
     Ok(conn)
 }
@@ -120,6 +139,82 @@ pub fn mark_undone(conn: &Connection, change_id: &str) -> Result<()> {
     Ok(())
 }
 
+// ── Session persistence ─────────────────────────────────────────────────
+
+/// Insert a new session record when a session is created.
+pub fn create_session_record(conn: &Connection, id: &str, created_at: &str) -> Result<()> {
+    conn.execute(
+        "INSERT INTO sessions (id, created_at, message_count) VALUES (?1, ?2, 0)",
+        rusqlite::params![id, created_at],
+    )
+    .context("Failed to insert session record")?;
+    Ok(())
+}
+
+/// Set the session title (typically from the first user message).
+pub fn update_session_title(conn: &Connection, id: &str, title: &str) -> Result<()> {
+    conn.execute(
+        "UPDATE sessions SET title = ?1 WHERE id = ?2 AND title IS NULL",
+        rusqlite::params![title, id],
+    )
+    .context("Failed to update session title")?;
+    Ok(())
+}
+
+/// Update the message count for a session.
+pub fn update_session_message_count(conn: &Connection, id: &str, count: i32) -> Result<()> {
+    conn.execute(
+        "UPDATE sessions SET message_count = ?1 WHERE id = ?2",
+        rusqlite::params![count, id],
+    )
+    .context("Failed to update session message count")?;
+    Ok(())
+}
+
+/// Mark a session as ended.
+pub fn end_session_record(conn: &Connection, id: &str, ended_at: &str, message_count: i32) -> Result<()> {
+    conn.execute(
+        "UPDATE sessions SET ended_at = ?1, message_count = ?2 WHERE id = ?3",
+        rusqlite::params![ended_at, message_count, id],
+    )
+    .context("Failed to end session record")?;
+    Ok(())
+}
+
+/// List all sessions, most recent first. Includes change_count from the journal table.
+pub fn list_sessions(conn: &Connection) -> Result<Vec<SessionRecord>> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT s.id, s.created_at, s.ended_at, s.title, s.message_count,
+                    COALESCE(j.change_count, 0)
+             FROM sessions s
+             LEFT JOIN (
+                 SELECT session_id, COUNT(*) as change_count
+                 FROM journal
+                 GROUP BY session_id
+             ) j ON j.session_id = s.id
+             ORDER BY s.created_at DESC",
+        )
+        .context("Failed to prepare list_sessions query")?;
+
+    let records = stmt
+        .query_map([], |row| {
+            Ok(SessionRecord {
+                id: row.get(0)?,
+                created_at: row.get(1)?,
+                ended_at: row.get(2)?,
+                title: row.get(3)?,
+                message_count: row.get(4)?,
+                change_count: row.get(5)?,
+            })
+        })
+        .context("Failed to execute list_sessions query")?
+        .collect::<std::result::Result<Vec<_>, _>>()
+        .context("Failed to collect session records")?;
+
+    Ok(records)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -191,6 +286,100 @@ mod tests {
         let conn = test_db();
         let result = mark_undone(&conn, "does-not-exist");
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_create_and_list_sessions() {
+        let conn = test_db();
+        create_session_record(&conn, "s1", "2026-01-01T00:00:00Z").unwrap();
+        create_session_record(&conn, "s2", "2026-01-02T00:00:00Z").unwrap();
+
+        let sessions = list_sessions(&conn).unwrap();
+        assert_eq!(sessions.len(), 2);
+        // Most recent first
+        assert_eq!(sessions[0].id, "s2");
+        assert_eq!(sessions[1].id, "s1");
+        assert!(sessions[0].ended_at.is_none());
+        assert!(sessions[0].title.is_none());
+        assert_eq!(sessions[0].message_count, 0);
+        assert_eq!(sessions[0].change_count, 0);
+    }
+
+    #[test]
+    fn test_session_title_and_end() {
+        let conn = test_db();
+        create_session_record(&conn, "s1", "2026-01-01T00:00:00Z").unwrap();
+
+        update_session_title(&conn, "s1", "My internet is slow").unwrap();
+        end_session_record(&conn, "s1", "2026-01-01T00:30:00Z", 5).unwrap();
+
+        let sessions = list_sessions(&conn).unwrap();
+        assert_eq!(sessions[0].title.as_deref(), Some("My internet is slow"));
+        assert_eq!(
+            sessions[0].ended_at.as_deref(),
+            Some("2026-01-01T00:30:00Z")
+        );
+        assert_eq!(sessions[0].message_count, 5);
+    }
+
+    #[test]
+    fn test_session_title_only_sets_once() {
+        let conn = test_db();
+        create_session_record(&conn, "s1", "2026-01-01T00:00:00Z").unwrap();
+
+        update_session_title(&conn, "s1", "First message").unwrap();
+        update_session_title(&conn, "s1", "Second message").unwrap();
+
+        let sessions = list_sessions(&conn).unwrap();
+        assert_eq!(sessions[0].title.as_deref(), Some("First message"));
+    }
+
+    #[test]
+    fn test_session_change_count_from_journal() {
+        let conn = test_db();
+        create_session_record(&conn, "s1", "2026-01-01T00:00:00Z").unwrap();
+
+        let change = ChangeRecord {
+            description: "test".to_string(),
+            undo_tool: "t".to_string(),
+            undo_input: serde_json::json!({}),
+        };
+        record_change(&conn, "s1", "tool", &change).unwrap();
+        record_change(&conn, "s1", "tool", &change).unwrap();
+
+        let sessions = list_sessions(&conn).unwrap();
+        assert_eq!(sessions[0].change_count, 2);
+    }
+
+    #[test]
+    fn test_session_record_json_keys() {
+        let rec = SessionRecord {
+            id: "s1".to_string(),
+            created_at: "2026-01-01T00:00:00Z".to_string(),
+            ended_at: None,
+            title: Some("Test".to_string()),
+            message_count: 3,
+            change_count: 1,
+        };
+        let json = serde_json::to_value(&rec).unwrap();
+        let obj = json.as_object().unwrap();
+
+        for key in [
+            "id",
+            "created_at",
+            "ended_at",
+            "title",
+            "message_count",
+            "change_count",
+        ] {
+            assert!(obj.contains_key(key), "Missing expected key: {}", key);
+        }
+        assert_eq!(obj.len(), 6);
+        // Must NOT have camelCase
+        assert!(!obj.contains_key("createdAt"));
+        assert!(!obj.contains_key("endedAt"));
+        assert!(!obj.contains_key("messageCount"));
+        assert!(!obj.contains_key("changeCount"));
     }
 
     #[test]

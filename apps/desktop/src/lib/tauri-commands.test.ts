@@ -35,6 +35,15 @@ const MOCK_APPROVAL_REQUEST = {
   parameters: { pid: 1234 },
 };
 
+const MOCK_SESSION_RECORD = {
+  id: "s1",
+  created_at: "2026-01-01T00:00:00Z",
+  ended_at: "2026-01-01T00:30:00Z",
+  title: "My internet is slow",
+  message_count: 5,
+  change_count: 2,
+};
+
 describe("IPC contract: Rust → TypeScript", () => {
   it("SessionInfo fields match Rust serialization", () => {
     // Rust SessionInfo has: id, created_at, message_count (snake_case)
@@ -76,6 +85,23 @@ describe("IPC contract: Rust → TypeScript", () => {
       expect(MOCK_APPROVAL_REQUEST).toHaveProperty(key);
     }
   });
+
+  it("SessionRecord fields match Rust serialization", () => {
+    // Rust SessionRecord has: id, created_at, ended_at, title, message_count, change_count
+    const requiredKeys = [
+      "id",
+      "created_at",
+      "ended_at",
+      "title",
+      "message_count",
+      "change_count",
+    ];
+    for (const key of requiredKeys) {
+      expect(MOCK_SESSION_RECORD).toHaveProperty(key);
+    }
+    expect(typeof MOCK_SESSION_RECORD.message_count).toBe("number");
+    expect(typeof MOCK_SESSION_RECORD.change_count).toBe("number");
+  });
 });
 
 describe("IPC contract: TypeScript → Rust (invoke keys)", () => {
@@ -116,6 +142,13 @@ describe("IPC contract: TypeScript → Rust (invoke keys)", () => {
     // Rust: end_session(session_id: String)
     const args = { sessionId: "s1" };
     expect(args).toHaveProperty("sessionId");
+  });
+
+  it("list_sessions takes no arguments", () => {
+    // Rust: list_sessions() -> Vec<SessionRecord>
+    // No args needed, just the command name
+    const args = {};
+    expect(Object.keys(args)).toHaveLength(0);
   });
 });
 

@@ -18,6 +18,8 @@ export function SessionBar({ session }: SessionBarProps) {
   const toggleDebug = useDebugStore((s) => s.toggle);
   const debugOpen = useDebugStore((s) => s.isOpen);
   const debugCount = useDebugStore((s) => s.events.length);
+  const toggleHistory = useSessionStore((s) => s.toggleHistory);
+  const historyOpen = useSessionStore((s) => s.historyOpen);
 
   return (
     <header className="flex items-center justify-between px-4 py-2 bg-bg-secondary border-b border-border-primary select-none"
@@ -61,6 +63,44 @@ export function SessionBar({ session }: SessionBarProps) {
             {isActive ? "Active" : "Idle"}
           </span>
         </div>
+
+        {/* History button */}
+        <button
+          onClick={toggleHistory}
+          title="Session history"
+          className={`
+            flex items-center gap-1.5 px-2 py-1 rounded-md text-xs ml-2
+            transition-colors duration-150 cursor-pointer
+            ${
+              historyOpen
+                ? "bg-accent-blue/20 text-accent-blue"
+                : "text-text-secondary hover:text-text-primary hover:bg-bg-tertiary"
+            }
+          `}
+        >
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 14 14"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <path
+              d="M7 3.5V7L9.5 9.5"
+              stroke="currentColor"
+              strokeWidth="1.2"
+              strokeLinecap="round"
+            />
+            <circle
+              cx="7"
+              cy="7"
+              r="5.5"
+              stroke="currentColor"
+              strokeWidth="1.2"
+            />
+          </svg>
+          History
+        </button>
       </div>
 
       {/* Center: Timer */}

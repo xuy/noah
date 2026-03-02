@@ -5,6 +5,7 @@ import { SessionBar } from "./components/SessionBar";
 import { ChatPanel } from "./components/ChatPanel";
 import { ActionApproval } from "./components/ActionApproval";
 import { ChangeLog } from "./components/ChangeLog";
+import { SessionHistory } from "./components/SessionHistory";
 import { DebugPanel } from "./components/DebugPanel";
 import { useDebugStore, type DebugEvent } from "./stores/debugStore";
 
@@ -43,6 +44,7 @@ function App() {
       <DebugPanel />
       <ActionApproval />
       <ChangeLog />
+      <SessionHistory />
     </div>
   );
 }

@@ -1,5 +1,9 @@
 import { create } from "zustand";
-import type { ApprovalRequest, ChangeEntry } from "../lib/tauri-commands";
+import type {
+  ApprovalRequest,
+  ChangeEntry,
+  SessionRecord,
+} from "../lib/tauri-commands";
 
 interface SessionState {
   sessionId: string | null;
@@ -8,6 +12,8 @@ interface SessionState {
   changes: ChangeEntry[];
   pendingApproval: ApprovalRequest | null;
   changeLogOpen: boolean;
+  historyOpen: boolean;
+  pastSessions: SessionRecord[];
 
   setSession: (id: string) => void;
   endSession: () => void;
@@ -17,6 +23,9 @@ interface SessionState {
   setPendingApproval: (req: ApprovalRequest | null) => void;
   toggleChangeLog: () => void;
   setChangeLogOpen: (open: boolean) => void;
+  toggleHistory: () => void;
+  setHistoryOpen: (open: boolean) => void;
+  setPastSessions: (sessions: SessionRecord[]) => void;
 }
 
 export const useSessionStore = create<SessionState>((set) => ({
@@ -26,6 +35,8 @@ export const useSessionStore = create<SessionState>((set) => ({
   changes: [],
   pendingApproval: null,
   changeLogOpen: false,
+  historyOpen: false,
+  pastSessions: [],
 
   setSession: (id) =>
     set({
@@ -62,4 +73,11 @@ export const useSessionStore = create<SessionState>((set) => ({
     set((state) => ({ changeLogOpen: !state.changeLogOpen })),
 
   setChangeLogOpen: (open) => set({ changeLogOpen: open }),
+
+  toggleHistory: () =>
+    set((state) => ({ historyOpen: !state.historyOpen })),
+
+  setHistoryOpen: (open) => set({ historyOpen: open }),
+
+  setPastSessions: (sessions) => set({ pastSessions: sessions }),
 }));

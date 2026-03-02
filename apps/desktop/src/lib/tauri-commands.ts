@@ -24,6 +24,15 @@ export interface SessionInfo {
   message_count: number;
 }
 
+export interface SessionRecord {
+  id: string;
+  created_at: string;
+  ended_at: string | null;
+  title: string | null;
+  message_count: number;
+  change_count: number;
+}
+
 // ── Tauri Command Wrappers ──
 
 export async function createSession(): Promise<SessionInfo> {
@@ -58,4 +67,8 @@ export async function undoChange(changeId: string): Promise<void> {
 
 export async function endSession(sessionId: string): Promise<void> {
   await invoke<void>("end_session", { sessionId });
+}
+
+export async function listSessions(): Promise<SessionRecord[]> {
+  return await invoke<SessionRecord[]>("list_sessions");
 }

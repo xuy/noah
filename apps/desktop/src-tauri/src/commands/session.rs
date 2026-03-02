@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
+use crate::safety::journal::{self, SessionRecord};
 use crate::AppState;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -19,9 +20,17 @@ pub async fn create_session(state: State<'_, AppState>) -> Result<SessionInfo, S
         .get_session(&id)
         .ok_or_else(|| "Failed to retrieve newly created session".to_string())?;
 
+    let created_at = session.created_at.to_rfc3339();
+
+    // Persist the session record to the database.
+    {
+        let conn = state.db.lock().await;
+        let _ = journal::create_session_record(&conn, &id, &created_at);
+    }
+
     Ok(SessionInfo {
         id: session.id.clone(),
-        created_at: session.created_at.to_rfc3339(),
+        created_at,
         message_count: session.messages.len(),
     })
 }
@@ -50,7 +59,28 @@ pub async fn end_session(
     session_id: String,
 ) -> Result<bool, String> {
     let mut orchestrator = state.orchestrator.lock().await;
-    Ok(orchestrator.end_session(&session_id))
+
+    // Capture message count before ending (which removes the session from memory).
+    let message_count = orchestrator
+        .get_session(&session_id)
+        .map(|s| s.messages.len() as i32)
+        .unwrap_or(0);
+
+    let removed = orchestrator.end_session(&session_id);
+
+    if removed {
+        let ended_at = chrono::Utc::now().to_rfc3339();
+        let conn = state.db.lock().await;
+        let _ = journal::end_session_record(&conn, &session_id, &ended_at, message_count);
+    }
+
+    Ok(removed)
+}
+
+#[tauri::command]
+pub async fn list_sessions(state: State<'_, AppState>) -> Result<Vec<SessionRecord>, String> {
+    let conn = state.db.lock().await;
+    journal::list_sessions(&conn).map_err(|e| format!("Failed to list sessions: {}", e))
 }
 
 #[cfg(test)]
