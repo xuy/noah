@@ -5,9 +5,7 @@
 No tickets. No hold music. No Googling error codes.
 
 <p align="center">
-  <img src="docs/images/noah-diagnose.png" width="420" alt="Noah diagnosing a slow computer — finds three runaway CloudSync processes eating CPU" />
-  &nbsp;&nbsp;
-  <img src="docs/images/noah-fix.png" width="420" alt="Noah fixes the issue and confirms the computer is back to normal" />
+  <img src="docs/images/noah-hero.png" width="800" alt="Noah diagnosing a slow computer, finding runaway processes, and fixing the issue in one click" />
 </p>
 <p align="center"><i>You say "my computer is slow." Noah finds the problem, explains the fix, and handles it.</i></p>
 
