@@ -9,7 +9,6 @@ import type {
 interface SessionState {
   sessionId: string | null;
   isActive: boolean;
-  startTime: number | null;
   changes: ChangeEntry[];
   pendingApproval: ApprovalRequest | null;
   changeLogOpen: boolean;
@@ -42,7 +41,6 @@ interface SessionState {
 export const useSessionStore = create<SessionState>((set, get) => ({
   sessionId: null,
   isActive: false,
-  startTime: null,
   changes: [],
   pendingApproval: null,
   changeLogOpen: false,
@@ -56,7 +54,6 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     set({
       sessionId: id,
       isActive: true,
-      startTime: Date.now(),
       changes: [],
       pendingApproval: null,
     }),

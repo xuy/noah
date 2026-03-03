@@ -4,14 +4,13 @@ import { NoahIcon } from "./NoahIcon";
 interface SessionBarProps {
   session: {
     isActive: boolean;
-    elapsed: string;
     endSession: () => Promise<void>;
     createSession: () => Promise<void>;
   };
 }
 
 export function SessionBar({ session }: SessionBarProps) {
-  const { isActive, elapsed, endSession, createSession } = session;
+  const { isActive, endSession, createSession } = session;
   const toggleChangeLog = useSessionStore((s) => s.toggleChangeLog);
   const changeLogOpen = useSessionStore((s) => s.changeLogOpen);
   const changesCount = useSessionStore((s) => s.changes.length);
@@ -21,36 +20,26 @@ export function SessionBar({ session }: SessionBarProps) {
   const settingsOpen = useSessionStore((s) => s.settingsOpen);
 
   return (
-    <header className="flex items-center justify-between px-4 py-2 bg-bg-secondary border-b border-border-primary select-none"
+    <header
+      className="flex items-center justify-between px-4 py-2 bg-bg-secondary border-b border-border-primary select-none"
       data-tauri-drag-region=""
     >
-      {/* Left: Logo and title */}
-      <div className="flex items-center gap-3" data-tauri-drag-region="">
-        <div className="flex items-center gap-2">
-          <NoahIcon className="w-7 h-7 rounded-lg" alt="Noah" />
-          <span className="text-sm font-semibold tracking-wide text-text-primary">
-            Noah
-          </span>
-        </div>
+      {/* Left: Brand */}
+      <div className="flex items-center gap-2" data-tauri-drag-region="">
+        <NoahIcon className="w-7 h-7 rounded-lg" alt="Noah" />
+        <span className="text-sm font-semibold tracking-wide text-text-primary">
+          Noah
+        </span>
+      </div>
 
-        {/* Status indicator */}
-        <div className="flex items-center gap-1.5 ml-2">
-          <div
-            className={`w-2 h-2 rounded-full ${
-              isActive ? "bg-status-active" : "bg-status-idle"
-            }`}
-          />
-          <span className="text-xs text-text-secondary">
-            {isActive ? "Active" : "Idle"}
-          </span>
-        </div>
-
-        {/* History button */}
+      {/* Right: All controls */}
+      <div className="flex items-center gap-1">
+        {/* Navigation group */}
         <button
           onClick={toggleHistory}
           title="Session history"
           className={`
-            flex items-center gap-1.5 px-2 py-1 rounded-md text-xs ml-2
+            flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs
             transition-colors duration-150 cursor-pointer
             ${
               historyOpen
@@ -82,21 +71,12 @@ export function SessionBar({ session }: SessionBarProps) {
           </svg>
           History
         </button>
-      </div>
 
-      {/* Center: Timer */}
-      <div className="flex items-center" data-tauri-drag-region="">
-        <span className="text-xs font-mono text-text-muted tabular-nums">
-          {elapsed}
-        </span>
-      </div>
-
-      {/* Right: Actions */}
-      <div className="flex items-center gap-2">
         <button
           onClick={toggleChangeLog}
+          title="Changes made this session"
           className={`
-            flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs
+            flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs
             transition-colors duration-150 cursor-pointer
             ${
               changeLogOpen
@@ -121,7 +101,7 @@ export function SessionBar({ session }: SessionBarProps) {
           </svg>
           Changes
           {changesCount > 0 && (
-            <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-accent-green text-[10px] text-white font-medium">
+            <span className="inline-flex items-center justify-center min-w-[16px] h-4 px-1 rounded-full bg-accent-green text-[10px] text-white font-medium">
               {changesCount}
             </span>
           )}
@@ -131,7 +111,7 @@ export function SessionBar({ session }: SessionBarProps) {
           onClick={toggleSettings}
           title="Settings"
           className={`
-            flex items-center justify-center w-7 h-7 rounded-md
+            flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs
             transition-colors duration-150 cursor-pointer
             ${
               settingsOpen
@@ -155,19 +135,24 @@ export function SessionBar({ session }: SessionBarProps) {
             />
             <circle cx="7" cy="7" r="1.8" stroke="currentColor" strokeWidth="1.1" />
           </svg>
+          Settings
         </button>
 
+        {/* Separator */}
+        <div className="w-px h-4 bg-border-primary mx-1" />
+
+        {/* Session lifecycle */}
         {isActive ? (
           <button
             onClick={endSession}
-            className="px-2.5 py-1 rounded-md text-xs text-accent-red hover:bg-accent-red/10 transition-colors duration-150 cursor-pointer"
+            className="px-3 py-1.5 rounded-md text-xs text-text-muted hover:text-accent-red hover:bg-accent-red/10 transition-colors duration-150 cursor-pointer"
           >
             End Session
           </button>
         ) : (
           <button
             onClick={createSession}
-            className="px-2.5 py-1 rounded-md text-xs text-accent-green hover:bg-accent-green/10 transition-colors duration-150 cursor-pointer"
+            className="px-3 py-1.5 rounded-md text-xs text-accent-green hover:bg-accent-green/10 transition-colors duration-150 cursor-pointer"
           >
             New Session
           </button>
