@@ -6,10 +6,8 @@ import * as commands from "../lib/tauri-commands";
 interface UseSessionReturn {
   sessionId: string | null;
   isActive: boolean;
-  /** Create a new session */
-  createSession: () => Promise<void>;
-  /** End the current session */
-  endSession: () => Promise<void>;
+  /** End the current problem and start a fresh session. */
+  startNewProblem: () => Promise<void>;
 }
 
 export function useSession(): UseSessionReturn {
@@ -41,19 +39,18 @@ export function useSession(): UseSessionReturn {
     }
   }, [setSession, addMessage, clearMessages]);
 
-  const endSession = useCallback(async () => {
-    if (!sessionId) return;
-    try {
-      await commands.endSession(sessionId);
-      endSessionState();
-      addMessage({
-        role: "system",
-        content: "Session ended.",
-      });
-    } catch (err) {
-      console.error("Failed to end session:", err);
+  const startNewProblem = useCallback(async () => {
+    // Wrap up the current session silently, then start fresh.
+    if (sessionId) {
+      try {
+        await commands.endSession(sessionId);
+        endSessionState();
+      } catch (err) {
+        console.error("Failed to end session:", err);
+      }
     }
-  }, [sessionId, endSessionState, addMessage]);
+    await createSession();
+  }, [sessionId, endSessionState, createSession]);
 
   // Auto-create session on mount (guard against React Strict Mode double-fire)
   const creatingRef = useRef(false);
@@ -70,7 +67,6 @@ export function useSession(): UseSessionReturn {
   return {
     sessionId,
     isActive,
-    createSession,
-    endSession,
+    startNewProblem,
   };
 }

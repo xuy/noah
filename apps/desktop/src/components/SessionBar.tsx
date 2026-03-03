@@ -3,14 +3,11 @@ import { NoahIcon } from "./NoahIcon";
 
 interface SessionBarProps {
   session: {
-    isActive: boolean;
-    endSession: () => Promise<void>;
-    createSession: () => Promise<void>;
+    startNewProblem: () => Promise<void>;
   };
 }
 
 export function SessionBar({ session }: SessionBarProps) {
-  const { isActive, endSession, createSession } = session;
   const toggleHistory = useSessionStore((s) => s.toggleHistory);
   const historyOpen = useSessionStore((s) => s.historyOpen);
   const toggleSettings = useSessionStore((s) => s.toggleSettings);
@@ -102,22 +99,27 @@ export function SessionBar({ session }: SessionBarProps) {
         {/* Separator */}
         <div className="w-px h-4 bg-border-primary mx-1" />
 
-        {/* Session lifecycle */}
-        {isActive ? (
-          <button
-            onClick={endSession}
-            className="px-3 py-1.5 rounded-md text-xs text-text-muted hover:text-accent-red hover:bg-accent-red/10 transition-colors duration-150 cursor-pointer"
+        {/* Primary action */}
+        <button
+          onClick={session.startNewProblem}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs text-accent-green hover:bg-accent-green/10 transition-colors duration-150 cursor-pointer"
+        >
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 14 14"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
           >
-            End Session
-          </button>
-        ) : (
-          <button
-            onClick={createSession}
-            className="px-3 py-1.5 rounded-md text-xs text-accent-green hover:bg-accent-green/10 transition-colors duration-150 cursor-pointer"
-          >
-            New Session
-          </button>
-        )}
+            <path
+              d="M7 3V11M3 7H11"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+            />
+          </svg>
+          New Problem
+        </button>
       </div>
     </header>
   );
