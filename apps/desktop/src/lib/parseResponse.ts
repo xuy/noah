@@ -11,7 +11,8 @@ export type ParsedResponse =
  * If no markers are found, falls back to { type: "text" }.
  */
 export function parseResponse(raw: string): ParsedResponse {
-  const trimmed = raw.trim();
+  // Strip any <think>...</think> blocks (some models emit reasoning tags).
+  const trimmed = raw.replace(/<think>[\s\S]*?<\/think>\s*/g, "").trim();
 
   // Action card: [SITUATION]...[PLAN]...[ACTION:Label]
   const actionMatch = trimmed.match(
