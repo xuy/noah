@@ -123,6 +123,21 @@ export async function setApiKey(apiKey: string): Promise<void> {
   await invoke<void>("set_api_key", { apiKey });
 }
 
+export async function redeemInviteCode(
+  proxyUrl: string,
+  inviteCode: string,
+): Promise<void> {
+  await invoke<void>("redeem_invite_code", { proxyUrl, inviteCode });
+}
+
+export async function getAuthMode(): Promise<"api_key" | "proxy"> {
+  return await invoke<"api_key" | "proxy">("get_auth_mode");
+}
+
+export async function clearAuth(): Promise<void> {
+  await invoke<void>("clear_auth");
+}
+
 export async function listKnowledge(
   category?: string,
 ): Promise<KnowledgeEntry[]> {

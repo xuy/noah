@@ -12,7 +12,7 @@ use std::sync::Arc;
 use tauri::Manager;
 use tokio::sync::{oneshot, Mutex};
 
-use agent::llm_client::LlmClient;
+use agent::llm_client::{AuthMode, LlmClient};
 use agent::orchestrator::{Orchestrator, PendingApprovals};
 use agent::tool_router::ToolRouter;
 use safety::journal;
@@ -30,24 +30,65 @@ pub struct AppState {
     pub cancelled: Arc<AtomicBool>,
 }
 
-/// Load the API key: config file first, then env var.
-fn load_api_key(app_dir: &std::path::Path) -> String {
-    // Try config file first
+/// Load auth: proxy.json first, then api_key.txt, then env var.
+fn load_auth(app_dir: &std::path::Path) -> AuthMode {
+    // Check for proxy config first
+    let proxy_path = app_dir.join("proxy.json");
+    if let Ok(contents) = std::fs::read_to_string(&proxy_path) {
+        if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&contents) {
+            if let (Some(base_url), Some(token)) = (
+                parsed.get("base_url").and_then(|v| v.as_str()),
+                parsed.get("token").and_then(|v| v.as_str()),
+            ) {
+                if !token.is_empty() {
+                    return AuthMode::Proxy {
+                        base_url: base_url.to_string(),
+                        token: token.to_string(),
+                    };
+                }
+            }
+        }
+    }
+
+    // Fall back to API key file
     let key_path = app_dir.join("api_key.txt");
     if let Ok(contents) = std::fs::read_to_string(&key_path) {
         let key = contents.trim().to_string();
         if !key.is_empty() {
-            return key;
+            return AuthMode::ApiKey(key);
         }
     }
+
     // Fall back to environment variable
-    std::env::var("ANTHROPIC_API_KEY").unwrap_or_default()
+    AuthMode::ApiKey(std::env::var("ANTHROPIC_API_KEY").unwrap_or_default())
 }
 
-/// Save API key to config file.
+/// Save API key to config file (and remove proxy.json if present).
 pub fn save_api_key(app_dir: &std::path::Path, key: &str) -> Result<(), String> {
     let key_path = app_dir.join("api_key.txt");
-    std::fs::write(&key_path, key).map_err(|e| format!("Failed to save API key: {}", e))
+    std::fs::write(&key_path, key).map_err(|e| format!("Failed to save API key: {}", e))?;
+    // Remove proxy config if switching to API key mode
+    let proxy_path = app_dir.join("proxy.json");
+    let _ = std::fs::remove_file(&proxy_path);
+    Ok(())
+}
+
+/// Save proxy config (and remove api_key.txt if present).
+pub fn save_proxy_config(app_dir: &std::path::Path, base_url: &str, token: &str) -> Result<(), String> {
+    let proxy_path = app_dir.join("proxy.json");
+    let json = serde_json::json!({ "base_url": base_url, "token": token });
+    std::fs::write(&proxy_path, json.to_string())
+        .map_err(|e| format!("Failed to save proxy config: {}", e))?;
+    // Remove API key file if switching to proxy mode
+    let key_path = app_dir.join("api_key.txt");
+    let _ = std::fs::remove_file(&key_path);
+    Ok(())
+}
+
+/// Clear all auth config.
+pub fn clear_auth_files(app_dir: &std::path::Path) {
+    let _ = std::fs::remove_file(app_dir.join("api_key.txt"));
+    let _ = std::fs::remove_file(app_dir.join("proxy.json"));
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -105,9 +146,9 @@ pub fn run() {
             router.register(Box::new(knowledge::ReadKnowledgeTool::new(knowledge_dir.clone())));
             router.register(Box::new(knowledge::ListKnowledgeTool::new(knowledge_dir.clone())));
 
-            // Load API key: config file first, then env var.
-            let api_key = load_api_key(&app_dir);
-            let llm = LlmClient::new(api_key);
+            // Load auth: proxy config, API key file, or env var.
+            let auth = load_auth(&app_dir);
+            let llm = LlmClient::with_auth(auth);
 
             let pending_approvals: PendingApprovals =
                 Arc::new(Mutex::new(HashMap::<String, oneshot::Sender<bool>>::new()));
@@ -151,6 +192,9 @@ pub fn run() {
             commands::safety::undo_change,
             commands::settings::has_api_key,
             commands::settings::set_api_key,
+            commands::settings::redeem_invite_code,
+            commands::settings::get_auth_mode,
+            commands::settings::clear_auth,
             commands::settings::get_app_version,
             commands::settings::get_telemetry_consent,
             commands::settings::set_telemetry_consent,

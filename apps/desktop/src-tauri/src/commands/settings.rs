@@ -1,6 +1,7 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tauri::State;
 
+use crate::agent::llm_client::AuthMode;
 use crate::safety::journal;
 use crate::AppState;
 
@@ -19,6 +20,72 @@ pub async fn set_api_key(state: State<'_, AppState>, api_key: String) -> Result<
     let mut orch = state.orchestrator.lock().await;
     orch.set_api_key(api_key);
 
+    Ok(())
+}
+
+#[derive(Debug, Deserialize)]
+struct RedeemResponse {
+    token: Option<String>,
+    error: Option<String>,
+}
+
+#[tauri::command]
+pub async fn redeem_invite_code(
+    state: State<'_, AppState>,
+    proxy_url: String,
+    invite_code: String,
+) -> Result<(), String> {
+    // POST to the proxy's /auth/redeem endpoint
+    let client = reqwest::Client::new();
+    let url = format!("{}/auth/redeem", proxy_url.trim_end_matches('/'));
+    let resp = client
+        .post(&url)
+        .json(&serde_json::json!({ "invite_code": invite_code }))
+        .send()
+        .await
+        .map_err(|e| format!("Failed to reach the Noah server: {}", e))?;
+
+    if !resp.status().is_success() {
+        let body: RedeemResponse = resp.json().await.unwrap_or(RedeemResponse {
+            token: None,
+            error: Some("Unknown error".to_string()),
+        });
+        return Err(body.error.unwrap_or_else(|| "Invalid invite code".to_string()));
+    }
+
+    let body: RedeemResponse = resp
+        .json()
+        .await
+        .map_err(|e| format!("Invalid response from server: {}", e))?;
+
+    let token = body
+        .token
+        .ok_or_else(|| "No token in server response".to_string())?;
+
+    // Save proxy config to disk
+    crate::save_proxy_config(&state.app_dir, &proxy_url, &token)?;
+
+    // Update the in-memory LLM client
+    let mut orch = state.orchestrator.lock().await;
+    orch.set_auth(AuthMode::Proxy {
+        base_url: proxy_url,
+        token,
+    });
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn get_auth_mode(state: State<'_, AppState>) -> Result<String, String> {
+    let orch = state.orchestrator.lock().await;
+    Ok(orch.auth_mode_name().to_string())
+}
+
+#[tauri::command]
+pub async fn clear_auth(state: State<'_, AppState>) -> Result<(), String> {
+    crate::clear_auth_files(&state.app_dir);
+    let mut orch = state.orchestrator.lock().await;
+    orch.set_auth(AuthMode::ApiKey(String::new()));
     Ok(())
 }
 

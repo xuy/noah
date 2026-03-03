@@ -119,8 +119,16 @@ impl Orchestrator {
         self.llm.set_api_key(key);
     }
 
+    pub fn set_auth(&mut self, auth: crate::agent::llm_client::AuthMode) {
+        self.llm.set_auth(auth);
+    }
+
     pub fn has_api_key(&self) -> bool {
-        self.llm.has_api_key()
+        self.llm.has_auth()
+    }
+
+    pub fn auth_mode_name(&self) -> &str {
+        self.llm.auth_mode_name()
     }
 
     /// Get a clone of the LLM client for background tasks (e.g. title generation).

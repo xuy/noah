@@ -12,10 +12,12 @@ export function SettingsPanel() {
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [version, setVersion] = useState("");
+  const [authMode, setAuthMode] = useState<"api_key" | "proxy">("api_key");
 
   useEffect(() => {
     if (settingsOpen) {
       commands.getAppVersion().then(setVersion).catch(() => {});
+      commands.getAuthMode().then(setAuthMode).catch(() => {});
       setApiKey("");
       setSaved(false);
       setError(null);
@@ -76,6 +78,7 @@ export function SettingsPanel() {
       await commands.setApiKey(key);
       setSaved(true);
       setApiKey("");
+      setAuthMode("api_key");
       setTimeout(() => setSaved(false), 2000);
     } catch (err) {
       setError(
@@ -124,34 +127,71 @@ export function SettingsPanel() {
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto px-4 py-4 space-y-6">
-          {/* API Key */}
+          {/* Auth */}
           <section>
             <h3 className="text-xs font-semibold text-text-primary uppercase tracking-wider mb-2">
-              API Key
+              {authMode === "proxy" ? "Connection" : "API Key"}
             </h3>
-            <p className="text-[11px] text-text-muted mb-2">
-              Enter a new Anthropic API key to replace the current one.
-            </p>
-            <input
-              type="password"
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") handleSaveKey();
-              }}
-              placeholder="sk-ant-..."
-              className="w-full px-3 py-2 rounded-lg bg-bg-input border border-border-primary text-xs text-text-primary placeholder-text-muted outline-none focus:border-border-focus transition-colors"
-            />
-            {error && (
-              <p className="text-[11px] text-accent-red mt-1">{error}</p>
+            {authMode === "proxy" ? (
+              <>
+                <p className="text-[11px] text-text-muted mb-2">
+                  Connected via Noah Beta (invite code).
+                </p>
+                <p className="text-[11px] text-text-muted mb-2">
+                  Want to use your own Anthropic API key instead?
+                </p>
+                <input
+                  type="password"
+                  value={apiKey}
+                  onChange={(e) => setApiKey(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleSaveKey();
+                  }}
+                  placeholder="sk-ant-..."
+                  className="w-full px-3 py-2 rounded-lg bg-bg-input border border-border-primary text-xs text-text-primary placeholder-text-muted outline-none focus:border-border-focus transition-colors"
+                />
+                {error && (
+                  <p className="text-[11px] text-accent-red mt-1">{error}</p>
+                )}
+                <button
+                  onClick={handleSaveKey}
+                  disabled={!apiKey.trim() || saving}
+                  className="mt-2 w-full py-1.5 rounded-lg bg-accent-green text-white text-xs font-medium hover:bg-accent-green/80 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {saving
+                    ? "Saving..."
+                    : saved
+                      ? "Saved!"
+                      : "Switch to Own API Key"}
+                </button>
+              </>
+            ) : (
+              <>
+                <p className="text-[11px] text-text-muted mb-2">
+                  Enter a new Anthropic API key to replace the current one.
+                </p>
+                <input
+                  type="password"
+                  value={apiKey}
+                  onChange={(e) => setApiKey(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleSaveKey();
+                  }}
+                  placeholder="sk-ant-..."
+                  className="w-full px-3 py-2 rounded-lg bg-bg-input border border-border-primary text-xs text-text-primary placeholder-text-muted outline-none focus:border-border-focus transition-colors"
+                />
+                {error && (
+                  <p className="text-[11px] text-accent-red mt-1">{error}</p>
+                )}
+                <button
+                  onClick={handleSaveKey}
+                  disabled={!apiKey.trim() || saving}
+                  className="mt-2 w-full py-1.5 rounded-lg bg-accent-green text-white text-xs font-medium hover:bg-accent-green/80 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {saving ? "Saving..." : saved ? "Saved!" : "Update API Key"}
+                </button>
+              </>
             )}
-            <button
-              onClick={handleSaveKey}
-              disabled={!apiKey.trim() || saving}
-              className="mt-2 w-full py-1.5 rounded-lg bg-accent-green text-white text-xs font-medium hover:bg-accent-green/80 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {saving ? "Saving..." : saved ? "Saved!" : "Update API Key"}
-            </button>
           </section>
 
           {/* Links */}

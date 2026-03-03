@@ -2,12 +2,20 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-const API_URL: &str = "https://api.anthropic.com/v1/messages";
+const ANTHROPIC_API_URL: &str = "https://api.anthropic.com/v1/messages";
 const MODEL: &str = "claude-sonnet-4-20250514";
 const TITLE_MODEL: &str = "claude-haiku-4-5-20251001";
 const API_VERSION: &str = "2023-06-01";
 const MAX_TOKENS: u32 = 4096;
 const REQUEST_TIMEOUT_SECS: u64 = 90;
+
+// ── Auth mode ─────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone)]
+pub enum AuthMode {
+    ApiKey(String),
+    Proxy { base_url: String, token: String },
+}
 
 // ── Request types ──────────────────────────────────────────────────────
 
@@ -100,7 +108,7 @@ struct ApiRequest {
 
 #[derive(Clone)]
 pub struct LlmClient {
-    api_key: String,
+    auth: AuthMode,
     client: reqwest::Client,
 }
 
@@ -122,15 +130,60 @@ impl LlmClient {
             .timeout(std::time::Duration::from_secs(REQUEST_TIMEOUT_SECS))
             .build()
             .unwrap_or_else(|_| reqwest::Client::new());
-        Self { api_key, client }
+        Self {
+            auth: AuthMode::ApiKey(api_key),
+            client,
+        }
+    }
+
+    pub fn with_auth(auth: AuthMode) -> Self {
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(REQUEST_TIMEOUT_SECS))
+            .build()
+            .unwrap_or_else(|_| reqwest::Client::new());
+        Self { auth, client }
     }
 
     pub fn set_api_key(&mut self, key: String) {
-        self.api_key = key;
+        self.auth = AuthMode::ApiKey(key);
+    }
+
+    pub fn set_auth(&mut self, auth: AuthMode) {
+        self.auth = auth;
     }
 
     pub fn has_api_key(&self) -> bool {
-        !self.api_key.is_empty()
+        self.has_auth()
+    }
+
+    pub fn has_auth(&self) -> bool {
+        match &self.auth {
+            AuthMode::ApiKey(key) => !key.is_empty(),
+            AuthMode::Proxy { token, .. } => !token.is_empty(),
+        }
+    }
+
+    pub fn auth_mode_name(&self) -> &str {
+        match &self.auth {
+            AuthMode::ApiKey(_) => "api_key",
+            AuthMode::Proxy { .. } => "proxy",
+        }
+    }
+
+    /// Get the API URL based on auth mode.
+    fn api_url(&self) -> String {
+        match &self.auth {
+            AuthMode::ApiKey(_) => ANTHROPIC_API_URL.to_string(),
+            AuthMode::Proxy { base_url, .. } => format!("{}/v1/messages", base_url.trim_end_matches('/')),
+        }
+    }
+
+    /// Apply auth headers to a request builder.
+    fn apply_auth(&self, builder: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
+        match &self.auth {
+            AuthMode::ApiKey(key) => builder.header("x-api-key", key),
+            AuthMode::Proxy { token, .. } => builder.header("Authorization", format!("Bearer {}", token)),
+        }
     }
 
     /// Generate a short session title from the first user message using a fast, cheap model.
@@ -146,13 +199,13 @@ impl LlmClient {
             tools: vec![],
         };
 
-        let resp = self
+        let builder = self
             .client
-            .post(API_URL)
-            .header("x-api-key", &self.api_key)
+            .post(self.api_url())
             .header("anthropic-version", API_VERSION)
             .header("content-type", "application/json")
-            .json(&body)
+            .json(&body);
+        let resp = self.apply_auth(builder)
             .send()
             .await
             .context("Title generation request failed")?;
@@ -193,13 +246,13 @@ impl LlmClient {
             tools: vec![],
         };
 
-        let resp = self
+        let builder = self
             .client
-            .post(API_URL)
-            .header("x-api-key", &self.api_key)
+            .post(self.api_url())
             .header("anthropic-version", API_VERSION)
             .header("content-type", "application/json")
-            .json(&body)
+            .json(&body);
+        let resp = self.apply_auth(builder)
             .send()
             .await
             .context("Summary generation request failed")?;
@@ -251,13 +304,13 @@ impl LlmClient {
                 tokio::time::sleep(delay).await;
             }
 
-            let resp = match self
+            let builder = self
                 .client
-                .post(API_URL)
-                .header("x-api-key", &self.api_key)
+                .post(self.api_url())
                 .header("anthropic-version", API_VERSION)
                 .header("content-type", "application/json")
-                .json(&body)
+                .json(&body);
+            let resp = match self.apply_auth(builder)
                 .send()
                 .await
             {
