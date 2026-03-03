@@ -36,6 +36,10 @@ pub struct MessageRecord {
     pub role: String,
     pub content: String,
     pub timestamp: String,
+    /// True if the user confirmed this action card (assistant messages only).
+    pub action_taken: bool,
+    /// True if this is a user confirmation message (e.g. "Go ahead").
+    pub action_confirmation: bool,
 }
 
 /// A persisted session record for the session history list.
@@ -52,7 +56,7 @@ pub struct SessionRecord {
 }
 
 /// Current schema version. Increment when adding migrations.
-const SCHEMA_VERSION: i32 = 4;
+const SCHEMA_VERSION: i32 = 5;
 
 /// Initialise the journal database, creating tables if they don't exist,
 /// then run any pending migrations.
@@ -224,8 +228,23 @@ fn apply_migrations(conn: &Connection, current: i32) -> Result<()> {
         set_schema_version(conn, 4)?;
     }
 
+    if current < 5 {
+        // Migration 5: Add action_taken and action_confirmation columns to messages.
+        let has_action_taken: bool = conn
+            .prepare("SELECT action_taken FROM messages LIMIT 0")
+            .is_ok();
+        if !has_action_taken {
+            conn.execute_batch(
+                "ALTER TABLE messages ADD COLUMN action_taken INTEGER NOT NULL DEFAULT 0;
+                 ALTER TABLE messages ADD COLUMN action_confirmation INTEGER NOT NULL DEFAULT 0;",
+            )
+            .context("Migration 5 failed")?;
+        }
+        set_schema_version(conn, 5)?;
+    }
+
     // ── Add new migrations here ──
-    // if current < 5 { ... }
+    // if current < 6 { ... }
 
     Ok(())
 }
@@ -425,13 +444,40 @@ pub fn save_llm_trace(
 
 /// Save a display message (user or assistant text) for session history replay.
 pub fn save_message(conn: &Connection, session_id: &str, role: &str, content: &str) -> Result<()> {
+    save_message_with_flags(conn, session_id, role, content, false, false)
+}
+
+/// Save a display message with action flags.
+pub fn save_message_with_flags(
+    conn: &Connection,
+    session_id: &str,
+    role: &str,
+    content: &str,
+    action_taken: bool,
+    action_confirmation: bool,
+) -> Result<()> {
     let id = Uuid::new_v4().to_string();
     let timestamp = chrono::Utc::now().to_rfc3339();
     conn.execute(
-        "INSERT INTO messages (id, session_id, role, content, timestamp) VALUES (?1, ?2, ?3, ?4, ?5)",
-        rusqlite::params![id, session_id, role, content, timestamp],
+        "INSERT INTO messages (id, session_id, role, content, timestamp, action_taken, action_confirmation) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        rusqlite::params![id, session_id, role, content, timestamp, action_taken as i32, action_confirmation as i32],
     )
     .context("Failed to insert message")?;
+    Ok(())
+}
+
+/// Mark the most recent assistant message in a session as action_taken.
+pub fn mark_last_action_taken(conn: &Connection, session_id: &str) -> Result<()> {
+    conn.execute(
+        "UPDATE messages SET action_taken = 1
+         WHERE id = (
+             SELECT id FROM messages
+             WHERE session_id = ?1 AND role = 'assistant'
+             ORDER BY timestamp DESC LIMIT 1
+         )",
+        rusqlite::params![session_id],
+    )
+    .context("Failed to mark last action taken")?;
     Ok(())
 }
 
@@ -439,7 +485,7 @@ pub fn save_message(conn: &Connection, session_id: &str, role: &str, content: &s
 pub fn get_messages(conn: &Connection, session_id: &str) -> Result<Vec<MessageRecord>> {
     let mut stmt = conn
         .prepare(
-            "SELECT id, session_id, role, content, timestamp
+            "SELECT id, session_id, role, content, timestamp, action_taken, action_confirmation
              FROM messages
              WHERE session_id = ?1
              ORDER BY timestamp ASC",
@@ -454,6 +500,8 @@ pub fn get_messages(conn: &Connection, session_id: &str) -> Result<Vec<MessageRe
                 role: row.get(2)?,
                 content: row.get(3)?,
                 timestamp: row.get(4)?,
+                action_taken: row.get::<_, i32>(5).unwrap_or(0) != 0,
+                action_confirmation: row.get::<_, i32>(6).unwrap_or(0) != 0,
             })
         })
         .context("Failed to execute get_messages query")?

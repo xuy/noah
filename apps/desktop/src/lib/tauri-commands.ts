@@ -41,6 +41,8 @@ export interface MessageRecord {
   role: string;
   content: string;
   timestamp: string;
+  action_taken: boolean;
+  action_confirmation: boolean;
 }
 
 export interface KnowledgeEntry {
@@ -59,10 +61,12 @@ export async function createSession(): Promise<SessionInfo> {
 export async function sendMessage(
   sessionId: string,
   message: string,
+  isConfirmation?: boolean,
 ): Promise<string> {
   return await invoke<string>("send_message", {
     sessionId,
     message,
+    isConfirmation,
   });
 }
 

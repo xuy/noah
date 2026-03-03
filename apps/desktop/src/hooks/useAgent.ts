@@ -63,7 +63,7 @@ export function useAgent(): UseAgentReturn {
       setIsProcessing(true);
 
       try {
-        const content = await commands.sendMessage(sessionId, "Go ahead");
+        const content = await commands.sendMessage(sessionId, "Go ahead", true);
         addMessage({ role: "assistant", content });
 
         try {

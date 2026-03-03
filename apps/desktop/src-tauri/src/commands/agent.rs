@@ -13,11 +13,22 @@ pub async fn send_message(
     app_handle: tauri::AppHandle,
     session_id: String,
     message: String,
+    is_confirmation: Option<bool>,
 ) -> Result<String, String> {
     // Persist the user message for session history replay.
     {
         let conn = state.db.lock().await;
-        if let Err(e) = journal::save_message(&conn, &session_id, "user", &message) {
+        let confirmation = is_confirmation.unwrap_or(false);
+        if confirmation {
+            // Save the user's confirmation message with the flag
+            if let Err(e) = journal::save_message_with_flags(&conn, &session_id, "user", &message, false, true) {
+                eprintln!("[warn] Failed to persist user confirmation message: {}", e);
+            }
+            // Mark the most recent assistant action message as taken
+            if let Err(e) = journal::mark_last_action_taken(&conn, &session_id) {
+                eprintln!("[warn] Failed to mark action taken: {}", e);
+            }
+        } else if let Err(e) = journal::save_message(&conn, &session_id, "user", &message) {
             eprintln!("[warn] Failed to persist user message: {}", e);
         }
     }
