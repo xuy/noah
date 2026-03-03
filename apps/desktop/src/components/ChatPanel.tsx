@@ -403,20 +403,34 @@ interface DebugLogPayload {
 
 function ThinkingIndicator() {
   const [status, setStatus] = useState<string | null>(null);
+  const [elapsed, setElapsed] = useState(0);
+  const startRef = useRef(Date.now());
 
   useEffect(() => {
     const unlisten = listen<DebugLogPayload>("debug-log", (e) => {
       const evt = e.payload;
       if (evt.event_type === "tool_call") {
         setStatus(humanizeToolCall(evt.summary));
+        startRef.current = Date.now(); // Reset timer on new tool
+        setElapsed(0);
       } else if (evt.event_type === "llm_request") {
         setStatus("Thinking...");
+        startRef.current = Date.now();
+        setElapsed(0);
       }
     });
 
     return () => {
       unlisten.then((fn) => fn());
     };
+  }, []);
+
+  // Tick elapsed time every second
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setElapsed(Math.floor((Date.now() - startRef.current) / 1000));
+    }, 1000);
+    return () => clearInterval(timer);
   }, []);
 
   return (
@@ -434,7 +448,12 @@ function ThinkingIndicator() {
             <div className="w-1.5 h-1.5 rounded-full bg-text-muted thinking-dot" />
           </div>
           {status && (
-            <span className="text-xs text-text-muted">{status}</span>
+            <span className="text-xs text-text-muted">
+              {status}
+              {elapsed > 0 && (
+                <span className="ml-1 text-text-muted/60">{elapsed}s</span>
+              )}
+            </span>
           )}
         </div>
       </div>
