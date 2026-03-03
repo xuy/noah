@@ -1,4 +1,4 @@
-import { useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useSessionStore } from "../stores/sessionStore";
 import { useChatStore } from "../stores/chatStore";
 import * as commands from "../lib/tauri-commands";
@@ -66,12 +66,15 @@ function SessionItem({
   session,
   onSelect,
   onExport,
+  onDelete,
 }: {
   session: SessionRecord;
   onSelect: (sessionId: string) => void;
   onExport: (sessionId: string, title: string) => void;
+  onDelete: (sessionId: string) => void;
 }) {
   const duration = formatDuration(session.created_at, session.ended_at);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   return (
     <div className="border-b border-border-primary last:border-b-0">
@@ -97,7 +100,7 @@ function SessionItem({
           )}
         </div>
 
-        {/* Stats row */}
+        {/* Stats + actions row */}
         <div className="flex items-center gap-3 mt-1">
           {session.message_count > 0 && (
             <span className="text-[10px] text-text-muted">
@@ -110,18 +113,52 @@ function SessionItem({
               {session.change_count !== 1 ? "s" : ""}
             </span>
           )}
-          {/* Export link — inline with stats, only for ended sessions */}
-          {session.ended_at && (
-            <span
-              onClick={(e) => {
-                e.stopPropagation();
-                onExport(session.id, session.title || "session");
-              }}
-              className="text-[10px] text-text-muted hover:text-text-primary transition-colors ml-auto cursor-pointer"
-            >
-              Export
-            </span>
-          )}
+          <span className="ml-auto flex items-center gap-2">
+            {session.ended_at && (
+              <span
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onExport(session.id, session.title || "session");
+                }}
+                className="text-[10px] text-text-muted hover:text-text-primary transition-colors cursor-pointer"
+              >
+                Export
+              </span>
+            )}
+            {confirmDelete ? (
+              <>
+                <span
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDelete(session.id);
+                    setConfirmDelete(false);
+                  }}
+                  className="text-[10px] text-accent-red font-medium cursor-pointer"
+                >
+                  Confirm
+                </span>
+                <span
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setConfirmDelete(false);
+                  }}
+                  className="text-[10px] text-text-muted cursor-pointer"
+                >
+                  Cancel
+                </span>
+              </>
+            ) : (
+              <span
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setConfirmDelete(true);
+                }}
+                className="text-[10px] text-text-muted hover:text-accent-red transition-colors cursor-pointer"
+              >
+                Delete
+              </span>
+            )}
+          </span>
         </div>
       </button>
     </div>
@@ -163,6 +200,18 @@ export function SessionHistory() {
       }
     },
     [],
+  );
+
+  const handleDelete = useCallback(
+    async (sessionId: string) => {
+      try {
+        await commands.deleteSession(sessionId);
+        setPastSessions(pastSessions.filter((s) => s.id !== sessionId));
+      } catch (err) {
+        console.error("Failed to delete session:", err);
+      }
+    },
+    [pastSessions, setPastSessions],
   );
 
   const handleSelectSession = useCallback(
@@ -285,6 +334,7 @@ export function SessionHistory() {
                   session={session}
                   onSelect={handleSelectSession}
                   onExport={handleExport}
+                  onDelete={handleDelete}
                 />
               ))}
             </div>

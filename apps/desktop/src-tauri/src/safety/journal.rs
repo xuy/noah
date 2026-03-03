@@ -366,6 +366,19 @@ pub fn mark_session_resolved(conn: &Connection, id: &str, resolved: bool) -> Res
     Ok(())
 }
 
+/// Delete a session and all its related data (messages, journal entries, traces).
+pub fn delete_session(conn: &Connection, id: &str) -> Result<()> {
+    conn.execute("DELETE FROM messages WHERE session_id = ?1", rusqlite::params![id])
+        .context("Failed to delete messages")?;
+    conn.execute("DELETE FROM journal WHERE session_id = ?1", rusqlite::params![id])
+        .context("Failed to delete journal entries")?;
+    conn.execute("DELETE FROM llm_traces WHERE session_id = ?1", rusqlite::params![id])
+        .context("Failed to delete traces")?;
+    conn.execute("DELETE FROM sessions WHERE id = ?1", rusqlite::params![id])
+        .context("Failed to delete session")?;
+    Ok(())
+}
+
 // ── Message persistence ────────────────────────────────────────────────
 
 /// Save an LLM API trace (request + response) for debugging.

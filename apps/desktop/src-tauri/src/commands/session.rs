@@ -147,6 +147,16 @@ pub async fn mark_resolved(
 }
 
 #[tauri::command]
+pub async fn delete_session(
+    state: State<'_, AppState>,
+    session_id: String,
+) -> Result<(), String> {
+    let conn = state.db.lock().await;
+    journal::delete_session(&conn, &session_id)
+        .map_err(|e| format!("Failed to delete session: {}", e))
+}
+
+#[tauri::command]
 pub async fn export_session(
     state: State<'_, AppState>,
     session_id: String,

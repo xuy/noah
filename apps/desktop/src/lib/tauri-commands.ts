@@ -90,6 +90,10 @@ export async function endSession(sessionId: string): Promise<void> {
   await invoke<void>("end_session", { sessionId });
 }
 
+export async function deleteSession(sessionId: string): Promise<void> {
+  await invoke<void>("delete_session", { sessionId });
+}
+
 export async function listSessions(): Promise<SessionRecord[]> {
   return await invoke<SessionRecord[]>("list_sessions");
 }
