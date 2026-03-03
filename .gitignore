@@ -5,3 +5,7 @@ dist/
 *.swp
 *.swo
 .env
+
+# Signing keys
+*.key
+*.key.pub
