@@ -171,33 +171,21 @@ fn run_migrations(conn: &Connection) -> Result<()> {
         return Ok(());
     }
 
-    // Run all pending migrations inside a transaction so a half-applied
-    // migration doesn't leave the database in an inconsistent state.
-    conn.execute_batch("BEGIN TRANSACTION")
-        .context("Failed to begin migration transaction")?;
-
-    let result = apply_migrations(conn, current);
-
-    match result {
-        Ok(()) => {
-            set_schema_version(conn, SCHEMA_VERSION)?;
-            conn.execute_batch("COMMIT")
-                .context("Failed to commit migrations")?;
-        }
-        Err(e) => {
-            let _ = conn.execute_batch("ROLLBACK");
-            return Err(e);
-        }
-    }
+    // Run each migration individually and bump the version after each step.
+    // SQLite does not reliably support ALTER TABLE ADD COLUMN inside an
+    // explicit transaction, so each migration runs in autocommit mode.
+    apply_migrations(conn, current)?;
 
     Ok(())
 }
 
 /// Apply individual migrations based on the current schema version.
-/// Called inside a transaction by `run_migrations`.
+/// Each migration runs outside an explicit transaction (autocommit)
+/// because SQLite's ALTER TABLE ADD COLUMN is unreliable within BEGIN/COMMIT.
+/// The schema version is bumped after each successful migration so a crash
+/// mid-sequence won't re-apply already-completed steps.
 fn apply_migrations(conn: &Connection, current: i32) -> Result<()> {
     if current < 1 {
-        // Migration 1: Add telemetry_events table
         conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS telemetry_events (
                 id          TEXT PRIMARY KEY,
@@ -208,18 +196,25 @@ fn apply_migrations(conn: &Connection, current: i32) -> Result<()> {
             CREATE INDEX IF NOT EXISTS idx_telemetry_ts ON telemetry_events(timestamp);",
         )
         .context("Migration 1 failed")?;
+        set_schema_version(conn, 1)?;
     }
 
     if current < 2 {
-        // Migration 2: (reserved — placeholder for next schema change)
+        // Migration 2: (reserved — placeholder)
+        set_schema_version(conn, 2)?;
     }
 
     if current < 3 {
         // Migration 3: Add resolved column to sessions (NULL = not yet marked)
-        conn.execute_batch(
-            "ALTER TABLE sessions ADD COLUMN resolved INTEGER;",
-        )
-        .context("Migration 3 failed")?;
+        // Use IF NOT EXISTS pattern: check column before altering to be idempotent.
+        let has_col: bool = conn
+            .prepare("SELECT resolved FROM sessions LIMIT 0")
+            .is_ok();
+        if !has_col {
+            conn.execute_batch("ALTER TABLE sessions ADD COLUMN resolved INTEGER;")
+                .context("Migration 3 failed")?;
+        }
+        set_schema_version(conn, 3)?;
     }
 
     // ── Add new migrations here ──
