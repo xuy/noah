@@ -1,7 +1,6 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use serde_json::{json, Value};
-use std::process::Command;
 
 use itman_tools::{ChangeRecord, SafetyTier, Tool, ToolResult};
 
@@ -32,12 +31,12 @@ impl Tool for WinSystemSummary {
     }
 
     async fn execute(&self, _input: &Value) -> Result<ToolResult> {
-        let hostname = Command::new("hostname")
+        let hostname = super::hidden_cmd("hostname")
             .output()
             .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
             .unwrap_or_else(|e| format!("error: {}", e));
 
-        let sysinfo = Command::new("powershell")
+        let sysinfo = super::hidden_cmd("powershell")
             .args([
                 "-NoProfile", "-Command",
                 "$os = Get-CimInstance Win32_OperatingSystem; \
@@ -52,7 +51,7 @@ impl Tool for WinSystemSummary {
             .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
             .unwrap_or_else(|e| format!("error: {}", e));
 
-        let disk = Command::new("powershell")
+        let disk = super::hidden_cmd("powershell")
             .args([
                 "-NoProfile", "-Command",
                 "Get-Volume | Where-Object { $_.DriveLetter } | \
@@ -65,7 +64,7 @@ impl Tool for WinSystemSummary {
             .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
             .unwrap_or_else(|e| format!("error: {}", e));
 
-        let network = Command::new("ipconfig")
+        let network = super::hidden_cmd("ipconfig")
             .output()
             .map(|o| {
                 let stdout = String::from_utf8_lossy(&o.stdout).to_string();
@@ -312,7 +311,7 @@ impl Tool for WinReadLog {
             hours, log_name, level_filter
         );
 
-        let output = Command::new("powershell")
+        let output = super::hidden_cmd("powershell")
             .args(["-NoProfile", "-Command", &ps_cmd])
             .output()
             .map(|o| {
@@ -471,7 +470,7 @@ impl Tool for ShellRun {
 
         let output = match tokio::time::timeout(
             std::time::Duration::from_secs(60),
-            tokio::process::Command::new("cmd.exe")
+            super::hidden_async_cmd("cmd.exe")
                 .args(["/c", command])
                 .output(),
         )
@@ -551,7 +550,7 @@ impl Tool for WinStartupPrograms {
     }
 
     async fn execute(&self, _input: &Value) -> Result<ToolResult> {
-        let wmi = Command::new("powershell")
+        let wmi = super::hidden_cmd("powershell")
             .args([
                 "-NoProfile", "-Command",
                 "Get-CimInstance Win32_StartupCommand | \
@@ -562,7 +561,7 @@ impl Tool for WinStartupPrograms {
             .map(|o| String::from_utf8_lossy(&o.stdout).to_string())
             .unwrap_or_else(|e| format!("Get-CimInstance failed: {}", e));
 
-        let registry = Command::new("powershell")
+        let registry = super::hidden_cmd("powershell")
             .args([
                 "-NoProfile", "-Command",
                 "$paths = @(\
@@ -623,7 +622,7 @@ impl Tool for WinServiceList {
     }
 
     async fn execute(&self, _input: &Value) -> Result<ToolResult> {
-        let output = Command::new("powershell")
+        let output = super::hidden_cmd("powershell")
             .args([
                 "-NoProfile", "-Command",
                 "Get-Service | Where-Object { $_.Status -eq 'Running' } | \
@@ -685,7 +684,7 @@ impl Tool for WinRestartService {
             .as_str()
             .ok_or_else(|| anyhow::anyhow!("Missing required parameter: service_name"))?;
 
-        let output = Command::new("powershell")
+        let output = super::hidden_cmd("powershell")
             .args([
                 "-NoProfile", "-Command",
                 &format!(

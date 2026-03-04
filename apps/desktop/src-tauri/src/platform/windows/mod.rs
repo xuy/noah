@@ -5,6 +5,23 @@ pub mod performance;
 pub mod printer;
 
 use crate::agent::tool_router::ToolRouter;
+use std::os::windows::process::CommandExt;
+
+const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+/// Create a `std::process::Command` that won't flash a console window.
+pub fn hidden_cmd(program: &str) -> std::process::Command {
+    let mut cmd = std::process::Command::new(program);
+    cmd.creation_flags(CREATE_NO_WINDOW);
+    cmd
+}
+
+/// Create a `tokio::process::Command` that won't flash a console window.
+pub fn hidden_async_cmd(program: &str) -> tokio::process::Command {
+    let mut cmd = tokio::process::Command::new(program);
+    cmd.creation_flags(CREATE_NO_WINDOW);
+    cmd
+}
 
 /// Register all Windows tools with the tool router.
 pub fn register_tools(router: &mut ToolRouter) {

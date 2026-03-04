@@ -1,7 +1,6 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use serde_json::{json, Value};
-use std::process::Command;
 
 use itman_tools::{ChangeRecord, SafetyTier, Tool, ToolResult};
 
@@ -34,7 +33,7 @@ impl Tool for WinSystemInfo {
     async fn execute(&self, _input: &Value) -> Result<ToolResult> {
         // Use Win32_OperatingSystem.Caption for OS name — Get-ComputerInfo's
         // WindowsProductName is broken on Windows 11 (reports "Windows 10").
-        let info = Command::new("powershell")
+        let info = super::hidden_cmd("powershell")
             .args([
                 "-NoProfile", "-Command",
                 "$os = Get-CimInstance Win32_OperatingSystem; \
@@ -108,7 +107,7 @@ impl Tool for WinProcessList {
             sort_prop
         );
 
-        let output = Command::new("powershell")
+        let output = super::hidden_cmd("powershell")
             .args(["-NoProfile", "-Command", &ps_cmd])
             .output()
             .map(|o| String::from_utf8_lossy(&o.stdout).to_string())
@@ -156,7 +155,7 @@ impl Tool for WinDiskUsage {
     }
 
     async fn execute(&self, _input: &Value) -> Result<ToolResult> {
-        let output = Command::new("powershell")
+        let output = super::hidden_cmd("powershell")
             .args([
                 "-NoProfile", "-Command",
                 "Get-Volume | Where-Object { $_.DriveLetter } | \
@@ -214,7 +213,7 @@ impl Tool for WinKillProcess {
             .ok_or_else(|| anyhow::anyhow!("Missing required parameter: pid"))?;
 
         // Get process info before killing
-        let ps_info = Command::new("powershell")
+        let ps_info = super::hidden_cmd("powershell")
             .args([
                 "-NoProfile", "-Command",
                 &format!(
@@ -229,7 +228,7 @@ impl Tool for WinKillProcess {
             .map(|o| String::from_utf8_lossy(&o.stdout).to_string())
             .unwrap_or_default();
 
-        let output = Command::new("taskkill")
+        let output = super::hidden_cmd("taskkill")
             .args(["/PID", &pid.to_string(), "/F"])
             .output()
             .map(|o| {
@@ -292,7 +291,7 @@ impl Tool for WinClearCaches {
             .unwrap_or_else(|_| std::env::var("TMP").unwrap_or_else(|_| "C:\\Windows\\Temp".to_string()));
 
         // Get size before clearing
-        let before_size = Command::new("powershell")
+        let before_size = super::hidden_cmd("powershell")
             .args([
                 "-NoProfile", "-Command",
                 &format!(
@@ -311,7 +310,7 @@ impl Tool for WinClearCaches {
             .unwrap_or_else(|_| "unknown".to_string());
 
         // Clear user temp
-        let clear_result = Command::new("powershell")
+        let clear_result = super::hidden_cmd("powershell")
             .args([
                 "-NoProfile", "-Command",
                 &format!(

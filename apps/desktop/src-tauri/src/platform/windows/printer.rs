@@ -1,7 +1,6 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use serde_json::{json, Value};
-use std::process::Command;
 
 use itman_tools::{ChangeRecord, SafetyTier, Tool, ToolResult};
 
@@ -32,7 +31,7 @@ impl Tool for WinPrinterList {
     }
 
     async fn execute(&self, _input: &Value) -> Result<ToolResult> {
-        let output = Command::new("powershell")
+        let output = super::hidden_cmd("powershell")
             .args([
                 "-NoProfile", "-Command",
                 "Get-Printer | Select-Object Name, DriverName, PortName, PrinterStatus, Shared | Format-Table -AutoSize",
@@ -82,7 +81,7 @@ impl Tool for WinPrintQueue {
     }
 
     async fn execute(&self, _input: &Value) -> Result<ToolResult> {
-        let output = Command::new("powershell")
+        let output = super::hidden_cmd("powershell")
             .args([
                 "-NoProfile", "-Command",
                 "Get-Printer | ForEach-Object { \
@@ -136,7 +135,7 @@ impl Tool for WinCancelPrintJobs {
     }
 
     async fn execute(&self, _input: &Value) -> Result<ToolResult> {
-        let output = Command::new("powershell")
+        let output = super::hidden_cmd("powershell")
             .args([
                 "-NoProfile", "-Command",
                 "Get-Printer | ForEach-Object { \
@@ -200,7 +199,7 @@ impl Tool for WinRestartSpooler {
     }
 
     async fn execute(&self, _input: &Value) -> Result<ToolResult> {
-        let output = Command::new("powershell")
+        let output = super::hidden_cmd("powershell")
             .args([
                 "-NoProfile", "-Command",
                 "Restart-Service -Name Spooler -Force -ErrorAction Stop; \

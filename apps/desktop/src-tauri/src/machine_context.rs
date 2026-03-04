@@ -25,8 +25,18 @@ pub struct MachineContext {
 
 /// Run a command and return trimmed stdout, or `fallback` on any failure.
 fn run_cmd(program: &str, args: &[&str], fallback: &str) -> String {
-    let result = Command::new(program).args(args).output();
-    match result {
+    let mut cmd = Command::new(program);
+    cmd.args(args);
+
+    // On Windows, prevent console windows from flashing during startup.
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+
+    match cmd.output() {
         Ok(output) if output.status.success() => {
             let s = String::from_utf8_lossy(&output.stdout).trim().to_string();
             if s.is_empty() {

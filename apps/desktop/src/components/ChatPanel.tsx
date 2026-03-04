@@ -6,6 +6,7 @@ import type { Message, ToolCall } from "../stores/chatStore";
 import { useAgent } from "../hooks/useAgent";
 import { parseResponse } from "../lib/parseResponse";
 import * as commands from "../lib/tauri-commands";
+import { NoahIcon } from "./NoahIcon";
 
 // ── Tool Call Display ──
 
@@ -574,23 +575,7 @@ function SuggestionCards({
 
   return (
     <div className="flex flex-col items-center justify-center h-full text-text-muted">
-      <div className="w-16 h-16 rounded-2xl bg-accent-green/10 border border-accent-green/20 flex items-center justify-center mb-4">
-        <svg
-          width="28"
-          height="28"
-          viewBox="0 0 28 28"
-          fill="none"
-          xmlns="http://www.w3.org/2000/svg"
-        >
-          <path
-            d="M18 4a7 7 0 0 0-7.8 1.7L14 9.6l-1 2.8-2.8 1L6.3 9.5A7 7 0 0 0 8 17.3l7.8 7.8a1.7 1.7 0 0 0 2.4 0l6-6a1.7 1.7 0 0 0 0-2.4L18 4Z"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            fill="none"
-            opacity="0.5"
-          />
-        </svg>
-      </div>
+      <NoahIcon className="w-12 h-12 rounded-2xl mb-4" alt="Noah" />
       <p className="text-sm font-medium text-text-primary mb-1">
         What can I help with?
       </p>

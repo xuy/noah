@@ -1,7 +1,6 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use serde_json::{json, Value};
-use std::process::Command;
 
 use itman_tools::{ChangeRecord, SafetyTier, Tool, ToolResult};
 
@@ -32,7 +31,7 @@ impl Tool for WinAppList {
     }
 
     async fn execute(&self, _input: &Value) -> Result<ToolResult> {
-        let output = Command::new("powershell")
+        let output = super::hidden_cmd("powershell")
             .args([
                 "-NoProfile", "-Command",
                 "Get-ItemProperty \
@@ -118,7 +117,7 @@ impl Tool for WinAppLogs {
             hours, app_name
         );
 
-        let output = Command::new("powershell")
+        let output = super::hidden_cmd("powershell")
             .args(["-NoProfile", "-Command", &ps_cmd])
             .output()
             .map(|o| {
@@ -193,7 +192,7 @@ impl Tool for WinAppDataLs {
         let roaming_dir = format!("{}\\{}", appdata, app_name);
         let local_dir = format!("{}\\{}", localappdata, app_name);
 
-        let roaming_ls = Command::new("cmd")
+        let roaming_ls = super::hidden_cmd("cmd")
             .args(["/c", "dir", &roaming_dir])
             .output()
             .map(|o| {
@@ -207,7 +206,7 @@ impl Tool for WinAppDataLs {
             })
             .unwrap_or_else(|e| format!("dir failed: {}", e));
 
-        let local_ls = Command::new("cmd")
+        let local_ls = super::hidden_cmd("cmd")
             .args(["/c", "dir", &local_dir])
             .output()
             .map(|o| {
@@ -289,7 +288,7 @@ impl Tool for WinClearAppCache {
         }
 
         // Get size before clearing
-        let before_size = Command::new("powershell")
+        let before_size = super::hidden_cmd("powershell")
             .args([
                 "-NoProfile", "-Command",
                 &format!(
@@ -306,7 +305,7 @@ impl Tool for WinClearAppCache {
         // Create backup and move
         let backup_dir = format!("{}\\..\\..\\..\\Temp\\.noah_backup_{}", localappdata, app_name);
 
-        let output = Command::new("powershell")
+        let output = super::hidden_cmd("powershell")
             .args([
                 "-NoProfile", "-Command",
                 &format!("Move-Item -Path '{}' -Destination '{}' -Force", cache_dir, backup_dir),
@@ -398,7 +397,7 @@ impl Tool for WinMoveFile {
 
         let cmdlet = if operation == "copy" { "Copy-Item" } else { "Move-Item" };
 
-        let output = Command::new("powershell")
+        let output = super::hidden_cmd("powershell")
             .args([
                 "-NoProfile", "-Command",
                 &format!("{} -Path '{}' -Destination '{}' -Force -Recurse", cmdlet, source, destination),

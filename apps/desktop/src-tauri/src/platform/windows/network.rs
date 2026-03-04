@@ -1,7 +1,6 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use serde_json::{json, Value};
-use std::process::Command;
 
 use itman_tools::{SafetyTier, Tool, ToolResult};
 
@@ -32,13 +31,13 @@ impl Tool for WinNetworkInfo {
     }
 
     async fn execute(&self, _input: &Value) -> Result<ToolResult> {
-        let ipconfig = Command::new("ipconfig")
+        let ipconfig = super::hidden_cmd("ipconfig")
             .arg("/all")
             .output()
             .map(|o| String::from_utf8_lossy(&o.stdout).to_string())
             .unwrap_or_else(|e| format!("ipconfig failed: {}", e));
 
-        let wifi = Command::new("netsh")
+        let wifi = super::hidden_cmd("netsh")
             .args(["wlan", "show", "interfaces"])
             .output()
             .map(|o| String::from_utf8_lossy(&o.stdout).to_string())
@@ -102,7 +101,7 @@ impl Tool for WinPing {
             .ok_or_else(|| anyhow::anyhow!("Missing required parameter: host"))?;
         let count = input["count"].as_u64().unwrap_or(4);
 
-        let output = Command::new("ping")
+        let output = super::hidden_cmd("ping")
             .args(["-n", &count.to_string(), host])
             .output()
             .map(|o| {
@@ -155,13 +154,13 @@ impl Tool for WinDnsCheck {
             .as_str()
             .ok_or_else(|| anyhow::anyhow!("Missing required parameter: domain"))?;
 
-        let nslookup = Command::new("nslookup")
+        let nslookup = super::hidden_cmd("nslookup")
             .arg(domain)
             .output()
             .map(|o| String::from_utf8_lossy(&o.stdout).to_string())
             .unwrap_or_else(|e| format!("nslookup failed: {}", e));
 
-        let resolve = Command::new("powershell")
+        let resolve = super::hidden_cmd("powershell")
             .args(["-NoProfile", "-Command", &format!("Resolve-DnsName '{}' | Format-List", domain)])
             .output()
             .map(|o| String::from_utf8_lossy(&o.stdout).to_string())
@@ -222,7 +221,7 @@ impl Tool for WinHttpCheck {
             .ok_or_else(|| anyhow::anyhow!("Missing required parameter: url"))?;
 
         // curl is available on Windows 10+ by default
-        let output = Command::new("curl")
+        let output = super::hidden_cmd("curl")
             .args([
                 "-o", "NUL",
                 "-s",
@@ -269,7 +268,7 @@ impl Tool for WinFlushDns {
     }
 
     async fn execute(&self, _input: &Value) -> Result<ToolResult> {
-        let output = Command::new("ipconfig")
+        let output = super::hidden_cmd("ipconfig")
             .arg("/flushdns")
             .output();
 
