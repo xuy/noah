@@ -1,6 +1,7 @@
 ---
 name: disk-space-recovery
 description: Find and reclaim disk space from caches, backups, and hidden consumers
+platform: macos
 ---
 
 # Disk Space Recovery

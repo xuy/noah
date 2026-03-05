@@ -11,6 +11,8 @@ use itman_tools::{SafetyTier, Tool, ToolResult};
 pub struct PlaybookMeta {
     pub name: String,
     pub description: String,
+    /// Target platform: "macos", "windows", or "all".
+    pub platform: String,
 }
 
 /// Registry of available playbooks, loaded at startup.
@@ -42,6 +44,18 @@ const BUILTIN_PLAYBOOKS: &[(&str, &str)] = &[
         "app-doctor.md",
         include_str!("../playbooks/app-doctor.md"),
     ),
+    (
+        "outlook-troubleshooting.md",
+        include_str!("../playbooks/outlook-troubleshooting.md"),
+    ),
+    (
+        "vpn-troubleshooting.md",
+        include_str!("../playbooks/vpn-troubleshooting.md"),
+    ),
+    (
+        "update-troubleshooting.md",
+        include_str!("../playbooks/update-troubleshooting.md"),
+    ),
 ];
 
 // ── Frontmatter parser ─────────────────────────────────────────────────
@@ -61,6 +75,7 @@ fn parse_frontmatter(content: &str) -> Option<PlaybookMeta> {
 
     let mut name = None;
     let mut description = None;
+    let mut platform = None;
 
     for line in yaml_block.lines() {
         let line = line.trim();
@@ -68,20 +83,40 @@ fn parse_frontmatter(content: &str) -> Option<PlaybookMeta> {
             name = Some(val.trim().to_string());
         } else if let Some(val) = line.strip_prefix("description:") {
             description = Some(val.trim().to_string());
+        } else if let Some(val) = line.strip_prefix("platform:") {
+            platform = Some(val.trim().to_string());
         }
     }
 
     Some(PlaybookMeta {
         name: name?,
         description: description?,
+        platform: platform.unwrap_or_else(|| "all".to_string()),
     })
 }
 
 // ── Bootstrap & registry ───────────────────────────────────────────────
 
+/// Return the current platform identifier used for playbook filtering.
+fn current_platform() -> &'static str {
+    if cfg!(target_os = "macos") {
+        "macos"
+    } else if cfg!(target_os = "windows") {
+        "windows"
+    } else {
+        "linux"
+    }
+}
+
 impl PlaybookRegistry {
     /// Bootstrap playbooks directory and load metadata from all `.md` files.
+    /// Only playbooks matching the current platform (or `platform: all`) are loaded.
     pub fn init(app_dir: &Path) -> Result<Self> {
+        Self::init_for_platform(app_dir, current_platform())
+    }
+
+    /// Bootstrap and load playbooks, filtering to a specific platform + "all".
+    fn init_for_platform(app_dir: &Path, platform: &str) -> Result<Self> {
         let playbooks_dir = app_dir.join("playbooks");
         std::fs::create_dir_all(&playbooks_dir)?;
 
@@ -94,6 +129,7 @@ impl PlaybookRegistry {
         }
 
         // Scan directory for all .md files and parse frontmatter.
+        // Only include playbooks matching current platform or "all".
         let mut metas = Vec::new();
         let entries = std::fs::read_dir(&playbooks_dir)?;
         for entry in entries.flatten() {
@@ -101,7 +137,9 @@ impl PlaybookRegistry {
             if path.extension().is_some_and(|ext| ext == "md") {
                 if let Ok(content) = std::fs::read_to_string(&path) {
                     if let Some(meta) = parse_frontmatter(&content) {
-                        metas.push(meta);
+                        if meta.platform == "all" || meta.platform == platform {
+                            metas.push(meta);
+                        }
                     }
                 }
             }
@@ -228,6 +266,15 @@ mod tests {
         let meta = parse_frontmatter(content).unwrap();
         assert_eq!(meta.name, "test-playbook");
         assert_eq!(meta.description, "A test playbook");
+        assert_eq!(meta.platform, "all"); // default
+    }
+
+    #[test]
+    fn test_parse_frontmatter_with_platform() {
+        let content =
+            "---\nname: test\ndescription: Test\nplatform: macos\n---\n\n# Body";
+        let meta = parse_frontmatter(content).unwrap();
+        assert_eq!(meta.platform, "macos");
     }
 
     #[test]
@@ -251,12 +298,9 @@ mod tests {
     #[test]
     fn test_bootstrap_creates_files() {
         let tmp = tempfile::tempdir().unwrap();
-        let registry = PlaybookRegistry::init(tmp.path()).unwrap();
+        let registry = PlaybookRegistry::init_for_platform(tmp.path(), "macos").unwrap();
 
-        // All 5 built-in playbooks should exist.
-        assert_eq!(registry.metas.len(), 5);
-
-        // Files should exist on disk.
+        // All 8 built-in files should exist on disk.
         for (filename, _) in BUILTIN_PLAYBOOKS {
             assert!(
                 tmp.path().join("playbooks").join(filename).exists(),
@@ -264,6 +308,9 @@ mod tests {
                 filename
             );
         }
+
+        // But only macos + all playbooks loaded into metas.
+        assert!(registry.metas.iter().all(|m| m.platform == "macos" || m.platform == "all"));
     }
 
     #[test]
@@ -274,22 +321,19 @@ mod tests {
 
         // Write a modified version of a built-in playbook.
         let custom_content =
-            "---\nname: network-diagnostics\ndescription: Custom version\n---\n\n# Custom";
+            "---\nname: network-diagnostics\ndescription: Custom version\nplatform: macos\n---\n\n# Custom";
         std::fs::write(
             playbooks_dir.join("network-diagnostics.md"),
             custom_content,
         )
         .unwrap();
 
-        let registry = PlaybookRegistry::init(tmp.path()).unwrap();
+        let _registry = PlaybookRegistry::init_for_platform(tmp.path(), "macos").unwrap();
 
         // The custom version should be preserved.
         let content =
             std::fs::read_to_string(playbooks_dir.join("network-diagnostics.md")).unwrap();
         assert!(content.contains("Custom version"));
-
-        // Should still have 5 playbooks total.
-        assert_eq!(registry.metas.len(), 5);
     }
 
     #[test]
@@ -298,35 +342,55 @@ mod tests {
         let playbooks_dir = tmp.path().join("playbooks");
         std::fs::create_dir_all(&playbooks_dir).unwrap();
 
-        // Add a custom playbook.
+        // Add a custom playbook (platform: all by default).
         let custom = "---\nname: custom-test\ndescription: A custom playbook\n---\n\n# Custom";
         std::fs::write(playbooks_dir.join("custom-test.md"), custom).unwrap();
 
-        let registry = PlaybookRegistry::init(tmp.path()).unwrap();
+        let registry = PlaybookRegistry::init_for_platform(tmp.path(), "macos").unwrap();
 
-        // Should have 5 built-in + 1 custom = 6.
-        assert_eq!(registry.metas.len(), 6);
         assert!(registry.metas.iter().any(|m| m.name == "custom-test"));
     }
 
     #[test]
-    fn test_prompt_section_contains_all_names() {
+    fn test_platform_filtering_macos() {
         let tmp = tempfile::tempdir().unwrap();
-        let registry = PlaybookRegistry::init(tmp.path()).unwrap();
+        let registry = PlaybookRegistry::init_for_platform(tmp.path(), "macos").unwrap();
+
+        // Should include macos-specific and cross-platform playbooks.
+        assert!(registry.metas.iter().any(|m| m.name == "network-diagnostics")); // macos
+        assert!(registry.metas.iter().any(|m| m.name == "outlook-troubleshooting")); // all
+
+        // Should NOT include windows-only playbooks.
+        assert!(!registry.metas.iter().any(|m| m.platform == "windows"));
+    }
+
+    #[test]
+    fn test_platform_filtering_windows() {
+        let tmp = tempfile::tempdir().unwrap();
+        let registry = PlaybookRegistry::init_for_platform(tmp.path(), "windows").unwrap();
+
+        // Should include cross-platform playbook.
+        assert!(registry.metas.iter().any(|m| m.name == "outlook-troubleshooting"));
+
+        // Should NOT include macos-only playbooks.
+        assert!(!registry.metas.iter().any(|m| m.platform == "macos"));
+    }
+
+    #[test]
+    fn test_prompt_section_contains_names() {
+        let tmp = tempfile::tempdir().unwrap();
+        let registry = PlaybookRegistry::init_for_platform(tmp.path(), "macos").unwrap();
         let section = registry.prompt_section();
 
         assert!(section.contains("network-diagnostics"));
-        assert!(section.contains("printer-repair"));
-        assert!(section.contains("performance-forensics"));
-        assert!(section.contains("disk-space-recovery"));
-        assert!(section.contains("app-doctor"));
+        assert!(section.contains("outlook-troubleshooting"));
         assert!(section.contains("activate_playbook"));
     }
 
     #[test]
     fn test_read_playbook_found() {
         let tmp = tempfile::tempdir().unwrap();
-        let registry = PlaybookRegistry::init(tmp.path()).unwrap();
+        let registry = PlaybookRegistry::init_for_platform(tmp.path(), "macos").unwrap();
         let content = registry.read_playbook("network-diagnostics").unwrap();
         assert!(content.contains("Network Diagnostics"));
     }
@@ -334,9 +398,25 @@ mod tests {
     #[test]
     fn test_read_playbook_not_found() {
         let tmp = tempfile::tempdir().unwrap();
-        let registry = PlaybookRegistry::init(tmp.path()).unwrap();
+        let registry = PlaybookRegistry::init_for_platform(tmp.path(), "macos").unwrap();
         let err = registry.read_playbook("nonexistent").unwrap_err();
         assert!(err.to_string().contains("not found"));
         assert!(err.to_string().contains("network-diagnostics"));
+    }
+
+    #[test]
+    fn test_all_builtin_files_written_regardless_of_platform() {
+        let tmp = tempfile::tempdir().unwrap();
+        // Even when filtering for Windows, all built-in files should be written to disk
+        // (so switching platforms doesn't lose playbooks).
+        let _registry = PlaybookRegistry::init_for_platform(tmp.path(), "windows").unwrap();
+
+        for (filename, _) in BUILTIN_PLAYBOOKS {
+            assert!(
+                tmp.path().join("playbooks").join(filename).exists(),
+                "Missing: {}",
+                filename
+            );
+        }
     }
 }

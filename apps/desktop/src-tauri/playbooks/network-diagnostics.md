@@ -1,6 +1,7 @@
 ---
 name: network-diagnostics
 description: Systematic connectivity troubleshooting for Wi-Fi, DNS, and internet issues
+platform: macos
 ---
 
 # Network Diagnostics

@@ -1,6 +1,7 @@
 ---
 name: performance-forensics
 description: Diagnose slowness, high CPU, memory pressure, and hangs
+platform: macos
 ---
 
 # Performance Forensics

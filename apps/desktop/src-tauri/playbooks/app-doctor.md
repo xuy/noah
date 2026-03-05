@@ -1,6 +1,7 @@
 ---
 name: app-doctor
 description: Fix app crashes, launch failures, and permission issues
+platform: macos
 ---
 
 # App Doctor
