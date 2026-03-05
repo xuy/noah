@@ -260,6 +260,8 @@ impl Tool for ActivatePlaybookTool {
 mod tests {
     use super::*;
 
+    // ── Frontmatter parsing ────────────────────────────────────────────
+
     #[test]
     fn test_parse_frontmatter_valid() {
         let content = "---\nname: test-playbook\ndescription: A test playbook\n---\n\n# Body";
@@ -294,6 +296,8 @@ mod tests {
         let content = "---\nname: no-desc\n---\n\n# Body";
         assert!(parse_frontmatter(content).is_none());
     }
+
+    // ── Bootstrap & registry ───────────────────────────────────────────
 
     #[test]
     fn test_bootstrap_creates_files() {
@@ -352,6 +356,24 @@ mod tests {
     }
 
     #[test]
+    fn test_all_builtin_files_written_regardless_of_platform() {
+        let tmp = tempfile::tempdir().unwrap();
+        // Even when filtering for Windows, all built-in files should be written to disk
+        // (so switching platforms doesn't lose playbooks).
+        let _registry = PlaybookRegistry::init_for_platform(tmp.path(), "windows").unwrap();
+
+        for (filename, _) in BUILTIN_PLAYBOOKS {
+            assert!(
+                tmp.path().join("playbooks").join(filename).exists(),
+                "Missing: {}",
+                filename
+            );
+        }
+    }
+
+    // ── Platform filtering ─────────────────────────────────────────────
+
+    #[test]
     fn test_platform_filtering_macos() {
         let tmp = tempfile::tempdir().unwrap();
         let registry = PlaybookRegistry::init_for_platform(tmp.path(), "macos").unwrap();
@@ -377,6 +399,25 @@ mod tests {
     }
 
     #[test]
+    fn test_custom_windows_playbook_filtered_on_macos() {
+        let tmp = tempfile::tempdir().unwrap();
+        let playbooks_dir = tmp.path().join("playbooks");
+        std::fs::create_dir_all(&playbooks_dir).unwrap();
+
+        let win_playbook = "---\nname: win-only\ndescription: Windows test\nplatform: windows\n---\n\n# Win";
+        std::fs::write(playbooks_dir.join("win-only.md"), win_playbook).unwrap();
+
+        let registry = PlaybookRegistry::init_for_platform(tmp.path(), "macos").unwrap();
+        assert!(!registry.metas.iter().any(|m| m.name == "win-only"));
+
+        // But the file is on disk (written by user), and a Windows init would pick it up.
+        let win_registry = PlaybookRegistry::init_for_platform(tmp.path(), "windows").unwrap();
+        assert!(win_registry.metas.iter().any(|m| m.name == "win-only"));
+    }
+
+    // ── System prompt ──────────────────────────────────────────────────
+
+    #[test]
     fn test_prompt_section_contains_names() {
         let tmp = tempfile::tempdir().unwrap();
         let registry = PlaybookRegistry::init_for_platform(tmp.path(), "macos").unwrap();
@@ -386,6 +427,34 @@ mod tests {
         assert!(section.contains("outlook-troubleshooting"));
         assert!(section.contains("activate_playbook"));
     }
+
+    #[test]
+    fn test_prompt_section_excludes_filtered_playbooks() {
+        let tmp = tempfile::tempdir().unwrap();
+        let playbooks_dir = tmp.path().join("playbooks");
+        std::fs::create_dir_all(&playbooks_dir).unwrap();
+
+        // Add a Windows-only playbook.
+        let win_pb = "---\nname: win-special\ndescription: Win only\nplatform: windows\n---\n# Win";
+        std::fs::write(playbooks_dir.join("win-special.md"), win_pb).unwrap();
+
+        let registry = PlaybookRegistry::init_for_platform(tmp.path(), "macos").unwrap();
+        let section = registry.prompt_section();
+
+        // Must not leak into macOS prompt.
+        assert!(!section.contains("win-special"));
+    }
+
+    #[test]
+    fn test_prompt_section_empty_registry() {
+        let registry = PlaybookRegistry {
+            playbooks_dir: PathBuf::from("/nonexistent"),
+            metas: Vec::new(),
+        };
+        assert_eq!(registry.prompt_section(), "");
+    }
+
+    // ── Read / activate ────────────────────────────────────────────────
 
     #[test]
     fn test_read_playbook_found() {
@@ -405,18 +474,189 @@ mod tests {
     }
 
     #[test]
-    fn test_all_builtin_files_written_regardless_of_platform() {
+    fn test_every_builtin_playbook_individually_loadable() {
         let tmp = tempfile::tempdir().unwrap();
-        // Even when filtering for Windows, all built-in files should be written to disk
-        // (so switching platforms doesn't lose playbooks).
-        let _registry = PlaybookRegistry::init_for_platform(tmp.path(), "windows").unwrap();
+        // Use "all" as platform so every playbook passes the filter.
+        // (We can't use init_for_platform("macos") because that filters out
+        // hypothetical windows-only builtins. Instead, just test all files
+        // have valid frontmatter and are readable.)
+        let playbooks_dir = tmp.path().join("playbooks");
+        std::fs::create_dir_all(&playbooks_dir).unwrap();
 
-        for (filename, _) in BUILTIN_PLAYBOOKS {
+        for (filename, content) in BUILTIN_PLAYBOOKS {
+            std::fs::write(playbooks_dir.join(filename), content).unwrap();
+
+            // Every built-in must have valid frontmatter.
+            let meta = parse_frontmatter(content);
             assert!(
-                tmp.path().join("playbooks").join(filename).exists(),
-                "Missing: {}",
+                meta.is_some(),
+                "Built-in playbook {} has invalid frontmatter",
                 filename
             );
+
+            let meta = meta.unwrap();
+
+            // Platform must be a known value.
+            assert!(
+                ["macos", "windows", "all"].contains(&meta.platform.as_str()),
+                "Playbook {} has invalid platform: {}",
+                filename,
+                meta.platform
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn test_activate_playbook_tool_success() {
+        let tmp = tempfile::tempdir().unwrap();
+        let registry = PlaybookRegistry::init_for_platform(tmp.path(), "macos").unwrap();
+        let tool = ActivatePlaybookTool::new(registry);
+
+        let result = tool.execute(&json!({"name": "network-diagnostics"})).await.unwrap();
+        assert!(result.output.contains("Network Diagnostics"));
+        assert!(result.changes.is_empty()); // read-only
+    }
+
+    #[tokio::test]
+    async fn test_activate_playbook_tool_not_found() {
+        let tmp = tempfile::tempdir().unwrap();
+        let registry = PlaybookRegistry::init_for_platform(tmp.path(), "macos").unwrap();
+        let tool = ActivatePlaybookTool::new(registry);
+
+        let err = tool.execute(&json!({"name": "nonexistent"})).await.unwrap_err();
+        assert!(err.to_string().contains("not found"));
+    }
+
+    #[tokio::test]
+    async fn test_activate_playbook_tool_missing_param() {
+        let tmp = tempfile::tempdir().unwrap();
+        let registry = PlaybookRegistry::init_for_platform(tmp.path(), "macos").unwrap();
+        let tool = ActivatePlaybookTool::new(registry);
+
+        let err = tool.execute(&json!({})).await.unwrap_err();
+        assert!(err.to_string().contains("Missing required parameter"));
+    }
+
+    #[test]
+    fn test_activate_playbook_tool_is_read_only() {
+        let tmp = tempfile::tempdir().unwrap();
+        let registry = PlaybookRegistry::init_for_platform(tmp.path(), "macos").unwrap();
+        let tool = ActivatePlaybookTool::new(registry);
+
+        assert_eq!(tool.safety_tier(), SafetyTier::ReadOnly);
+        assert_eq!(tool.name(), "activate_playbook");
+    }
+
+    // ── Content validation ─────────────────────────────────────────────
+
+    #[test]
+    fn test_builtin_playbooks_have_substantial_content() {
+        // Each built-in playbook should have real diagnostic content,
+        // not just a stub. Check for minimum line count.
+        for (filename, content) in BUILTIN_PLAYBOOKS {
+            let line_count = content.lines().count();
+            assert!(
+                line_count >= 30,
+                "Playbook {} has only {} lines — too short for a real protocol",
+                filename,
+                line_count
+            );
+        }
+    }
+
+    #[test]
+    fn test_builtin_playbooks_have_unique_names() {
+        let mut names: Vec<&str> = Vec::new();
+        for (filename, content) in BUILTIN_PLAYBOOKS {
+            let meta = parse_frontmatter(content).expect(&format!(
+                "{} has invalid frontmatter",
+                filename
+            ));
+            assert!(
+                !names.contains(&meta.name.as_str()),
+                "Duplicate playbook name: {}",
+                meta.name
+            );
+            names.push(Box::leak(meta.name.into_boxed_str()));
+        }
+    }
+
+    /// Verify that macOS playbooks only reference tool names that actually exist.
+    /// This catches typos like `mac_dns_flush` instead of `mac_flush_dns`.
+    #[test]
+    fn test_macos_playbooks_reference_existing_tools() {
+        use crate::agent::tool_router::ToolRouter;
+
+        // Build the real tool router to get all registered tool names.
+        let mut router = ToolRouter::new();
+        crate::platform::register_platform_tools(&mut router);
+        let tool_defs = router.tool_definitions();
+        let tool_names: Vec<&str> = tool_defs.iter().map(|d| d.name.as_str()).collect();
+
+        // Also accept tools registered outside platform (knowledge, playbooks).
+        let extra_tools = [
+            "write_knowledge",
+            "search_knowledge",
+            "read_knowledge",
+            "list_knowledge",
+            "activate_playbook",
+        ];
+
+        for (filename, content) in BUILTIN_PLAYBOOKS {
+            let meta = parse_frontmatter(content).unwrap();
+            if meta.platform != "macos" {
+                continue; // Only check macOS playbooks for mac_* tool refs.
+            }
+
+            // Find backtick-quoted tool references in the playbook body.
+            for cap in content.split('`') {
+                let word = cap.trim();
+                // Only check words that look like tool names (contain underscore,
+                // start with mac_ or known prefixes).
+                if (word.starts_with("mac_")
+                    || word.starts_with("wifi_")
+                    || word.starts_with("disk_")
+                    || word.starts_with("crash_")
+                    || word.starts_with("shell_"))
+                    && word.chars().all(|c| c.is_alphanumeric() || c == '_')
+                {
+                    assert!(
+                        tool_names.contains(&word) || extra_tools.contains(&word),
+                        "Playbook {} references tool `{}` which is not registered",
+                        filename,
+                        word
+                    );
+                }
+            }
+        }
+    }
+
+    /// Cross-platform playbooks (platform: all) should NOT reference
+    /// platform-prefixed tool names like `mac_*` or `win_*`, since they
+    /// need to work on both platforms.
+    #[test]
+    fn test_cross_platform_playbooks_avoid_platform_tool_names() {
+        for (filename, content) in BUILTIN_PLAYBOOKS {
+            let meta = parse_frontmatter(content).unwrap();
+            if meta.platform != "all" {
+                continue;
+            }
+
+            // Check backtick-quoted words for platform-prefixed tool names.
+            let mut in_backtick = false;
+            for part in content.split('`') {
+                if in_backtick {
+                    let word = part.trim();
+                    assert!(
+                        !word.starts_with("mac_") && !word.starts_with("win_"),
+                        "Cross-platform playbook {} references platform-specific tool `{}`. \
+                         Use generic instructions instead.",
+                        filename,
+                        word
+                    );
+                }
+                in_backtick = !in_backtick;
+            }
         }
     }
 }
