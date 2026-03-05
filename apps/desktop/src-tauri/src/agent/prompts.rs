@@ -3,11 +3,18 @@
 /// `os_context` is a string describing the current OS/hardware environment,
 /// filled in dynamically at runtime.
 /// `knowledge_toc` is a table-of-contents listing of saved knowledge files (may be empty).
-pub fn system_prompt(os_context: &str, knowledge_toc: &str) -> String {
+/// `playbooks_section` is the compact playbook listing (may be empty).
+pub fn system_prompt(os_context: &str, knowledge_toc: &str, playbooks_section: &str) -> String {
     let knowledge_section = if knowledge_toc.is_empty() {
         String::new()
     } else {
         format!("\n\n{}", knowledge_toc)
+    };
+
+    let playbooks = if playbooks_section.is_empty() {
+        String::new()
+    } else {
+        format!("\n\n{}", playbooks_section)
     };
 
     format!(
@@ -74,8 +81,9 @@ You have a knowledge base of markdown files organized by category. Use these too
 ## Tool Usage
 - Always run read-only diagnostic tools first to understand the situation before proposing a fix.
 - Use the most specific tool available. Only use shell_run when no dedicated tool exists.
-- NEVER call modifying tools (flush_dns, kill_process, clear_caches, restart_cups, cancel_print_jobs, move_file, shell_run) until the user has confirmed the plan. Always present [SITUATION]/[PLAN]/[ACTION] first and wait."#,
+- NEVER call modifying tools (flush_dns, kill_process, clear_caches, restart_cups, cancel_print_jobs, move_file, shell_run) until the user has confirmed the plan. Always present [SITUATION]/[PLAN]/[ACTION] first and wait.{playbooks}"#,
         os_context = os_context,
-        knowledge_section = knowledge_section
+        knowledge_section = knowledge_section,
+        playbooks = playbooks
     )
 }

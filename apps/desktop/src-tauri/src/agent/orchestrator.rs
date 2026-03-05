@@ -67,6 +67,8 @@ pub struct Orchestrator {
     db: Arc<Mutex<rusqlite::Connection>>,
     /// Path to the knowledge directory for building TOC.
     knowledge_dir: std::path::PathBuf,
+    /// Compact playbook listing for the system prompt.
+    playbooks_section: String,
     /// Set to true to cancel the current agentic loop.
     cancelled: Arc<AtomicBool>,
 }
@@ -81,6 +83,7 @@ impl Orchestrator {
         pending_approvals: PendingApprovals,
         db: Arc<Mutex<rusqlite::Connection>>,
         knowledge_dir: std::path::PathBuf,
+        playbooks_section: String,
     ) -> Self {
         Self {
             llm,
@@ -90,6 +93,7 @@ impl Orchestrator {
             os_context,
             db,
             knowledge_dir,
+            playbooks_section,
             cancelled: Arc::new(AtomicBool::new(false)),
         }
     }
@@ -191,7 +195,7 @@ impl Orchestrator {
         }
 
         let knowledge_ctx = knowledge::knowledge_toc(&self.knowledge_dir).unwrap_or_default();
-        let system = prompts::system_prompt(&self.os_context, &knowledge_ctx);
+        let system = prompts::system_prompt(&self.os_context, &knowledge_ctx, &self.playbooks_section);
         let tool_defs = self.router.tool_definitions();
 
         // Reset cancellation flag at the start of each user message.
@@ -544,6 +548,7 @@ mod tests {
             Arc::new(Mutex::new(HashMap::new())),
             Arc::new(Mutex::new(conn)),
             std::path::PathBuf::from("/tmp/test-knowledge"),
+            String::new(),
         )
     }
 

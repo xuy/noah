@@ -1,8 +1,11 @@
 pub mod apps;
+pub mod crash_logs;
 pub mod diagnostics;
+pub mod disk_audit;
 pub mod network;
 pub mod performance;
 pub mod printer;
+pub mod wifi;
 
 use crate::agent::tool_router::ToolRouter;
 
@@ -40,4 +43,9 @@ pub fn register_tools(router: &mut ToolRouter) {
     router.register(Box::new(diagnostics::MacReadFile));
     router.register(Box::new(diagnostics::MacReadLog));
     router.register(Box::new(diagnostics::ShellRun));
+
+    // Compound diagnostic tools
+    router.register(Box::new(wifi::WifiScan));
+    router.register(Box::new(disk_audit::DiskAudit));
+    router.register(Box::new(crash_logs::CrashLogReader));
 }
