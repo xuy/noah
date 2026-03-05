@@ -11,8 +11,12 @@ use itman_tools::{SafetyTier, Tool, ToolResult};
 pub struct PlaybookMeta {
     pub name: String,
     pub description: String,
-    /// Target platform: "macos", "windows", or "all".
+    /// Target platform: "macos", "windows", "linux", or "all".
     pub platform: String,
+    /// Date of last review (YYYY-MM-DD). Used to flag stale playbooks.
+    pub last_reviewed: Option<String>,
+    /// Author or last reviewer.
+    pub author: Option<String>,
 }
 
 /// Registry of available playbooks, loaded at startup.
@@ -84,6 +88,8 @@ fn parse_frontmatter(content: &str) -> Option<PlaybookMeta> {
     let mut name = None;
     let mut description = None;
     let mut platform = None;
+    let mut last_reviewed = None;
+    let mut author = None;
 
     for line in yaml_block.lines() {
         let line = line.trim();
@@ -93,6 +99,10 @@ fn parse_frontmatter(content: &str) -> Option<PlaybookMeta> {
             description = Some(val.trim().to_string());
         } else if let Some(val) = line.strip_prefix("platform:") {
             platform = Some(val.trim().to_string());
+        } else if let Some(val) = line.strip_prefix("last_reviewed:") {
+            last_reviewed = Some(val.trim().to_string());
+        } else if let Some(val) = line.strip_prefix("author:") {
+            author = Some(val.trim().to_string());
         }
     }
 
@@ -100,6 +110,8 @@ fn parse_frontmatter(content: &str) -> Option<PlaybookMeta> {
         name: name?,
         description: description?,
         platform: platform.unwrap_or_else(|| "all".to_string()),
+        last_reviewed,
+        author,
     })
 }
 
@@ -713,6 +725,142 @@ mod tests {
                     );
                 }
                 in_backtick = !in_backtick;
+            }
+        }
+    }
+
+    // ── Quality guardrails ────────────────────────────────────────────
+
+    /// Every playbook must have an Escalation section — a bail-out path
+    /// so Noah doesn't endlessly retry when the problem is beyond local fixes.
+    #[test]
+    fn test_builtin_playbooks_have_escalation_section() {
+        for (filename, content) in BUILTIN_PLAYBOOKS {
+            assert!(
+                content.contains("## Escalation"),
+                "Playbook {} is missing '## Escalation' section. Every playbook needs a bail-out path.",
+                filename
+            );
+        }
+    }
+
+    /// Every playbook must have a Caveats section — conditions that change
+    /// the standard fix path. Forces authors to think about edge cases.
+    #[test]
+    fn test_builtin_playbooks_have_caveats_section() {
+        for (filename, content) in BUILTIN_PLAYBOOKS {
+            assert!(
+                content.contains("## Caveats"),
+                "Playbook {} is missing '## Caveats' section. Document when the standard path doesn't apply.",
+                filename
+            );
+        }
+    }
+
+    /// Every playbook must have a Key signals section — pattern matching
+    /// for common user phrases that redirect the diagnosis.
+    #[test]
+    fn test_builtin_playbooks_have_key_signals_section() {
+        for (filename, content) in BUILTIN_PLAYBOOKS {
+            assert!(
+                content.contains("## Key signals"),
+                "Playbook {} is missing '## Key signals' section.",
+                filename
+            );
+        }
+    }
+
+    /// Every playbook should claim a success rate (e.g. "~80%") somewhere.
+    /// This forces the author to think about confidence and tells the LLM
+    /// how aggressively to follow the standard path.
+    #[test]
+    fn test_builtin_playbooks_claim_success_rate() {
+        for (filename, content) in BUILTIN_PLAYBOOKS {
+            assert!(
+                content.contains('%'),
+                "Playbook {} never mentions a success rate (e.g. '~80%'). \
+                 State how often the standard fix path resolves the issue.",
+                filename
+            );
+        }
+    }
+
+    /// Playbooks should stay under 120 lines. They load into the LLM context
+    /// when activated — shorter = cheaper, more likely followed precisely.
+    #[test]
+    fn test_builtin_playbooks_not_too_long() {
+        for (filename, content) in BUILTIN_PLAYBOOKS {
+            let line_count = content.lines().count();
+            assert!(
+                line_count <= 120,
+                "Playbook {} has {} lines (max 120). Trim it — long playbooks get skimmed.",
+                filename,
+                line_count
+            );
+        }
+    }
+
+    /// Every built-in playbook must have last_reviewed and author in frontmatter.
+    #[test]
+    fn test_builtin_playbooks_have_review_metadata() {
+        for (filename, content) in BUILTIN_PLAYBOOKS {
+            let meta = parse_frontmatter(content).unwrap();
+            assert!(
+                meta.last_reviewed.is_some(),
+                "Playbook {} is missing 'last_reviewed: YYYY-MM-DD' in frontmatter.",
+                filename
+            );
+            assert!(
+                meta.author.is_some(),
+                "Playbook {} is missing 'author:' in frontmatter.",
+                filename
+            );
+        }
+    }
+
+    /// last_reviewed must be a valid YYYY-MM-DD date and not older than 6 months.
+    #[test]
+    fn test_builtin_playbooks_not_stale() {
+        for (filename, content) in BUILTIN_PLAYBOOKS {
+            let meta = parse_frontmatter(content).unwrap();
+            if let Some(ref date_str) = meta.last_reviewed {
+                // Validate format: YYYY-MM-DD
+                let parts: Vec<&str> = date_str.split('-').collect();
+                assert!(
+                    parts.len() == 3
+                        && parts[0].len() == 4
+                        && parts[1].len() == 2
+                        && parts[2].len() == 2
+                        && parts.iter().all(|p| p.chars().all(|c| c.is_ascii_digit())),
+                    "Playbook {} has invalid last_reviewed date '{}'. Use YYYY-MM-DD format.",
+                    filename,
+                    date_str
+                );
+
+                // Check not older than 6 months (approximate: 183 days).
+                let year: i32 = parts[0].parse().unwrap();
+                let month: u32 = parts[1].parse().unwrap();
+                let day: u32 = parts[2].parse().unwrap();
+
+                // Simple staleness check: convert to a day count for comparison.
+                let reviewed_days = year as i64 * 365 + month as i64 * 30 + day as i64;
+                // Use compile-time approximate date (tests run at build time).
+                // This will naturally fail when playbooks go 6 months without review.
+                let now = {
+                    use chrono::Datelike;
+                    let today = chrono::Utc::now().date_naive();
+                    today.year() as i64 * 365 + today.month() as i64 * 30 + today.day() as i64
+                };
+
+                let age_days = now - reviewed_days;
+                assert!(
+                    age_days <= 183,
+                    "Playbook {} was last reviewed on {} ({} days ago). \
+                     Review it and update the last_reviewed date.",
+                    filename,
+                    date_str,
+                    age_days
+                );
             }
         }
     }

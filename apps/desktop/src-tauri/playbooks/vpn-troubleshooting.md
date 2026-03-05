@@ -2,6 +2,8 @@
 name: vpn-troubleshooting
 description: Diagnose VPN connection failures, drops, and split-tunnel DNS issues
 platform: macos
+last_reviewed: 2026-03-04
+author: noah-team
 ---
 
 # VPN Troubleshooting

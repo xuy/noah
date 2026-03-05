@@ -2,6 +2,8 @@
 name: windows-printer-repair
 description: Fix stuck print jobs, offline printers, and spooler issues on Windows
 platform: windows
+last_reviewed: 2026-03-04
+author: noah-team
 ---
 
 # Windows Printer Repair

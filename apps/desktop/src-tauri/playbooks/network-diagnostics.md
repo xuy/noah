@@ -2,6 +2,8 @@
 name: network-diagnostics
 description: Systematic connectivity troubleshooting for Wi-Fi, DNS, and internet issues
 platform: macos
+last_reviewed: 2026-03-04
+author: noah-team
 ---
 
 # Network Diagnostics

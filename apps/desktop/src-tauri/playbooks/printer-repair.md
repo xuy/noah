@@ -2,6 +2,8 @@
 name: printer-repair
 description: Fix stuck print jobs, missing printers, and CUPS issues
 platform: macos
+last_reviewed: 2026-03-04
+author: noah-team
 ---
 
 # Printer Repair

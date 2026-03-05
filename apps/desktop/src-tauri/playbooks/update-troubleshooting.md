@@ -2,6 +2,8 @@
 name: update-troubleshooting
 description: Fix stuck macOS updates, failed installations, and software update errors
 platform: macos
+last_reviewed: 2026-03-04
+author: noah-team
 ---
 
 # Update Troubleshooting

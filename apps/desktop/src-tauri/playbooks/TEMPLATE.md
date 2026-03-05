@@ -23,7 +23,9 @@ Here's when you do something different. Use your head for everything else.
 ---
 name: problem-name
 description: One line — what this fixes and when to use it
-platform: macos|windows|all
+platform: macos|windows|linux|all
+last_reviewed: 2026-03-04
+author: your-name
 ---
 
 # Problem Name

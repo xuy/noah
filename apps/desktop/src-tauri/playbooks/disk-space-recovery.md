@@ -2,6 +2,8 @@
 name: disk-space-recovery
 description: Find and reclaim disk space from caches, backups, and hidden consumers
 platform: macos
+last_reviewed: 2026-03-04
+author: noah-team
 ---
 
 # Disk Space Recovery

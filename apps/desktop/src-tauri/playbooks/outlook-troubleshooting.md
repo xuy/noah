@@ -2,6 +2,8 @@
 name: outlook-troubleshooting
 description: Fix Outlook sync failures, crashes, stuck email, and profile corruption
 platform: all
+last_reviewed: 2026-03-04
+author: noah-team
 ---
 
 # Outlook Troubleshooting

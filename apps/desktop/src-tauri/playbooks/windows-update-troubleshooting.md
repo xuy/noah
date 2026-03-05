@@ -2,6 +2,8 @@
 name: windows-update-troubleshooting
 description: Fix stuck Windows Updates, failed installations, and update service errors
 platform: windows
+last_reviewed: 2026-03-04
+author: noah-team
 ---
 
 # Windows Update Troubleshooting
