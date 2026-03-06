@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useSessionStore } from "../stores/sessionStore";
+import { useTheme, type ThemePreference } from "../hooks/useTheme";
 import * as commands from "../lib/tauri-commands";
 
 export function SettingsPanel() {
@@ -42,6 +43,8 @@ export function SettingsPanel() {
       setProactiveEnabled(!next); // revert on error
     }
   }, [proactiveEnabled]);
+
+  const { preference: themePref, setTheme } = useTheme();
 
   const [reportingBug, setReportingBug] = useState(false);
 
@@ -241,6 +244,35 @@ export function SettingsPanel() {
                 />
               </button>
             </div>
+          </section>
+
+          {/* Appearance */}
+          <section>
+            <h3 className="text-xs font-semibold text-text-primary uppercase tracking-wider mb-2">
+              Appearance
+            </h3>
+            <div className="flex rounded-lg border border-border-primary overflow-hidden">
+              {(["system", "light", "dark"] as ThemePreference[]).map((opt) => (
+                <button
+                  key={opt}
+                  onClick={() => setTheme(opt)}
+                  className={`flex-1 py-1.5 text-xs font-medium transition-colors cursor-pointer ${
+                    themePref === opt
+                      ? "bg-accent-blue/15 text-accent-blue"
+                      : "text-text-secondary hover:text-text-primary hover:bg-bg-tertiary/50"
+                  }`}
+                >
+                  {opt === "system" ? "System" : opt === "light" ? "Light" : "Dark"}
+                </button>
+              ))}
+            </div>
+            <p className="text-[10px] text-text-muted mt-1.5">
+              {themePref === "system"
+                ? "Follows your operating system setting."
+                : themePref === "light"
+                  ? "Always use light mode."
+                  : "Always use dark mode."}
+            </p>
           </section>
 
           {/* Links */}

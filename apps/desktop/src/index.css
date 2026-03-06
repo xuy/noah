@@ -51,9 +51,11 @@
  * Same brand, daylight version. Soft blue-whites (not stark),
  * deep navy text (reusing dark mode's backgrounds as text),
  * and slightly deeper accents for readability on light surfaces.
+ *
+ * Applied via .light class on :root (managed by useTheme hook).
+ * "System" preference uses matchMedia to toggle the class.
  */
-@media (prefers-color-scheme: light) {
-  :root {
+:root.light {
     --color-bg-primary: #f4f6fb;
     --color-bg-secondary: #ffffff;
     --color-bg-tertiary: #e8ecf4;
@@ -84,7 +86,6 @@
     --color-status-running: #0d9488;
     --color-status-error: #dc2626;
     --color-status-denied: #7889a5;
-  }
 }
 
 /* ── Base Styles ── */

@@ -16,6 +16,7 @@ import { ProactiveSuggestionBanner } from "./components/ProactiveSuggestionBanne
 import { SessionSummary } from "./components/SessionSummary";
 import { SetupScreen } from "./components/SetupScreen";
 import { useDebugStore, type DebugEvent } from "./stores/debugStore";
+import { useTheme } from "./hooks/useTheme";
 
 const WINDOW_TITLES = [
   "Noah \u2014 Your Trusted Support",
@@ -38,6 +39,7 @@ function dismissSplash() {
 
 function App() {
   const [needsSetup, setNeedsSetup] = useState<boolean | null>(null);
+  useTheme(); // Apply saved theme on mount (before setup screen too)
 
   // Check for API key on mount.
   useEffect(() => {
