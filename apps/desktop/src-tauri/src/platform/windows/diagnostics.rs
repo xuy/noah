@@ -350,6 +350,40 @@ impl Tool for WinReadLog {
 
 // ── ShellRun (Windows) ────────────────────────────────────────────────
 
+/// Strip common PowerShell CLI flags (e.g. `-NoProfile`, `-Command`) from the
+/// beginning of a command string so we can pass the remaining script directly
+/// to `powershell.exe -NoProfile -Command <script>`.
+fn strip_powershell_flags(mut s: &str) -> &str {
+    loop {
+        s = s.trim_start();
+        // Match flags like -NoProfile, -Command, -NonInteractive, -ExecutionPolicy Bypass
+        if let Some(rest) = s.strip_prefix('-') {
+            // Find the end of this flag token
+            let end = rest.find(char::is_whitespace).unwrap_or(rest.len());
+            let flag = rest[..end].to_ascii_lowercase();
+            // These are flags we want to strip (we supply our own -NoProfile -Command)
+            let known = ["command", "nologo", "noprofile", "noninteractive"];
+            if known.iter().any(|k| flag.starts_with(k)) {
+                s = &rest[end..];
+                continue;
+            }
+            // -ExecutionPolicy takes a value argument — strip both tokens
+            if flag.starts_with("executionpolicy") {
+                s = rest[end..].trim_start();
+                // Skip the policy value (e.g. "Bypass")
+                let val_end = s.find(char::is_whitespace).unwrap_or(s.len());
+                s = &s[val_end..];
+                continue;
+            }
+            // Unknown flag — stop stripping, return as-is
+            break;
+        } else {
+            break;
+        }
+    }
+    s.trim_start()
+}
+
 pub struct ShellRun;
 
 /// Patterns that indicate a dangerous shell command requiring user approval.
@@ -468,11 +502,47 @@ impl Tool for ShellRun {
             .as_str()
             .ok_or_else(|| anyhow::anyhow!("Missing required parameter: command"))?;
 
+        // Detect PowerShell commands and run them directly via powershell.exe
+        // instead of cmd.exe /c. This avoids cmd.exe interpreting |, $, {, }
+        // and other characters that are valid PowerShell syntax.
+        let child = {
+            let trimmed = command.trim_start();
+            if trimmed.starts_with("powershell ") || trimmed.starts_with("powershell.exe ")
+                || trimmed.starts_with("pwsh ") || trimmed.starts_with("pwsh.exe ")
+            {
+                // Strip the "powershell" / "pwsh" prefix and any leading flags
+                // to extract the actual script. Common patterns:
+                //   powershell "Get-ChildItem ..."
+                //   powershell -Command "..."
+                //   powershell -Command ...
+                let rest = trimmed
+                    .split_once(char::is_whitespace)
+                    .map(|(_, r)| r.trim_start())
+                    .unwrap_or("");
+
+                // Strip optional -Command / -NoProfile flags
+                let script = strip_powershell_flags(rest);
+
+                // Strip surrounding quotes if present (the LLM often wraps the
+                // whole script in double quotes)
+                let script = script
+                    .strip_prefix('"')
+                    .and_then(|s| s.strip_suffix('"'))
+                    .unwrap_or(script);
+
+                super::hidden_async_cmd("powershell.exe")
+                    .args(["-NoProfile", "-Command", script])
+                    .output()
+            } else {
+                super::hidden_async_cmd("cmd.exe")
+                    .args(["/c", command])
+                    .output()
+            }
+        };
+
         let output = match tokio::time::timeout(
             std::time::Duration::from_secs(60),
-            super::hidden_async_cmd("cmd.exe")
-                .args(["/c", command])
-                .output(),
+            child,
         )
         .await
         {
@@ -827,5 +897,27 @@ mod tests {
         let tool = ShellRun;
         let input = json!({});
         assert_eq!(tool.safety_tier_for_input(&input), SafetyTier::SafeAction);
+    }
+
+    #[test]
+    fn strip_powershell_flags_basic() {
+        assert_eq!(strip_powershell_flags("-Command \"Get-Date\""), "\"Get-Date\"");
+        assert_eq!(strip_powershell_flags("-NoProfile -Command Get-Date"), "Get-Date");
+        assert_eq!(strip_powershell_flags("\"Get-Date\""), "\"Get-Date\"");
+        assert_eq!(strip_powershell_flags("Get-Date"), "Get-Date");
+    }
+
+    #[test]
+    fn strip_powershell_flags_execution_policy() {
+        assert_eq!(
+            strip_powershell_flags("-ExecutionPolicy Bypass -Command Get-Date"),
+            "Get-Date"
+        );
+    }
+
+    #[test]
+    fn strip_powershell_flags_unknown_flag_preserved() {
+        // Unknown flags should stop stripping and be included in the result
+        assert_eq!(strip_powershell_flags("-File script.ps1"), "-File script.ps1");
     }
 }
