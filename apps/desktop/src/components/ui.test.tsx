@@ -189,6 +189,54 @@ describe("ChangesBlock", () => {
     expect(screen.queryByText(/change made/)).toBeNull();
   });
 
+  it("humanizes shell_run commands instead of showing 'Ran a command'", async () => {
+    const shellChange: ChangeEntry = {
+      ...CHANGE,
+      id: "c-shell",
+      tool_name: "shell_run",
+      description: "Executed shell command: uptime",
+    };
+    useSessionStore.setState({ changes: [shellChange] });
+    useChatStore.setState({
+      messages: [
+        {
+          id: "msg1",
+          role: "assistant",
+          content: "Checked.",
+          timestamp: Date.now(),
+          changeIds: ["c-shell"],
+        },
+      ],
+    });
+    render(<ChatPanel />);
+    await userEvent.click(await screen.findByText("1 action taken"));
+    screen.getByText(/Checked how long the computer has been running/);
+  });
+
+  it("shows 'Ran a command' for unrecognized shell commands", async () => {
+    const shellChange: ChangeEntry = {
+      ...CHANGE,
+      id: "c-shell",
+      tool_name: "shell_run",
+      description: "Executed shell command: some_obscure_tool --flag",
+    };
+    useSessionStore.setState({ changes: [shellChange] });
+    useChatStore.setState({
+      messages: [
+        {
+          id: "msg1",
+          role: "assistant",
+          content: "Done.",
+          timestamp: Date.now(),
+          changeIds: ["c-shell"],
+        },
+      ],
+    });
+    render(<ChatPanel />);
+    await userEvent.click(await screen.findByText("1 action taken"));
+    screen.getByText("Ran a command");
+  });
+
   it("does not render when message has no changeIds", async () => {
     useChatStore.setState({
       messages: [

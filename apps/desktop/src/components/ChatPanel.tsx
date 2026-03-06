@@ -119,10 +119,63 @@ const ACTION_LABELS: Record<string, string> = {
   list_knowledge: "Listed notes",
 };
 
+/** Map common shell commands to human-readable descriptions. */
+const SHELL_PATTERNS: [RegExp, string][] = [
+  [/^uptime/, "Checked how long the computer has been running"],
+  [/^(top|ps\b|activity)/, "Checked running processes"],
+  [/^(df|diskutil|du)\b/, "Checked disk space"],
+  [/^(ifconfig|networksetup|ipconfig|scutil)\b/, "Checked network settings"],
+  [/^(ping|arping)\s/, "Tested network connection"],
+  [/^(nslookup|dig|host)\s/, "Looked up DNS records"],
+  [/^traceroute\s/, "Traced network route"],
+  [/^(curl|wget)\s/, "Fetched data from the web"],
+  [/^(cat|less|more|head|tail)\s/, "Read a file"],
+  [/^ls\b/, "Listed files"],
+  [/^(mkdir|mktemp)\b/, "Created a folder"],
+  [/^(cp|rsync)\b/, "Copied files"],
+  [/^(mv)\b/, "Moved files"],
+  [/^(chmod|chown|icacls)\b/, "Changed file permissions"],
+  [/^(killall|taskkill)\s+(.+)/, "Stopped $2"],
+  [/^(launchctl|systemctl)\b/, "Managed system services"],
+  [/^(defaults)\s+(read|write)\s+(.+)/, "Changed system preferences"],
+  [/^(defaults)\s+read\b/, "Checked system preferences"],
+  [/^(brew|apt|yum|choco|winget|scoop)\s+install\b/, "Installed software"],
+  [/^(brew|apt|yum|choco|winget|scoop)\s+upgrade\b/, "Updated software"],
+  [/^(brew|apt|yum|choco|winget|scoop)\s+(list|info)\b/, "Checked installed software"],
+  [/^(softwareupdate|wuauclt)\b/, "Checked for system updates"],
+  [/^(open|start)\s/, "Opened an application"],
+  [/^(pmset|powercfg)\b/, "Checked power settings"],
+  [/^(sysctl|system_profiler|systeminfo)\b/, "Checked system information"],
+  [/^(sw_vers|ver|winver)\b/, "Checked OS version"],
+  [/^(lsof)\b/, "Checked open files and connections"],
+  [/^(netstat|ss)\b/, "Checked network connections"],
+  [/^(mdutil|mdfind)\b/, "Checked Spotlight indexing"],
+  [/^(tmutil)\b/, "Checked Time Machine"],
+  [/^(spctl|csrutil)\b/, "Checked security settings"],
+  [/^(dscacheutil)\b/, "Checked directory cache"],
+  [/^(log\s+show|journalctl)\b/, "Read system logs"],
+  [/^(wmic|Get-WmiObject|Get-CimInstance)/, "Checked system details"],
+  [/^(netsh)\b/, "Checked network configuration"],
+  [/^(sfc|DISM|chkdsk)\b/i, "Ran system repair tool"],
+];
+
+/** Extract a human-friendly label from a shell command string. */
+function humanizeShellCommand(cmd: string): string {
+  const trimmed = cmd.trim();
+  for (const [pattern, label] of SHELL_PATTERNS) {
+    const m = trimmed.match(pattern);
+    if (m) return label.replace(/\$(\d+)/g, (_, i) => m[+i] || "");
+  }
+  return "";
+}
+
 /** Turn a raw tool description into something a non-technical user understands. */
 function humanizeDescription(_toolName: string, description: string): string {
-  // "Executed shell command: <cmd>" → just show the friendly label, drop the command
-  if (description.startsWith("Executed shell command:")) return "";
+  // "Executed shell command: <cmd>" → parse the command for a friendly label
+  if (description.startsWith("Executed shell command:")) {
+    const cmd = description.slice("Executed shell command:".length).trim();
+    return humanizeShellCommand(cmd);
+  }
   // "Killed process 79514 with signal 15" → "Stopped a runaway process"
   if (/^Killed process \d+/.test(description)) return "Stopped a runaway process";
   // "Cleared contents of /Users/..." → "Cleared system caches"
