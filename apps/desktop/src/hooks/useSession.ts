@@ -127,6 +127,13 @@ export function useSession(): UseSessionReturn {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Load changes whenever the active session changes (covers app restart,
+  // HMR reload, and any other case where sessionId is set but store is empty)
+  useEffect(() => {
+    if (!sessionId) return;
+    commands.getChanges(sessionId).then(setChanges).catch(() => {});
+  }, [sessionId, setChanges]);
+
   return {
     sessionId,
     isActive,
