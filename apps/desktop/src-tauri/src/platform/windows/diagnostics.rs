@@ -565,7 +565,7 @@ impl Tool for ShellRun {
             }
         };
 
-        let output = match tokio::time::timeout(
+        let (output, exit_code, success) = match tokio::time::timeout(
             std::time::Duration::from_secs(60),
             child,
         )
@@ -586,15 +586,21 @@ impl Tool for ShellRun {
                     }
                     result.push_str(&stderr);
                 }
+                let success = o.status.success();
                 if result.is_empty() {
                     result = format!("(no output, exit code: {})", exit_code);
                 } else {
                     result.push_str(&format!("\n\n[exit code: {}]", exit_code));
                 }
-                result
+                (result, Some(exit_code), success)
             }
-            Ok(Err(e)) => format!("Failed to execute command: {}", e),
-            Err(_) => "Command timed out after 60 seconds. The command was taking too long and has been stopped.".to_string(),
+            Ok(Err(e)) => (format!("Failed to execute command: {}", e), None, false),
+            Err(_) => (
+                "Command timed out after 60 seconds. The command was taking too long and has been stopped."
+                    .to_string(),
+                None,
+                false,
+            ),
         };
 
         // Limit output length
@@ -604,17 +610,28 @@ impl Tool for ShellRun {
             output.clone()
         };
 
-        Ok(ToolResult::with_changes(
-            truncated,
-            json!({
-                "command": command,
-            }),
-            vec![ChangeRecord {
-                description: format!("Executed shell command: {}", command),
-                undo_tool: String::new(),
-                undo_input: json!(null),
-            }],
-        ))
+        let data = json!({
+            "command": command,
+            "success": success,
+            "exit_code": exit_code,
+        });
+
+        if success {
+            Ok(ToolResult::with_changes(
+                truncated,
+                data,
+                vec![ChangeRecord {
+                    description: format!("Executed shell command: {}", command),
+                    undo_tool: String::new(),
+                    undo_input: json!(null),
+                }],
+            ))
+        } else {
+            Ok(ToolResult::read_only(
+                format!("COMMAND FAILED OR NOT EXECUTED:\n{}", truncated),
+                data,
+            ))
+        }
     }
 }
 
@@ -685,6 +702,382 @@ impl Tool for WinStartupPrograms {
             json!({
                 "wmi": wmi.trim(),
                 "registry": registry.trim(),
+            }),
+        ))
+    }
+}
+
+fn escape_ps_single_quoted(value: &str) -> String {
+    value.replace('\'', "''")
+}
+
+fn parse_tagged_i64(output: &str, key: &str) -> Option<i64> {
+    let prefix = format!("{}=", key);
+    output
+        .lines()
+        .find_map(|line| line.trim().strip_prefix(&prefix))
+        .and_then(|value| value.trim().parse::<i64>().ok())
+}
+
+fn parse_tagged_values(output: &str, key: &str) -> Vec<String> {
+    let prefix = format!("{}=", key);
+    output
+        .lines()
+        .filter_map(|line| line.trim().strip_prefix(&prefix))
+        .map(|value| value.trim().to_string())
+        .collect()
+}
+
+// ── WinEmptyRecycleBin ────────────────────────────────────────────────
+
+pub struct WinEmptyRecycleBin;
+
+#[async_trait]
+impl Tool for WinEmptyRecycleBin {
+    fn name(&self) -> &str {
+        "win_empty_recycle_bin"
+    }
+
+    fn description(&self) -> &str {
+        "Empty the Windows Recycle Bin and verify the new item count."
+    }
+
+    fn input_schema(&self) -> Value {
+        json!({
+            "type": "object",
+            "properties": {},
+            "required": []
+        })
+    }
+
+    fn safety_tier(&self) -> SafetyTier {
+        SafetyTier::NeedsApproval
+    }
+
+    async fn execute(&self, _input: &Value) -> Result<ToolResult> {
+        let script = "\
+            $shell = New-Object -ComObject Shell.Application; \
+            $before = ($shell.Namespace(0xA).Items().Count); \
+            $err = ''; \
+            try { Clear-RecycleBin -Force -ErrorAction Stop | Out-Null } catch { $err = $_.Exception.Message }; \
+            $after = ($shell.Namespace(0xA).Items().Count); \
+            Write-Output \"RECYCLE_BEFORE=$before\"; \
+            Write-Output \"RECYCLE_AFTER=$after\"; \
+            Write-Output \"RECYCLE_ERR=$err\";";
+
+        let output = super::hidden_cmd("powershell")
+            .args(["-NoProfile", "-Command", script])
+            .output()?;
+
+        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        let before = parse_tagged_i64(&stdout, "RECYCLE_BEFORE").unwrap_or(-1);
+        let after = parse_tagged_i64(&stdout, "RECYCLE_AFTER").unwrap_or(-1);
+        let err = parse_tagged_values(&stdout, "RECYCLE_ERR")
+            .into_iter()
+            .next()
+            .unwrap_or_default();
+
+        let details = format!(
+            "Recycle Bin before: {}\nRecycle Bin after: {}\n{}{}",
+            before,
+            after,
+            if err.is_empty() { "" } else { "PowerShell error: " },
+            if err.is_empty() { "" } else { err.as_str() },
+        );
+
+        let data = json!({
+            "before_count": before,
+            "after_count": after,
+            "stderr": stderr.trim(),
+            "error": err,
+        });
+
+        if output.status.success() && err.is_empty() && after == 0 {
+            Ok(ToolResult::with_changes(
+                format!("Recycle Bin cleared successfully.\n{}", details),
+                data,
+                vec![ChangeRecord {
+                    description: format!("Emptied Recycle Bin ({} -> {} items)", before, after),
+                    undo_tool: String::new(),
+                    undo_input: json!(null),
+                }],
+            ))
+        } else {
+            Ok(ToolResult::read_only(
+                format!(
+                    "Recycle Bin clear did not fully succeed or could not be verified.\n{}{}{}",
+                    details,
+                    if stderr.trim().is_empty() { "" } else { "\n--- stderr ---\n" },
+                    stderr.trim()
+                ),
+                data,
+            ))
+        }
+    }
+}
+
+// ── WinDisableStartupProgram ──────────────────────────────────────────
+
+pub struct WinDisableStartupProgram;
+
+#[async_trait]
+impl Tool for WinDisableStartupProgram {
+    fn name(&self) -> &str {
+        "win_disable_startup_program"
+    }
+
+    fn description(&self) -> &str {
+        "Disable startup entries that match a program name (registry Run keys and Startup folders), then verify remaining matches."
+    }
+
+    fn input_schema(&self) -> Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "program_name": {
+                    "type": "string",
+                    "description": "Program name or unique fragment to match in startup entries"
+                }
+            },
+            "required": ["program_name"]
+        })
+    }
+
+    fn safety_tier(&self) -> SafetyTier {
+        SafetyTier::NeedsApproval
+    }
+
+    async fn execute(&self, input: &Value) -> Result<ToolResult> {
+        let program_name = input["program_name"]
+            .as_str()
+            .ok_or_else(|| anyhow::anyhow!("Missing required parameter: program_name"))?;
+        let program_name_escaped = escape_ps_single_quoted(program_name);
+
+        let script = format!(
+            "\
+            $needle = '{}'; \
+            $removed = @(); \
+            $remaining = @(); \
+            $runPaths = @('HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run','HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run'); \
+            foreach ($path in $runPaths) {{ \
+              if (Test-Path $path) {{ \
+                $props = (Get-ItemProperty -Path $path).PSObject.Properties | Where-Object {{ $_.Name -notlike 'PS*' }}; \
+                foreach ($p in $props) {{ \
+                  $nameMatch = $p.Name -like \"*$needle*\"; \
+                  $valMatch = \"$($p.Value)\" -like \"*$needle*\"; \
+                  if ($nameMatch -or $valMatch) {{ \
+                    Remove-ItemProperty -Path $path -Name $p.Name -ErrorAction SilentlyContinue; \
+                    $removed += \"$path::$($p.Name)\"; \
+                  }} \
+                }} \
+              }} \
+            }} \
+            $startupDirs = @(\"$env:APPDATA\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\",\"$env:ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\"); \
+            foreach ($dir in $startupDirs) {{ \
+              if (Test-Path $dir) {{ \
+                Get-ChildItem -Path $dir -File -ErrorAction SilentlyContinue | Where-Object {{ $_.Name -like \"*$needle*\" }} | ForEach-Object {{ \
+                  $newName = $_.Name + '.disabled-by-noah'; \
+                  Rename-Item -LiteralPath $_.FullName -NewName $newName -ErrorAction SilentlyContinue; \
+                  $removed += $_.FullName; \
+                }} \
+              }} \
+            }} \
+            foreach ($path in $runPaths) {{ \
+              if (Test-Path $path) {{ \
+                $props = (Get-ItemProperty -Path $path).PSObject.Properties | Where-Object {{ $_.Name -notlike 'PS*' }}; \
+                foreach ($p in $props) {{ \
+                  if ($p.Name -like \"*$needle*\" -or \"$($p.Value)\" -like \"*$needle*\") {{ $remaining += \"$path::$($p.Name)\" }} \
+                }} \
+              }} \
+            }} \
+            foreach ($dir in $startupDirs) {{ \
+              if (Test-Path $dir) {{ \
+                Get-ChildItem -Path $dir -File -ErrorAction SilentlyContinue | Where-Object {{ $_.Name -like \"*$needle*\" -and $_.Name -notlike '*.disabled-by-noah' }} | ForEach-Object {{ $remaining += $_.FullName }} \
+              }} \
+            }} \
+            Write-Output \"REMOVED_COUNT=$($removed.Count)\"; \
+            foreach ($r in $removed) {{ Write-Output \"REMOVED=$r\" }}; \
+            Write-Output \"REMAINING_COUNT=$($remaining.Count)\"; \
+            foreach ($r in $remaining) {{ Write-Output \"REMAINING=$r\" }};",
+            program_name_escaped
+        );
+
+        let output = super::hidden_cmd("powershell")
+            .args(["-NoProfile", "-Command", &script])
+            .output()?;
+
+        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        let removed_count = parse_tagged_i64(&stdout, "REMOVED_COUNT").unwrap_or(0);
+        let remaining_count = parse_tagged_i64(&stdout, "REMAINING_COUNT").unwrap_or(-1);
+        let removed = parse_tagged_values(&stdout, "REMOVED");
+        let remaining = parse_tagged_values(&stdout, "REMAINING");
+
+        let output_text = format!(
+            "Startup disable attempt for '{}'\nRemoved matches: {}\nRemaining matches: {}\n{}{}",
+            program_name,
+            removed_count,
+            remaining_count,
+            if removed.is_empty() {
+                "No matching startup entries were removed."
+            } else {
+                "Removed entries:\n"
+            },
+            if removed.is_empty() {
+                String::new()
+            } else {
+                removed.join("\n")
+            },
+        );
+
+        let data = json!({
+            "program_name": program_name,
+            "removed_count": removed_count,
+            "remaining_count": remaining_count,
+            "removed": removed,
+            "remaining": remaining,
+            "stderr": stderr.trim(),
+        });
+
+        if output.status.success() && remaining_count == 0 && removed_count > 0 {
+            Ok(ToolResult::with_changes(
+                output_text,
+                data,
+                vec![ChangeRecord {
+                    description: format!("Disabled startup program entries matching '{}'", program_name),
+                    undo_tool: String::new(),
+                    undo_input: json!(null),
+                }],
+            ))
+        } else {
+            Ok(ToolResult::read_only(
+                format!(
+                    "{}\n{}{}",
+                    output_text,
+                    if stderr.trim().is_empty() { "" } else { "--- stderr ---\n" },
+                    stderr.trim()
+                ),
+                data,
+            ))
+        }
+    }
+}
+
+// ── WinFindFile ───────────────────────────────────────────────────────
+
+pub struct WinFindFile;
+
+#[async_trait]
+impl Tool for WinFindFile {
+    fn name(&self) -> &str {
+        "win_find_file"
+    }
+
+    fn description(&self) -> &str {
+        "Search for files by name under a root folder and return matching absolute paths."
+    }
+
+    fn input_schema(&self) -> Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "File name or partial file name to search for"
+                },
+                "root": {
+                    "type": "string",
+                    "description": "Root folder to search (default: USERPROFILE)"
+                },
+                "max_results": {
+                    "type": "integer",
+                    "description": "Maximum matches to return (default: 20, max: 100)",
+                    "minimum": 1,
+                    "maximum": 100,
+                    "default": 20
+                }
+            },
+            "required": ["query"]
+        })
+    }
+
+    fn safety_tier(&self) -> SafetyTier {
+        SafetyTier::ReadOnly
+    }
+
+    async fn execute(&self, input: &Value) -> Result<ToolResult> {
+        let query = input["query"]
+            .as_str()
+            .ok_or_else(|| anyhow::anyhow!("Missing required parameter: query"))?;
+        let default_root = std::env::var("USERPROFILE").unwrap_or_else(|_| "C:\\Users".to_string());
+        let root = input["root"]
+            .as_str()
+            .unwrap_or(default_root.as_str())
+            .to_string();
+        let max_results = input["max_results"]
+            .as_i64()
+            .unwrap_or(20)
+            .clamp(1, 100);
+        let query_escaped = escape_ps_single_quoted(query);
+        let root_escaped = escape_ps_single_quoted(&root);
+
+        let script = format!(
+            "\
+            $query = '{}'; \
+            $root = '{}'; \
+            $max = {}; \
+            if (-not (Test-Path -LiteralPath $root)) {{ \
+              Write-Output \"SEARCH_ERROR=ROOT_NOT_FOUND\"; \
+              Write-Output \"SEARCH_ROOT=$root\"; \
+              exit 0; \
+            }}; \
+            Get-ChildItem -LiteralPath $root -Recurse -File -ErrorAction SilentlyContinue | \
+              Where-Object {{ $_.Name -like \"*$query*\" }} | \
+              Select-Object -First $max | \
+              ForEach-Object {{ Write-Output \"MATCH=$($_.FullName)\" }}",
+            query_escaped, root_escaped, max_results
+        );
+
+        let output = super::hidden_cmd("powershell")
+            .args(["-NoProfile", "-Command", &script])
+            .output()?;
+
+        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        let matches = parse_tagged_values(&stdout, "MATCH");
+        let search_error = parse_tagged_values(&stdout, "SEARCH_ERROR")
+            .into_iter()
+            .next()
+            .unwrap_or_default();
+        let search_root = parse_tagged_values(&stdout, "SEARCH_ROOT")
+            .into_iter()
+            .next()
+            .unwrap_or_else(|| root.clone());
+
+        let output_text = if !search_error.is_empty() {
+            format!("Search failed: {} ({})", search_error, search_root)
+        } else if matches.is_empty() {
+            format!("No files matched '{}' under '{}'.", query, root)
+        } else {
+            format!(
+                "Found {} file(s) for '{}':\n{}",
+                matches.len(),
+                query,
+                matches.join("\n")
+            )
+        };
+
+        Ok(ToolResult::read_only(
+            output_text,
+            json!({
+                "query": query,
+                "root": root,
+                "max_results": max_results,
+                "matches": matches,
+                "search_error": search_error,
+                "search_root": search_root,
+                "stderr": stderr.trim(),
             }),
         ))
     }
@@ -953,5 +1346,21 @@ mod tests {
     fn strip_powershell_flags_unknown_flag_preserved() {
         // Unknown flags should stop stripping and be included in the result
         assert_eq!(strip_powershell_flags("-File script.ps1"), "-File script.ps1");
+    }
+
+    #[test]
+    fn parse_tagged_i64_extracts_value() {
+        let output = "FOO=1\nBAR=22\n";
+        assert_eq!(parse_tagged_i64(output, "BAR"), Some(22));
+        assert_eq!(parse_tagged_i64(output, "BAZ"), None);
+    }
+
+    #[test]
+    fn parse_tagged_values_extracts_multiple_values() {
+        let output = "MATCH=C:\\a.txt\nMATCH=C:\\b.txt\nOTHER=x";
+        assert_eq!(
+            parse_tagged_values(output, "MATCH"),
+            vec!["C:\\a.txt".to_string(), "C:\\b.txt".to_string()]
+        );
     }
 }

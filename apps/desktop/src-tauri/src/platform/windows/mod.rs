@@ -60,6 +60,9 @@ pub fn register_tools(router: &mut ToolRouter) {
 
     // Windows-specific tools
     router.register(Box::new(diagnostics::WinStartupPrograms));
+    router.register(Box::new(diagnostics::WinEmptyRecycleBin));
+    router.register(Box::new(diagnostics::WinDisableStartupProgram));
+    router.register(Box::new(diagnostics::WinFindFile));
     router.register(Box::new(diagnostics::WinServiceList));
     router.register(Box::new(diagnostics::WinRestartService));
 }

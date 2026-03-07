@@ -855,6 +855,9 @@ const TOOL_HUMAN_NAMES: Record<string, string> = {
   win_cancel_print_jobs: "Cancelling print jobs",
   win_move_file: "Moving file",
   win_startup_programs: "Checking startup programs",
+  win_disable_startup_program: "Disabling startup program",
+  win_empty_recycle_bin: "Emptying recycle bin",
+  win_find_file: "Searching files",
   win_service_list: "Listing services",
   win_restart_service: "Restarting service",
   // Knowledge tools
