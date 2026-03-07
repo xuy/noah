@@ -5,7 +5,7 @@ import { useSessionStore } from "../stores/sessionStore";
 import type { Message, ToolCall } from "../stores/chatStore";
 import { useAgent } from "../hooks/useAgent";
 import { parseResponse } from "../lib/parseResponse";
-import type { AssistantUiPayload } from "../lib/tauri-commands";
+import type { AssistantQuestion, AssistantUiPayload } from "../lib/tauri-commands";
 import * as commands from "../lib/tauri-commands";
 import { NoahIcon } from "./NoahIcon";
 
@@ -248,19 +248,30 @@ function ActionCard({
   situation,
   plan,
   actionLabel,
+  actionType,
+  questions,
   actionTaken,
   isProcessing,
   timestamp,
+  onAnswer,
+  onSkip,
   onDoIt,
 }: {
   situation: string;
   plan: string;
   actionLabel: string;
+  actionType?: string;
+  questions?: AssistantQuestion[];
   actionTaken?: boolean;
   isProcessing: boolean;
   timestamp: number;
+  onAnswer?: (answer: string) => void;
+  onSkip?: () => void;
   onDoIt: () => void;
 }) {
+  const [selectedOption, setSelectedOption] = useState<string>("");
+  const spaQuestion = actionType === "SPA" ? questions?.[0] : undefined;
+
   return (
     <div className="group animate-fade-in">
       <div className="rounded-xl border border-border-primary/50 bg-bg-secondary overflow-hidden">
@@ -288,11 +299,39 @@ function ActionCard({
           </div>
         </div>
 
+        {spaQuestion && (
+          <div className="px-5 pb-3">
+            <div className="rounded-lg border border-border-primary/50 bg-bg-tertiary/40 px-3.5 py-3">
+              <div className="text-xs font-semibold text-text-muted mb-1 tracking-wide">
+                {spaQuestion.header}
+              </div>
+              <div className="text-sm text-text-primary mb-2">{spaQuestion.question}</div>
+              <div className="space-y-2">
+                {spaQuestion.options.map((opt) => (
+                  <button
+                    key={opt.label}
+                    onClick={() => setSelectedOption(opt.label)}
+                    disabled={actionTaken || isProcessing}
+                    className={`w-full text-left rounded-lg border px-3 py-2 transition-colors cursor-pointer ${
+                      selectedOption === opt.label
+                        ? "border-accent-blue bg-accent-blue/10"
+                        : "border-border-primary bg-bg-secondary hover:bg-bg-tertiary"
+                    }`}
+                  >
+                    <div className="text-sm font-medium text-text-primary">{opt.label}</div>
+                    <div className="text-xs text-text-muted">{opt.description}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Action button */}
         <div className="px-5 pb-4">
           <button
-            onClick={onDoIt}
-            disabled={actionTaken || isProcessing}
+            onClick={() => (spaQuestion ? onAnswer?.(selectedOption) : onDoIt())}
+            disabled={actionTaken || isProcessing || (Boolean(spaQuestion) && !selectedOption)}
             className={`
               w-full py-2.5 rounded-lg text-base font-medium transition-all cursor-pointer
               ${
@@ -304,8 +343,17 @@ function ActionCard({
               }
             `}
           >
-            {actionTaken ? "Sent" : actionLabel}
+            {actionTaken ? "Sent" : spaQuestion ? "Submit" : actionLabel}
           </button>
+          {spaQuestion && onSkip && (
+            <button
+              onClick={onSkip}
+              disabled={actionTaken || isProcessing}
+              className="w-full py-2 mt-2 rounded-lg border border-border-primary text-text-secondary hover:bg-bg-tertiary cursor-pointer disabled:opacity-60"
+            >
+              Skip For Now
+            </button>
+          )}
         </div>
       </div>
       <div className="text-[10px] mt-1 text-text-muted opacity-0 group-hover:opacity-100 transition-opacity duration-150">
@@ -684,6 +732,8 @@ function MessageDisplay({
   openclawFormSaving,
   onSubmitOpenclawForm,
   onCancelOpenclawForm,
+  onSpaAnswer,
+  onSpaSkip,
 }: {
   message: Message;
   isProcessing: boolean;
@@ -702,6 +752,8 @@ function MessageDisplay({
     chatToken?: string;
   }) => Promise<void>;
   onCancelOpenclawForm: () => void;
+  onSpaAnswer: (messageId: string, answer: string) => void;
+  onSpaSkip: (messageId: string) => void;
 }) {
   // User confirmation pill
   if (message.role === "user" && message.actionConfirmation) {
@@ -723,6 +775,7 @@ function MessageDisplay({
         plan: ui.plan,
         actionLabel: ui.action.label,
         actionType: ui.action.type,
+        actionQuestions: ui.action.questions,
       };
     }
     if (ui.kind === "done") return { type: "done" as const, summary: ui.summary };
@@ -754,9 +807,13 @@ function MessageDisplay({
           situation={parsed.situation}
           plan={parsed.plan}
           actionLabel={parsed.actionLabel}
+          actionType={(parsed as { actionType?: string }).actionType}
+          questions={(parsed as { actionQuestions?: AssistantQuestion[] }).actionQuestions}
           actionTaken={message.actionTaken}
           isProcessing={isProcessing}
           timestamp={message.timestamp}
+          onAnswer={(answer) => onSpaAnswer(message.id, answer)}
+          onSkip={() => onSpaSkip(message.id)}
           onDoIt={() => (isOpenclawSetup ? onOpenOpenclawForm(message.id) : onConfirm(message.id))}
         />
       );
@@ -1110,6 +1167,26 @@ Chat channel: ${saved.chat_channel || "None"}`,
     [addMessage, markActionTaken, openclawActionMessageId, sendEvent],
   );
 
+  const handleSpaAnswer = useCallback(
+    async (messageId: string, answer: string) => {
+      if (!answer.trim()) return;
+      markActionTaken(messageId);
+      await sendEvent(
+        "USER_ANSWER_QUESTION",
+        JSON.stringify({ answer }),
+      );
+    },
+    [markActionTaken, sendEvent],
+  );
+
+  const handleSpaSkip = useCallback(
+    async (messageId: string) => {
+      markActionTaken(messageId);
+      await sendEvent("USER_SKIP_OPTIONAL");
+    },
+    [markActionTaken, sendEvent],
+  );
+
   // Shared floating input card
   const inputCard = (
     <div className="max-w-4xl w-full mx-auto">
@@ -1203,6 +1280,8 @@ Chat channel: ${saved.chat_channel || "None"}`,
                     openclawFormSaving={openclawFormSaving}
                     onSubmitOpenclawForm={handleSubmitOpenclawForm}
                     onCancelOpenclawForm={() => setOpenclawActionMessageId(null)}
+                    onSpaAnswer={handleSpaAnswer}
+                    onSpaSkip={handleSpaSkip}
                   />
                 ));
               })()}

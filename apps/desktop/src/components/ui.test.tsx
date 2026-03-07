@@ -267,6 +267,60 @@ describe("ChangesBlock", () => {
   });
 });
 
+// ── SPA Panel Rendering (typed + historical marker parity) ───────────────────
+
+describe("SPA Panel", () => {
+  it("renders SPA panel from historical [SITUATION]/[PLAN]/[ACTION] text", async () => {
+    useChatStore.setState({
+      messages: [
+        {
+          id: "msg-spa-legacy",
+          role: "assistant",
+          content: `[SITUATION]
+OpenClaw is installed but not configured.
+[PLAN]
+Collect provider credentials securely.
+[ACTION:Start Setup]`,
+          timestamp: Date.now(),
+        },
+      ],
+    });
+
+    render(<ChatPanel />);
+    await screen.findByText("Situation");
+    screen.getByText("Plan");
+    screen.getByText("Start Setup");
+  });
+
+  it("renders SPA panel from typed assistantUi payload", async () => {
+    useChatStore.setState({
+      messages: [
+        {
+          id: "msg-spa-typed",
+          role: "assistant",
+          content: "fallback text",
+          timestamp: Date.now(),
+          assistantUi: {
+            kind: "card",
+            situation: "OpenClaw needs secure credential capture.",
+            plan: "Use Noah secure form, then verify setup.",
+            action: {
+              label: "Open Secure Form",
+              type: "OPENCLAW_SECURE_CAPTURE",
+            },
+          },
+        },
+      ],
+    });
+
+    render(<ChatPanel />);
+    await screen.findByText("Situation");
+    screen.getByText("Plan");
+    screen.getByText("Open Secure Form");
+    screen.getByText("OpenClaw needs secure credential capture.");
+  });
+});
+
 // ── Sidebar session list ─────────────────────────────────────────────────────
 
 const mockSidebarSession = { startNewProblem: vi.fn() };

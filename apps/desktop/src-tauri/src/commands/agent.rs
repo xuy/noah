@@ -13,7 +13,7 @@ use crate::AppState;
 pub enum AssistantActionType {
     RunStep,
     OpenclawSecureCapture,
-    AskUserQuestion,
+    Spa,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -94,7 +94,7 @@ struct AnswerPayload {
 
 fn infer_action_type(context: &str, label: &str, has_questions: bool) -> AssistantActionType {
     if has_questions {
-        return AssistantActionType::AskUserQuestion;
+        return AssistantActionType::Spa;
     }
     let lower = format!("{}\n{}", context, label).to_lowercase();
     if lower.contains("openclaw")
@@ -123,8 +123,8 @@ fn parse_action_label(s: &str) -> Option<String> {
     Some(rest[..j].trim().to_string())
 }
 
-fn parse_ask_user_questions(s: &str) -> Option<Vec<AssistantQuestion>> {
-    let marker = "[ASK_USER_QUESTION]";
+fn parse_spa_questions(s: &str) -> Option<Vec<AssistantQuestion>> {
+    let marker = "[SPA_QUESTIONS]";
     let i = s.find(marker)?;
     let raw = s[i + marker.len()..].trim();
     if raw.is_empty() {
@@ -158,7 +158,7 @@ pub(crate) fn parse_assistant_ui(text: &str) -> Option<AssistantUiPayload> {
     let situation = parse_between(text, "[SITUATION]", "[PLAN]")?;
     let plan = parse_between(text, "[PLAN]", "[ACTION:")?;
     let label = parse_action_label(text)?;
-    let questions = parse_ask_user_questions(text);
+    let questions = parse_spa_questions(text);
     let action_type = infer_action_type(text, &label, questions.is_some());
 
     Some(AssistantUiPayload::Card(AssistantCardUi {
