@@ -271,7 +271,7 @@ function ActionCard({
           </button>
         </div>
       </div>
-      <div className="text-[10px] mt-1 text-text-muted opacity-0 group-hover:opacity-100 transition-opacity">
+      <div className="text-[10px] mt-1 text-text-muted opacity-0 group-hover:opacity-100 transition-opacity duration-150">
         {formatTime(timestamp)}
       </div>
     </div>
@@ -321,59 +321,54 @@ function DoneCard({
 
   return (
     <div className="group animate-fade-in">
-      <div>
-        <div className="rounded-xl border-l-2 border-accent-green/40 bg-accent-green/5 px-5 py-4">
-          <div className="flex items-start gap-2.5">
-            <span className="text-accent-green text-lg mt-0.5">{"\u2713"}</span>
-            <div className="flex-1">
-              <div className="text-base text-text-primary leading-relaxed">
-                {summary}
-              </div>
+      {/* Summary card */}
+      <div className="rounded-xl border-l-2 border-accent-green/40 bg-accent-green/5 px-5 py-4">
+        <div className="flex items-start gap-2.5">
+          <span className="text-accent-green text-lg mt-0.5">{"\u2713"}</span>
+          <div className="flex-1">
+            <div className="text-base text-text-primary leading-relaxed">
+              {summary}
             </div>
           </div>
         </div>
+      </div>
 
-        <div className="text-[10px] mt-1 text-text-muted opacity-0 group-hover:opacity-100 transition-opacity">
-          {formatTime(timestamp)}
-        </div>
-
-        {/* Resolution prompt — only on the latest done card, after load */}
+      {/* Metadata row — hover to reveal timestamp & resolved status */}
+      <div className="flex items-center gap-3 mt-1.5 min-h-[24px]">
+        {/* Resolution prompt or status */}
         {isLatestDone && loaded && resolved === null && (
-          <div className="flex items-center gap-2.5 mt-3 ml-1">
-            <span className="text-xs text-text-muted">
-              Did this fix your issue?
-            </span>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-text-muted">Fixed?</span>
             <button
               onClick={() => handleResolve(true)}
-              className="px-3 py-1.5 rounded-lg text-xs font-medium text-accent-green bg-accent-green/10 hover:bg-accent-green/20 transition-colors cursor-pointer"
+              className="px-2.5 py-1 rounded-lg text-xs font-medium text-accent-green bg-accent-green/10 hover:bg-accent-green/20 transition-colors cursor-pointer"
             >
-              Yes, all good
+              Yes
             </button>
             <button
               onClick={() => handleResolve(false)}
-              className="px-3 py-1.5 rounded-lg text-xs text-text-muted hover:bg-bg-tertiary transition-colors cursor-pointer"
+              className="px-2.5 py-1 rounded-lg text-xs text-text-muted hover:bg-bg-tertiary transition-colors cursor-pointer"
             >
               Not quite
             </button>
           </div>
         )}
-
-        {/* Resolution confirmation */}
         {resolved === true && (
-          <div className="flex items-center gap-1.5 mt-3 ml-1">
-            <span className="text-accent-green text-sm">{"\u2713"}</span>
-            <span className="text-xs text-text-muted">
-              Marked as resolved
-            </span>
+          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+            <span className="text-accent-green text-xs">{"\u2713"}</span>
+            <span className="text-xs text-text-muted">Resolved</span>
           </div>
         )}
         {resolved === false && (
-          <div className="mt-3 ml-1">
-            <span className="text-xs text-text-muted">
-              Got it &mdash; keep chatting and I'll keep working on it.
-            </span>
-          </div>
+          <span className="text-xs text-text-muted opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+            Still working on it
+          </span>
         )}
+
+        {/* Timestamp — hover reveal */}
+        <span className="text-[10px] text-text-muted opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+          {formatTime(timestamp)}
+        </span>
       </div>
     </div>
   );
@@ -400,7 +395,7 @@ function InfoCard({
           </div>
         </div>
       </div>
-      <div className="text-[10px] mt-1 text-text-muted opacity-0 group-hover:opacity-100 transition-opacity">
+      <div className="text-[10px] mt-1 text-text-muted opacity-0 group-hover:opacity-100 transition-opacity duration-150">
         {formatTime(timestamp)}
       </div>
     </div>
@@ -416,7 +411,7 @@ function ConfirmationPill({ timestamp }: { timestamp: number }) {
         <span>{"\u2713"}</span>
         <span>Go ahead</span>
       </div>
-      <div className="text-[10px] mt-1 text-text-muted opacity-0 group-hover:opacity-100 transition-opacity">
+      <div className="text-[10px] mt-1 text-text-muted opacity-0 group-hover:opacity-100 transition-opacity duration-150">
         {formatTime(timestamp)}
       </div>
     </div>
@@ -437,7 +432,7 @@ function MessageBubble({ message }: { message: Message }) {
               {message.content}
             </div>
           </div>
-          <div className="text-[10px] mt-1 text-text-muted text-right opacity-0 group-hover:opacity-100 transition-opacity">
+          <div className="text-[10px] mt-1 text-text-muted text-right opacity-0 group-hover:opacity-100 transition-opacity duration-150">
             {formatTime(message.timestamp)}
           </div>
         </div>
@@ -460,7 +455,7 @@ function MessageBubble({ message }: { message: Message }) {
         </div>
       )}
 
-      <div className="text-[10px] mt-1.5 text-text-muted opacity-0 group-hover:opacity-100 transition-opacity">
+      <div className="text-[10px] mt-1.5 text-text-muted opacity-0 group-hover:opacity-100 transition-opacity duration-150">
         {formatTime(message.timestamp)}
       </div>
     </div>
