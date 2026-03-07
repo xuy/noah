@@ -133,7 +133,103 @@ fn parse_spa_questions(s: &str) -> Option<Vec<AssistantQuestion>> {
     serde_json::from_str::<Vec<AssistantQuestion>>(raw).ok()
 }
 
+fn parse_assistant_ui_json(text: &str) -> Option<AssistantUiPayload> {
+    let candidate = if let Some(start) = text.find("```json") {
+        let rest = &text[start + "```json".len()..];
+        let end = rest.find("```")?;
+        rest[..end].trim().to_string()
+    } else if let (Some(start), Some(end)) = (text.find('{'), text.rfind('}')) {
+        text[start..=end].trim().to_string()
+    } else {
+        text.trim().to_string()
+    };
+    if !candidate.starts_with('{') {
+        return None;
+    }
+    let v: serde_json::Value = serde_json::from_str(&candidate).ok()?;
+    let kind = v.get("kind")?.as_str()?.to_lowercase();
+    match kind.as_str() {
+        "done" | "info" => {
+            let summary = v.get("summary")?.as_str()?.to_string();
+            Some(if kind == "done" {
+                AssistantUiPayload::Done(AssistantInfoUi {
+                    kind,
+                    summary,
+                })
+            } else {
+                AssistantUiPayload::Info(AssistantInfoUi {
+                    kind,
+                    summary,
+                })
+            })
+        }
+        "card" => {
+            let situation = v.get("situation")?.as_str()?.to_string();
+            let plan = v.get("plan")?.as_str()?.to_string();
+            let action_v = v.get("action")?;
+            let label = action_v.get("label")?.as_str()?.to_string();
+            let action_type = action_v
+                .get("type")
+                .and_then(|x| x.as_str())
+                .map(|s| s.to_uppercase())
+                .and_then(|s| match s.as_str() {
+                    "RUN_STEP" => Some(AssistantActionType::RunStep),
+                    "OPENCLAW_SECURE_CAPTURE" => Some(AssistantActionType::OpenclawSecureCapture),
+                    "SPA" => Some(AssistantActionType::Spa),
+                    _ => None,
+                })
+                .unwrap_or(AssistantActionType::RunStep);
+            let questions = action_v.get("questions").and_then(|q| q.as_array()).map(|arr| {
+                arr.iter()
+                    .filter_map(|q| {
+                        let question = q.get("question")?.as_str()?.to_string();
+                        let header = q.get("header")?.as_str()?.to_string();
+                        let multi_select = q
+                            .get("multiSelect")
+                            .and_then(|v| v.as_bool())
+                            .unwrap_or(false);
+                        let options = q
+                            .get("options")
+                            .and_then(|o| o.as_array())
+                            .map(|opts| {
+                                opts.iter()
+                                    .filter_map(|o| {
+                                        Some(AssistantQuestionOption {
+                                            label: o.get("label")?.as_str()?.to_string(),
+                                            description: o.get("description")?.as_str()?.to_string(),
+                                        })
+                                    })
+                                    .collect::<Vec<_>>()
+                            })
+                            .unwrap_or_default();
+                        Some(AssistantQuestion {
+                            question,
+                            header,
+                            options,
+                            multi_select,
+                        })
+                    })
+                    .collect::<Vec<_>>()
+            });
+            Some(AssistantUiPayload::Card(AssistantCardUi {
+                kind: "card".to_string(),
+                situation,
+                plan,
+                action: AssistantCardAction {
+                    label,
+                    action_type,
+                    questions,
+                },
+            }))
+        }
+        _ => None,
+    }
+}
+
 pub(crate) fn parse_assistant_ui(text: &str) -> Option<AssistantUiPayload> {
+    if let Some(ui) = parse_assistant_ui_json(text) {
+        return Some(ui);
+    }
     if text.contains("[DONE]") {
         let summary = text
             .split_once("[DONE]")
@@ -395,6 +491,35 @@ mod tests {
         match ui {
             Some(AssistantUiPayload::Done(done)) => assert_eq!(done.summary, "All set"),
             _ => panic!("expected done ui"),
+        }
+    }
+
+    #[test]
+    fn parses_json_card_ui() {
+        let text = r#"{"kind":"card","situation":"CPU is high","plan":"Stop heavy app","action":{"label":"Stop App","type":"RUN_STEP"}}"#;
+        let ui = parse_assistant_ui(text);
+        match ui {
+            Some(AssistantUiPayload::Card(card)) => {
+                assert_eq!(card.action.label, "Stop App");
+                assert_eq!(card.situation, "CPU is high");
+            }
+            _ => panic!("expected json card ui"),
+        }
+    }
+
+    #[test]
+    fn parses_json_card_with_prefixed_text() {
+        let text = r#"I ran diagnostics.
+{
+  "kind":"card",
+  "situation":"CPU is high",
+  "plan":"Stop heavy app",
+  "action":{"label":"Stop App","type":"RUN_STEP"}
+}"#;
+        let ui = parse_assistant_ui(text);
+        match ui {
+            Some(AssistantUiPayload::Card(card)) => assert_eq!(card.action.label, "Stop App"),
+            _ => panic!("expected json card ui with preface"),
         }
     }
 }

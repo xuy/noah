@@ -56,15 +56,6 @@ async fn maybe_simulate_openclaw_secure_capture(
     db: &Arc<Mutex<rusqlite::Connection>>,
 ) -> Option<DebugOpenclawCredentialCapture> {
     let lower = output.to_lowercase();
-    let looks_like_openclaw_action = lower.contains("[action:")
-        && lower.contains("openclaw")
-        && (lower.contains("secure credential form")
-            || lower.contains("secure form")
-            || lower.contains("capture")
-            || lower.contains("credentials were submitted"));
-    if !looks_like_openclaw_action {
-        return None;
-    }
 
     let provider = if lower.contains("anthropic") {
         "Anthropic".to_string()
