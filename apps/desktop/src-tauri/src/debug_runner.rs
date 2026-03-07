@@ -26,6 +26,15 @@ fn openclaw_config_path() -> Result<PathBuf> {
     Ok(PathBuf::from(home).join(".openclaw/openclaw.json"))
 }
 
+fn first_non_empty_env(names: &[&str]) -> Option<String> {
+    names.iter().find_map(|name| {
+        std::env::var(name)
+            .ok()
+            .map(|v| v.trim().to_string())
+            .filter(|v| !v.is_empty())
+    })
+}
+
 async fn maybe_simulate_openclaw_secure_capture(
     output: &str,
     db: &Arc<Mutex<rusqlite::Connection>>,
@@ -59,15 +68,25 @@ async fn maybe_simulate_openclaw_secure_capture(
         None
     };
 
-    let provider_token = std::env::var("NOAH_DEBUG_OPENCLAW_PROVIDER_TOKEN")
-        .ok()
-        .filter(|v| !v.trim().is_empty())
-        .unwrap_or_else(|| format!("debug-{}", uuid::Uuid::new_v4()));
+    let provider_token = first_non_empty_env(&[
+        "NOAH_DEBUG_OPENCLAW_PROVIDER_TOKEN",
+        "NOAH_DEBUG_OPENCLAW_ANTHROPIC_TOKEN",
+        "NOAH_DEBUG_OPENCLAW_OPENAI_TOKEN",
+    ])
+    .unwrap_or_else(|| format!("debug-{}", uuid::Uuid::new_v4()));
     let chat_token = chat_channel.as_ref().map(|ch| {
-        std::env::var("NOAH_DEBUG_OPENCLAW_CHAT_TOKEN")
-            .ok()
-            .filter(|v| !v.trim().is_empty())
-            .unwrap_or_else(|| format!("debug-{}-{}", ch.to_lowercase(), uuid::Uuid::new_v4()))
+        let env_token = match ch.to_lowercase().as_str() {
+            "telegram" => first_non_empty_env(&[
+                "NOAH_DEBUG_OPENCLAW_CHAT_TOKEN",
+                "NOAH_DEBUG_OPENCLAW_TELEGRAM_TOKEN",
+            ]),
+            "discord" => first_non_empty_env(&[
+                "NOAH_DEBUG_OPENCLAW_CHAT_TOKEN",
+                "NOAH_DEBUG_OPENCLAW_DISCORD_TOKEN",
+            ]),
+            _ => first_non_empty_env(&["NOAH_DEBUG_OPENCLAW_CHAT_TOKEN"]),
+        };
+        env_token.unwrap_or_else(|| format!("debug-{}-{}", ch.to_lowercase(), uuid::Uuid::new_v4()))
     });
 
     let path = match openclaw_config_path() {
