@@ -880,7 +880,7 @@ export function ChatPanel() {
               })()}
               {isProcessing && <ThinkingIndicator />}
             </div>
-            <div className="sticky bottom-0 pt-4 pb-4 bg-gradient-to-t from-bg-primary from-80% to-transparent">
+            <div className="sticky bottom-0 pt-6 pb-4 bg-gradient-to-t from-bg-primary from-90% to-transparent">
               {inputCard}
             </div>
             <div ref={messagesEndRef} />
