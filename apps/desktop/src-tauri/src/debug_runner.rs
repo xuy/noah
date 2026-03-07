@@ -363,7 +363,7 @@ pub async fn run_prompt_flow(prompt: &str, max_turns: usize) -> Result<PromptRun
             break;
         }
 
-        if let Some(AssistantUiPayload::Card(card)) = parse_assistant_ui(&output) {
+        if let Some(AssistantUiPayload::Spa(card)) = parse_assistant_ui(&output) {
             if card.action.action_type == AssistantActionType::OpenclawSecureCapture {
                 if let Some(saved) = maybe_simulate_openclaw_secure_capture(&output, &db_arc).await {
                     let channel = saved.chat_channel.unwrap_or_else(|| "none".to_string());

@@ -248,30 +248,19 @@ function ActionCard({
   situation,
   plan,
   actionLabel,
-  actionType,
-  questions,
   actionTaken,
   isProcessing,
   timestamp,
-  onAnswer,
-  onSkip,
   onDoIt,
 }: {
   situation: string;
   plan: string;
   actionLabel: string;
-  actionType?: string;
-  questions?: AssistantQuestion[];
   actionTaken?: boolean;
   isProcessing: boolean;
   timestamp: number;
-  onAnswer?: (answer: string) => void;
-  onSkip?: () => void;
   onDoIt: () => void;
 }) {
-  const [selectedOption, setSelectedOption] = useState<string>("");
-  const spaQuestion = actionType === "SPA" ? questions?.[0] : undefined;
-
   return (
     <div className="group animate-fade-in">
       <div className="rounded-xl border border-border-primary/50 bg-bg-secondary overflow-hidden">
@@ -299,39 +288,11 @@ function ActionCard({
           </div>
         </div>
 
-        {spaQuestion && (
-          <div className="px-5 pb-3">
-            <div className="rounded-lg border border-border-primary/50 bg-bg-tertiary/40 px-3.5 py-3">
-              <div className="text-xs font-semibold text-text-muted mb-1 tracking-wide">
-                {spaQuestion.header}
-              </div>
-              <div className="text-sm text-text-primary mb-2">{spaQuestion.question}</div>
-              <div className="space-y-2">
-                {spaQuestion.options.map((opt) => (
-                  <button
-                    key={opt.label}
-                    onClick={() => setSelectedOption(opt.label)}
-                    disabled={actionTaken || isProcessing}
-                    className={`w-full text-left rounded-lg border px-3 py-2 transition-colors cursor-pointer ${
-                      selectedOption === opt.label
-                        ? "border-accent-blue bg-accent-blue/10"
-                        : "border-border-primary bg-bg-secondary hover:bg-bg-tertiary"
-                    }`}
-                  >
-                    <div className="text-sm font-medium text-text-primary">{opt.label}</div>
-                    <div className="text-xs text-text-muted">{opt.description}</div>
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-
         {/* Action button */}
         <div className="px-5 pb-4">
           <button
-            onClick={() => (spaQuestion ? onAnswer?.(selectedOption) : onDoIt())}
-            disabled={actionTaken || isProcessing || (Boolean(spaQuestion) && !selectedOption)}
+            onClick={onDoIt}
+            disabled={actionTaken || isProcessing}
             className={`
               w-full py-2.5 rounded-lg text-base font-medium transition-all cursor-pointer
               ${
@@ -343,17 +304,77 @@ function ActionCard({
               }
             `}
           >
-            {actionTaken ? "Sent" : spaQuestion ? "Submit" : actionLabel}
+            {actionTaken ? "Sent" : actionLabel}
           </button>
-          {spaQuestion && onSkip && (
-            <button
-              onClick={onSkip}
-              disabled={actionTaken || isProcessing}
-              className="w-full py-2 mt-2 rounded-lg border border-border-primary text-text-secondary hover:bg-bg-tertiary cursor-pointer disabled:opacity-60"
-            >
-              Skip For Now
-            </button>
-          )}
+        </div>
+      </div>
+      <div className="text-[10px] mt-1 text-text-muted opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+        {formatTime(timestamp)}
+      </div>
+    </div>
+  );
+}
+
+function UserQuestionCard({
+  questions,
+  actionTaken,
+  isProcessing,
+  timestamp,
+  onAnswer,
+  onSkip,
+}: {
+  questions: AssistantQuestion[];
+  actionTaken?: boolean;
+  isProcessing: boolean;
+  timestamp: number;
+  onAnswer: (answer: string) => void;
+  onSkip: () => void;
+}) {
+  const [selectedOption, setSelectedOption] = useState<string>("");
+  const first = questions[0];
+  if (!first) return null;
+
+  return (
+    <div className="group animate-fade-in">
+      <div className="rounded-xl border border-border-primary/50 bg-bg-secondary overflow-hidden">
+        <div className="px-5 pt-4 pb-3">
+          <div className="text-sm font-semibold text-accent-blue mb-1.5 tracking-wide">
+            {first.header}
+          </div>
+          <div className="text-base text-text-primary mb-3">{first.question}</div>
+          <div className="space-y-2">
+            {first.options.map((opt) => (
+              <button
+                key={opt.label}
+                onClick={() => setSelectedOption(opt.label)}
+                disabled={actionTaken || isProcessing}
+                className={`w-full text-left rounded-lg border px-3 py-2 transition-colors cursor-pointer ${
+                  selectedOption === opt.label
+                    ? "border-accent-blue bg-accent-blue/10"
+                    : "border-border-primary bg-bg-secondary hover:bg-bg-tertiary"
+                }`}
+              >
+                <div className="text-sm font-medium text-text-primary">{opt.label}</div>
+                <div className="text-xs text-text-muted">{opt.description}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="px-5 pb-4">
+          <button
+            onClick={() => onAnswer(selectedOption)}
+            disabled={actionTaken || isProcessing || !selectedOption}
+            className="w-full py-2.5 rounded-lg text-base font-medium transition-all cursor-pointer bg-accent-blue text-white hover:bg-accent-blue/80 disabled:opacity-60"
+          >
+            {actionTaken ? "Sent" : "Submit"}
+          </button>
+          <button
+            onClick={onSkip}
+            disabled={actionTaken || isProcessing}
+            className="w-full py-2 mt-2 rounded-lg border border-border-primary text-text-secondary hover:bg-bg-tertiary cursor-pointer disabled:opacity-60"
+          >
+            Skip For Now
+          </button>
         </div>
       </div>
       <div className="text-[10px] mt-1 text-text-muted opacity-0 group-hover:opacity-100 transition-opacity duration-150">
@@ -768,14 +789,19 @@ function MessageDisplay({
   // Parse assistant messages for structured format
   const parsedFromUi = (ui: AssistantUiPayload | undefined) => {
     if (!ui) return null;
-    if (ui.kind === "card") {
+    if (ui.kind === "spa") {
       return {
         type: "action" as const,
         situation: ui.situation,
         plan: ui.plan,
         actionLabel: ui.action.label,
         actionType: ui.action.type,
-        actionQuestions: ui.action.questions,
+      };
+    }
+    if (ui.kind === "user_question") {
+      return {
+        type: "user_question" as const,
+        questions: ui.questions,
       };
     }
     if (ui.kind === "done") return { type: "done" as const, summary: ui.summary };
@@ -807,17 +833,25 @@ function MessageDisplay({
           situation={parsed.situation}
           plan={parsed.plan}
           actionLabel={parsed.actionLabel}
-          actionType={(parsed as { actionType?: string }).actionType}
-          questions={(parsed as { actionQuestions?: AssistantQuestion[] }).actionQuestions}
+          actionTaken={message.actionTaken}
+          isProcessing={isProcessing}
+          timestamp={message.timestamp}
+          onDoIt={() => (isOpenclawSetup ? onOpenOpenclawForm(message.id) : onConfirm(message.id))}
+        />
+      );
+      }
+      break;
+    case "user_question":
+      card = (
+        <UserQuestionCard
+          questions={(parsed as { questions: AssistantQuestion[] }).questions}
           actionTaken={message.actionTaken}
           isProcessing={isProcessing}
           timestamp={message.timestamp}
           onAnswer={(answer) => onSpaAnswer(message.id, answer)}
           onSkip={() => onSpaSkip(message.id)}
-          onDoIt={() => (isOpenclawSetup ? onOpenOpenclawForm(message.id) : onConfirm(message.id))}
         />
       );
-      }
       break;
     case "done":
       card = <DoneCard summary={parsed.summary} timestamp={message.timestamp} isLatestDone={isLatestDone} sessionId={sessionId} />;

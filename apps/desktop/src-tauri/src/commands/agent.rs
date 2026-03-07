@@ -13,7 +13,6 @@ use crate::AppState;
 pub enum AssistantActionType {
     RunStep,
     OpenclawSecureCapture,
-    Spa,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -41,11 +40,17 @@ pub struct AssistantCardAction {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct AssistantCardUi {
+pub struct AssistantSpaUi {
     pub kind: String,
     pub situation: String,
     pub plan: String,
     pub action: AssistantCardAction,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct AssistantUserQuestionUi {
+    pub kind: String,
+    pub questions: Vec<AssistantQuestion>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -57,7 +62,8 @@ pub struct AssistantInfoUi {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(untagged)]
 pub enum AssistantUiPayload {
-    Card(AssistantCardUi),
+    Spa(AssistantSpaUi),
+    UserQuestion(AssistantUserQuestionUi),
     Done(AssistantInfoUi),
     Info(AssistantInfoUi),
 }
@@ -92,10 +98,7 @@ struct AnswerPayload {
     answers: Option<serde_json::Value>,
 }
 
-fn infer_action_type(context: &str, label: &str, has_questions: bool) -> AssistantActionType {
-    if has_questions {
-        return AssistantActionType::Spa;
-    }
+fn infer_action_type(context: &str, label: &str) -> AssistantActionType {
     let lower = format!("{}\n{}", context, label).to_lowercase();
     if lower.contains("openclaw")
         && (lower.contains("secure credential form")
@@ -121,16 +124,6 @@ fn parse_action_label(s: &str) -> Option<String> {
     let rest = &s[i + marker.len()..];
     let j = rest.find(']')?;
     Some(rest[..j].trim().to_string())
-}
-
-fn parse_spa_questions(s: &str) -> Option<Vec<AssistantQuestion>> {
-    let marker = "[SPA_QUESTIONS]";
-    let i = s.find(marker)?;
-    let raw = s[i + marker.len()..].trim();
-    if raw.is_empty() {
-        return None;
-    }
-    serde_json::from_str::<Vec<AssistantQuestion>>(raw).ok()
 }
 
 fn parse_assistant_ui_json(text: &str) -> Option<AssistantUiPayload> {
@@ -163,7 +156,7 @@ fn parse_assistant_ui_json(text: &str) -> Option<AssistantUiPayload> {
                 })
             })
         }
-        "card" => {
+        "spa" => {
             let situation = v.get("situation")?.as_str()?.to_string();
             let plan = v.get("plan")?.as_str()?.to_string();
             let action_v = v.get("action")?;
@@ -175,51 +168,60 @@ fn parse_assistant_ui_json(text: &str) -> Option<AssistantUiPayload> {
                 .and_then(|s| match s.as_str() {
                     "RUN_STEP" => Some(AssistantActionType::RunStep),
                     "OPENCLAW_SECURE_CAPTURE" => Some(AssistantActionType::OpenclawSecureCapture),
-                    "SPA" => Some(AssistantActionType::Spa),
                     _ => None,
                 })
                 .unwrap_or(AssistantActionType::RunStep);
-            let questions = action_v.get("questions").and_then(|q| q.as_array()).map(|arr| {
-                arr.iter()
-                    .filter_map(|q| {
-                        let question = q.get("question")?.as_str()?.to_string();
-                        let header = q.get("header")?.as_str()?.to_string();
-                        let multi_select = q
-                            .get("multiSelect")
-                            .and_then(|v| v.as_bool())
-                            .unwrap_or(false);
-                        let options = q
-                            .get("options")
-                            .and_then(|o| o.as_array())
-                            .map(|opts| {
-                                opts.iter()
-                                    .filter_map(|o| {
-                                        Some(AssistantQuestionOption {
-                                            label: o.get("label")?.as_str()?.to_string(),
-                                            description: o.get("description")?.as_str()?.to_string(),
-                                        })
-                                    })
-                                    .collect::<Vec<_>>()
-                            })
-                            .unwrap_or_default();
-                        Some(AssistantQuestion {
-                            question,
-                            header,
-                            options,
-                            multi_select,
-                        })
-                    })
-                    .collect::<Vec<_>>()
-            });
-            Some(AssistantUiPayload::Card(AssistantCardUi {
-                kind: "card".to_string(),
+            Some(AssistantUiPayload::Spa(AssistantSpaUi {
+                kind: "spa".to_string(),
                 situation,
                 plan,
                 action: AssistantCardAction {
                     label,
                     action_type,
-                    questions,
+                    questions: None,
                 },
+            }))
+        }
+        "user_question" => {
+            let questions = v
+                .get("questions")
+                .and_then(|q| q.as_array())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|q| {
+                            let question = q.get("question")?.as_str()?.to_string();
+                            let header = q.get("header")?.as_str()?.to_string();
+                            let multi_select = q
+                                .get("multiSelect")
+                                .and_then(|v| v.as_bool())
+                                .unwrap_or(false);
+                            let options = q
+                                .get("options")
+                                .and_then(|o| o.as_array())
+                                .map(|opts| {
+                                    opts.iter()
+                                        .filter_map(|o| {
+                                            Some(AssistantQuestionOption {
+                                                label: o.get("label")?.as_str()?.to_string(),
+                                                description: o.get("description")?.as_str()?.to_string(),
+                                            })
+                                        })
+                                        .collect::<Vec<_>>()
+                                })
+                                .unwrap_or_default();
+                            Some(AssistantQuestion {
+                                question,
+                                header,
+                                options,
+                                multi_select,
+                            })
+                        })
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default();
+            Some(AssistantUiPayload::UserQuestion(AssistantUserQuestionUi {
+                kind: "user_question".to_string(),
+                questions,
             }))
         }
         _ => None,
@@ -254,17 +256,16 @@ pub(crate) fn parse_assistant_ui(text: &str) -> Option<AssistantUiPayload> {
     let situation = parse_between(text, "[SITUATION]", "[PLAN]")?;
     let plan = parse_between(text, "[PLAN]", "[ACTION:")?;
     let label = parse_action_label(text)?;
-    let questions = parse_spa_questions(text);
-    let action_type = infer_action_type(text, &label, questions.is_some());
+    let action_type = infer_action_type(text, &label);
 
-    Some(AssistantUiPayload::Card(AssistantCardUi {
-        kind: "card".to_string(),
+    Some(AssistantUiPayload::Spa(AssistantSpaUi {
+        kind: "spa".to_string(),
         situation,
         plan,
         action: AssistantCardAction {
             label,
             action_type,
-            questions,
+            questions: None,
         },
     }))
 }
@@ -475,7 +476,7 @@ mod tests {
         let text = "[SITUATION]\nA\n[PLAN]\nB\n[ACTION:Do it]";
         let ui = parse_assistant_ui(text);
         match ui {
-            Some(AssistantUiPayload::Card(card)) => {
+            Some(AssistantUiPayload::Spa(card)) => {
                 assert_eq!(card.situation, "A");
                 assert_eq!(card.plan, "B");
                 assert_eq!(card.action.label, "Do it");
@@ -496,10 +497,10 @@ mod tests {
 
     #[test]
     fn parses_json_card_ui() {
-        let text = r#"{"kind":"card","situation":"CPU is high","plan":"Stop heavy app","action":{"label":"Stop App","type":"RUN_STEP"}}"#;
+        let text = r#"{"kind":"spa","situation":"CPU is high","plan":"Stop heavy app","action":{"label":"Stop App","type":"RUN_STEP"}}"#;
         let ui = parse_assistant_ui(text);
         match ui {
-            Some(AssistantUiPayload::Card(card)) => {
+            Some(AssistantUiPayload::Spa(card)) => {
                 assert_eq!(card.action.label, "Stop App");
                 assert_eq!(card.situation, "CPU is high");
             }
@@ -511,14 +512,14 @@ mod tests {
     fn parses_json_card_with_prefixed_text() {
         let text = r#"I ran diagnostics.
 {
-  "kind":"card",
+  "kind":"spa",
   "situation":"CPU is high",
   "plan":"Stop heavy app",
   "action":{"label":"Stop App","type":"RUN_STEP"}
 }"#;
         let ui = parse_assistant_ui(text);
         match ui {
-            Some(AssistantUiPayload::Card(card)) => assert_eq!(card.action.label, "Stop App"),
+            Some(AssistantUiPayload::Spa(card)) => assert_eq!(card.action.label, "Stop App"),
             _ => panic!("expected json card ui with preface"),
         }
     }

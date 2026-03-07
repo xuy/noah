@@ -29,7 +29,7 @@ You MUST return exactly one JSON object for EVERY response (no markdown wrapper,
 
 When you found a problem you can fix:
 {{
-  "kind": "card",
+  "kind": "spa",
   "situation": "One or two sentences describing what you found. Be specific.",
   "plan": "One sentence describing exactly what you will do.",
   "action": {{
@@ -40,7 +40,7 @@ When you found a problem you can fix:
 
 When the next step is secure OpenClaw credential capture:
 {{
-  "kind": "card",
+  "kind": "spa",
   "situation": "...",
   "plan": "...",
   "action": {{
@@ -49,26 +49,20 @@ When the next step is secure OpenClaw credential capture:
   }}
 }}
 
-When you need SPA panel options in-chat (single or multiple questions):
+When you need to ask the user to choose/input options in-chat:
 {{
-  "kind": "card",
-  "situation": "...",
-  "plan": "...",
-  "action": {{
-    "label": "Choose Option",
-    "type": "SPA",
-    "questions": [
-      {{
-        "question": "Which provider do you want?",
-        "header": "Provider",
-        "multiSelect": false,
-        "options": [
-          {{"label": "Anthropic", "description": "Use Claude models"}},
-          {{"label": "OpenAI", "description": "Use GPT models"}}
-        ]
-      }}
-    ]
-  }}
+  "kind": "user_question",
+  "questions": [
+    {{
+      "question": "Which provider do you want?",
+      "header": "Provider",
+      "multiSelect": false,
+      "options": [
+        {{"label": "Anthropic", "description": "Use Claude models"}},
+        {{"label": "OpenAI", "description": "Use GPT models"}}
+      ]
+    }}
+  ]
 }}
 
 After executing a fix (only after user confirmation):

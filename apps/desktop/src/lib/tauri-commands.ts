@@ -47,8 +47,7 @@ export interface MessageRecord {
 
 export type AssistantActionType =
   | "RUN_STEP"
-  | "OPENCLAW_SECURE_CAPTURE"
-  | "SPA";
+  | "OPENCLAW_SECURE_CAPTURE";
 
 export interface AssistantQuestionOption {
   label: string;
@@ -62,15 +61,19 @@ export interface AssistantQuestion {
   multiSelect: boolean;
 }
 
-export interface AssistantUiCard {
-  kind: "card";
+export interface AssistantUiSpa {
+  kind: "spa";
   situation: string;
   plan: string;
   action: {
     label: string;
     type: AssistantActionType;
-    questions?: AssistantQuestion[];
   };
+}
+
+export interface AssistantUiUserQuestion {
+  kind: "user_question";
+  questions: AssistantQuestion[];
 }
 
 export interface AssistantUiInfo {
@@ -78,7 +81,7 @@ export interface AssistantUiInfo {
   summary: string;
 }
 
-export type AssistantUiPayload = AssistantUiCard | AssistantUiInfo;
+export type AssistantUiPayload = AssistantUiSpa | AssistantUiUserQuestion | AssistantUiInfo;
 
 export interface SendMessageV2Result {
   text: string;

@@ -301,7 +301,7 @@ Collect provider credentials securely.
           content: "fallback text",
           timestamp: Date.now(),
           assistantUi: {
-            kind: "card",
+            kind: "spa",
             situation: "OpenClaw needs secure credential capture.",
             plan: "Use Noah secure form, then verify setup.",
             action: {
@@ -318,6 +318,38 @@ Collect provider credentials securely.
     screen.getByText("Plan");
     screen.getByText("Open Secure Form");
     screen.getByText("OpenClaw needs secure credential capture.");
+  });
+
+  it("renders user_question panel from typed assistantUi payload", async () => {
+    useChatStore.setState({
+      messages: [
+        {
+          id: "msg-user-question",
+          role: "assistant",
+          content: "fallback text",
+          timestamp: Date.now(),
+          assistantUi: {
+            kind: "user_question",
+            questions: [
+              {
+                header: "Provider",
+                question: "Which provider do you want to use?",
+                multiSelect: false,
+                options: [
+                  { label: "Anthropic", description: "Use Claude models" },
+                  { label: "OpenAI", description: "Use GPT models" },
+                ],
+              },
+            ],
+          },
+        },
+      ],
+    });
+
+    render(<ChatPanel />);
+    await screen.findByText("Which provider do you want to use?");
+    screen.getByText("Anthropic");
+    screen.getByText("OpenAI");
   });
 });
 
