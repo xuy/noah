@@ -56,7 +56,7 @@ pub struct SessionRecord {
 }
 
 /// Current schema version. Increment when adding migrations.
-const SCHEMA_VERSION: i32 = 7;
+const SCHEMA_VERSION: i32 = 8;
 
 /// Initialise the journal database, creating tables if they don't exist,
 /// then run any pending migrations.
@@ -337,9 +337,13 @@ fn apply_migrations(conn: &Connection, current: i32) -> Result<()> {
         set_schema_version(conn, 7)?;
     }
 
-    // ── Add new migrations here ──
-    // if current < 8 { ... }
-
+<<<<<<< HEAD
+    if current < 8 {
+        // Migration 8: alignment bump.
+        // No schema change required in this repo snapshot; this keeps DB
+        // versioning aligned across parallel checkouts.
+        set_schema_version(conn, 8)?;
+    }
     Ok(())
 }
 
@@ -845,10 +849,10 @@ mod tests {
     }
 
     #[test]
-    fn test_schema_version_is_7() {
+    fn test_schema_version_is_8() {
         let conn = test_db();
         let version = get_schema_version(&conn);
-        assert_eq!(version, 7);
+        assert_eq!(version, 8);
     }
 
     #[test]
