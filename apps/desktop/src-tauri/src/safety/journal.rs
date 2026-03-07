@@ -337,7 +337,6 @@ fn apply_migrations(conn: &Connection, current: i32) -> Result<()> {
         set_schema_version(conn, 7)?;
     }
 
-<<<<<<< HEAD
     if current < 8 {
         // Migration 8: alignment bump.
         // No schema change required in this repo snapshot; this keeps DB
