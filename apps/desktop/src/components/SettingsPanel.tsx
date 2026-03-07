@@ -84,6 +84,15 @@ export function SettingsPanel() {
     }
   }, []);
 
+  const handleShareFeedback = useCallback(async () => {
+    const body = encodeURIComponent(
+      `**What are you trying to do?**\n\n(Describe the workflow you want help with)\n\n**What's hard today?**\n\n(Where Noah falls short or feels confusing)\n\n**What would make this 10x better?**\n\n(Feature ideas, integrations, UX suggestions)\n\n**Would you be open to a short follow-up chat?**\n\n- [ ] Yes\n- [ ] No\n\nIf yes, share the best way to reach you (email, WhatsApp, Discord, etc).`,
+    );
+    const title = encodeURIComponent("Product feedback from Noah app");
+    const url = `https://github.com/xuy/noah/issues/new?title=${title}&body=${body}&labels=feedback`;
+    await openUrl(url);
+  }, []);
+
   const handleSaveKey = useCallback(async () => {
     const key = apiKey.trim();
     if (!key) return;
@@ -310,11 +319,9 @@ export function SettingsPanel() {
                 </svg>
                 {reportingBug ? "Gathering info..." : "Report a Problem"}
               </button>
-              <a
-                href="https://platform.claude.com/settings/keys"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-text-secondary hover:bg-bg-tertiary hover:text-text-primary transition-colors"
+              <button
+                onClick={handleShareFeedback}
+                className="flex items-center gap-2 w-full px-3 py-2 rounded-lg text-xs text-text-secondary hover:bg-bg-tertiary hover:text-text-primary transition-colors cursor-pointer"
               >
                 <svg
                   width="14"
@@ -331,9 +338,36 @@ export function SettingsPanel() {
                     strokeLinejoin="round"
                   />
                 </svg>
-                Anthropic Console
+                Share Product Feedback
+              </button>
+              <a
+                href="https://github.com/xuy/noah/discussions"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-text-secondary hover:bg-bg-tertiary hover:text-text-primary transition-colors"
+              >
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 14 14"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path
+                    d="M2 3.75C2 2.7835 2.7835 2 3.75 2H10.25C11.2165 2 12 2.7835 12 3.75V8.25C12 9.2165 11.2165 10 10.25 10H6L3.25 12V10H3.75C2.7835 10 2 9.2165 2 8.25V3.75Z"
+                    stroke="currentColor"
+                    strokeWidth="1.2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+                Join Early Customer Discussions
               </a>
             </div>
+            <p className="text-[10px] text-text-muted mt-1.5">
+              Use discussions for open conversation with other early users, and
+              feedback reports for specific product requests.
+            </p>
           </section>
         </div>
 
