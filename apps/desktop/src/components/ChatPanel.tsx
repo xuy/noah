@@ -723,9 +723,15 @@ function MessageDisplay({
         const openclawHint = `${parsed.situation}\n${parsed.plan}\n${message.content}`.toLowerCase();
         const isOpenclawSetup =
           openclawHint.includes("openclaw")
-          && (openclawHint.includes("token")
-            || openclawHint.includes("provider")
-            || openclawHint.includes("config"));
+          && (
+            openclawHint.includes("secure credential form")
+            || openclawHint.includes("secure form")
+            || openclawHint.includes("secure token capture")
+            || (
+              openclawHint.includes("capture")
+              && (openclawHint.includes("api key") || openclawHint.includes("token"))
+            )
+          );
       card = (
         <ActionCard
           situation={parsed.situation}

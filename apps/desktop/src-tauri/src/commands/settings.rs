@@ -10,6 +10,21 @@ fn openclaw_config_path() -> Result<std::path::PathBuf, String> {
     Ok(std::path::PathBuf::from(home).join(".openclaw/openclaw.json"))
 }
 
+fn openclaw_auth_profiles_path() -> Result<std::path::PathBuf, String> {
+    let home = std::env::var("HOME").map_err(|e| format!("HOME is not set: {}", e))?;
+    Ok(std::path::PathBuf::from(home).join(".openclaw/agents/main/agent/auth-profiles.json"))
+}
+
+fn provider_id(provider: &str) -> String {
+    match provider.trim().to_lowercase().as_str() {
+        "anthropic" | "claude" => "anthropic".to_string(),
+        "openai" | "gpt" => "openai".to_string(),
+        "openrouter" => "openrouter".to_string(),
+        "google gemini" | "gemini" | "google" => "google".to_string(),
+        other => other.to_string(),
+    }
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub struct SaveOpenclawCredentialsRequest {
@@ -60,27 +75,80 @@ pub async fn save_openclaw_credentials(
     let obj = root
         .as_object_mut()
         .ok_or_else(|| "Invalid config object".to_string())?;
+    // Remove deprecated keys from earlier Noah integrations.
+    obj.remove("model_provider");
+    obj.remove("chat_integration");
     let provider_name = request.provider.trim().to_string();
 
-    obj.insert(
-        "model_provider".to_string(),
+    let auth_path = openclaw_auth_profiles_path()?;
+    if let Some(parent) = auth_path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("Failed to create auth profile directory: {}", e))?;
+    }
+
+    let mut auth_root = if auth_path.exists() {
+        let raw = std::fs::read_to_string(&auth_path)
+            .map_err(|e| format!("Failed to read auth profiles: {}", e))?;
+        serde_json::from_str::<serde_json::Value>(&raw).unwrap_or_else(|_| serde_json::json!({}))
+    } else {
+        serde_json::json!({})
+    };
+    if !auth_root.is_object() {
+        auth_root = serde_json::json!({});
+    }
+    let auth_obj = auth_root
+        .as_object_mut()
+        .ok_or_else(|| "Invalid auth profiles object".to_string())?;
+    auth_obj.insert(
+        provider_id(&provider_name),
         serde_json::json!({
-            "name": provider_name,
-            "token": request.provider_token,
+            "apiKey": request.provider_token,
         }),
     );
+    let auth_rendered = serde_json::to_string_pretty(&auth_root)
+        .map_err(|e| format!("Failed to serialize auth profiles: {}", e))?;
+    std::fs::write(&auth_path, auth_rendered)
+        .map_err(|e| format!("Failed to write auth profiles: {}", e))?;
 
     let mut chat_channel_saved: Option<String> = None;
     if let (Some(channel), Some(token)) = (request.chat_channel, request.chat_token) {
         if !channel.trim().is_empty() && !token.trim().is_empty() {
             let channel_name = channel.trim().to_string();
-            obj.insert(
-                "chat_integration".to_string(),
-                serde_json::json!({
-                    "channel": channel_name,
-                    "token": token,
-                }),
-            );
+            let channel_key = channel_name.to_lowercase();
+            let channels = obj
+                .entry("channels".to_string())
+                .or_insert_with(|| serde_json::json!({}));
+            if !channels.is_object() {
+                *channels = serde_json::json!({});
+            }
+            if let Some(ch_obj) = channels.as_object_mut() {
+                ch_obj.insert(
+                    channel_key.clone(),
+                    serde_json::json!({
+                        "botToken": token,
+                        "enabled": true,
+                    }),
+                );
+            }
+
+            let plugins = obj
+                .entry("plugins".to_string())
+                .or_insert_with(|| serde_json::json!({ "entries": {} }));
+            if !plugins.is_object() {
+                *plugins = serde_json::json!({ "entries": {} });
+            }
+            if let Some(entries) = plugins
+                .as_object_mut()
+                .and_then(|p| p.entry("entries".to_string()).or_insert_with(|| serde_json::json!({})).as_object_mut())
+            {
+                entries.insert(
+                    channel_key,
+                    serde_json::json!({
+                        "enabled": true,
+                    }),
+                );
+            }
+
             chat_channel_saved = Some(channel_name);
         }
     }

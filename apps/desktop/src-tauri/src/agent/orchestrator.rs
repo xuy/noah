@@ -393,101 +393,24 @@ impl Orchestrator {
             if tool_uses.is_empty() {
                 let candidate_text = all_text_parts.join("\n");
                 let visible_text = final_user_visible_segment(&candidate_text);
-                if active_playbook.as_deref() == Some("openclaw-install-config")
-                    && playbook_runtime::has_disallowed_openclaw_text(&visible_text)
-                {
-                    for _ in 0..appended_text_count {
-                        let _ = all_text_parts.pop();
-                    }
-                    let guard_feedback = "Policy guard: do not instruct `openclaw configure` or interactive OpenClaw wizard commands in this playbook mode. Provide a compliant guided setup response.".to_string();
-                    {
-                        let session = self.sessions.get_mut(session_id).unwrap();
-                        session.messages.push(Message {
-                            role: "user".to_string(),
-                            content: MessageContent::Text(guard_feedback.clone()),
-                        });
-                    }
-                    emit_debug(
-                        app_handle,
-                        "playbook_guard",
-                        "Rejected non-compliant OpenClaw response and requested retry",
-                        json!({"reason": "disallowed_openclaw_wizard_instruction"}),
-                    );
-                    continue;
-                }
-                if active_playbook.as_deref() == Some("openclaw-install-config")
-                    && playbook_runtime::missing_openclaw_action_format(&visible_text)
-                {
-                    for _ in 0..appended_text_count {
-                        let _ = all_text_parts.pop();
-                    }
-                    let guard_feedback = "Policy guard: OpenClaw setup responses must use [SITUATION], [PLAN], and [ACTION:...] until completion. Rewrite this response in the structured setup format.".to_string();
-                    {
-                        let session = self.sessions.get_mut(session_id).unwrap();
-                        session.messages.push(Message {
-                            role: "user".to_string(),
-                            content: MessageContent::Text(guard_feedback),
-                        });
-                    }
-                    continue;
-                }
-                if active_playbook.as_deref() == Some("openclaw-install-config")
-                    && playbook_runtime::has_awkward_provider_shorthand(&visible_text)
-                {
-                    for _ in 0..appended_text_count {
-                        let _ = all_text_parts.pop();
-                    }
-                    let guard_feedback = "Policy guard: provider guidance must use human-readable names (OpenAI, Anthropic, OpenRouter) and plain language, not code-like shorthand list formatting.".to_string();
-                    {
-                        let session = self.sessions.get_mut(session_id).unwrap();
-                        session.messages.push(Message {
-                            role: "user".to_string(),
-                            content: MessageContent::Text(guard_feedback),
-                        });
-                    }
-                    continue;
-                }
-                if active_playbook.as_deref() == Some("openclaw-install-config")
-                    && openclaw_ctx.as_ref().is_some_and(|ctx| {
-                        playbook_runtime::missing_provider_source_guidance(
+                if active_playbook.as_deref() == Some("openclaw-install-config") {
+                    if let Some(ctx) = openclaw_ctx.as_ref() {
+                        if let Some(guard_feedback) = playbook_runtime::validate_openclaw_final_response(
+                            ctx,
                             user_message,
                             &visible_text,
-                            ctx.provider.as_deref(),
-                        )
-                    })
-                {
-                    for _ in 0..appended_text_count {
-                        let _ = all_text_parts.pop();
+                        ) {
+                            for _ in 0..appended_text_count {
+                                let _ = all_text_parts.pop();
+                            }
+                            let session = self.sessions.get_mut(session_id).unwrap();
+                            session.messages.push(Message {
+                                role: "user".to_string(),
+                                content: MessageContent::Text(guard_feedback),
+                            });
+                            continue;
+                        }
                     }
-                    let guard_feedback = "Policy guard: user asked where to get API credentials. Provide concrete source guidance (provider console URL and plain steps) before proceeding.".to_string();
-                    {
-                        let session = self.sessions.get_mut(session_id).unwrap();
-                        session.messages.push(Message {
-                            role: "user".to_string(),
-                            content: MessageContent::Text(guard_feedback),
-                        });
-                    }
-                    continue;
-                }
-                if active_playbook.as_deref() == Some("openclaw-install-config")
-                    && openclaw_ctx.as_ref().is_some_and(|ctx| {
-                        ctx.stage == playbook_runtime::OpenclawStage::PrimaryProviderVerify
-                            && ctx.credential_ref.is_some()
-                            && playbook_runtime::has_vague_apply_credentials_loop(&visible_text)
-                    })
-                {
-                    for _ in 0..appended_text_count {
-                        let _ = all_text_parts.pop();
-                    }
-                    let guard_feedback = "Policy guard: avoid vague 'apply credentials' loops. Either verify directly now, or ask user to re-save a real key in Noah secure form with a concrete reason.".to_string();
-                    {
-                        let session = self.sessions.get_mut(session_id).unwrap();
-                        session.messages.push(Message {
-                            role: "user".to_string(),
-                            content: MessageContent::Text(guard_feedback),
-                        });
-                    }
-                    continue;
                 }
                 return Ok(visible_text);
             }
@@ -590,7 +513,7 @@ impl Orchestrator {
                     let command = tool_input.get("command").and_then(|v| v.as_str()).unwrap_or("");
                     if let Some(reason) = playbook_runtime::blocked_openclaw_shell_command(ctx.stage, command) {
                         return Ok(format!(
-                            "COMMAND NOT EXECUTED: blocked by OpenClaw stage policy (stage={}, reason={}). Use stage-appropriate verification/capture steps instead.",
+                            "COMMAND NOT EXECUTED: blocked by OpenClaw stage policy (stage={}, reason={}). STOP calling shell_run in this turn. Respond directly to the user now in [SITUATION]/[PLAN]/[ACTION] format with either secure credential recapture guidance or a basic [DONE] with optional channel pending.",
                             ctx.stage.as_str(),
                             reason
                         ));

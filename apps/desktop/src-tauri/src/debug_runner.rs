@@ -26,6 +26,21 @@ fn openclaw_config_path() -> Result<PathBuf> {
     Ok(PathBuf::from(home).join(".openclaw/openclaw.json"))
 }
 
+fn openclaw_auth_profiles_path() -> Result<PathBuf> {
+    let home = std::env::var("HOME").context("HOME is not set")?;
+    Ok(PathBuf::from(home).join(".openclaw/agents/main/agent/auth-profiles.json"))
+}
+
+fn provider_id(provider: &str) -> String {
+    match provider.trim().to_lowercase().as_str() {
+        "anthropic" | "claude" => "anthropic".to_string(),
+        "openai" | "gpt" => "openai".to_string(),
+        "openrouter" => "openrouter".to_string(),
+        "google gemini" | "gemini" | "google" => "google".to_string(),
+        other => other.to_string(),
+    }
+}
+
 fn first_non_empty_env(names: &[&str]) -> Option<String> {
     names.iter().find_map(|name| {
         std::env::var(name)
@@ -42,10 +57,10 @@ async fn maybe_simulate_openclaw_secure_capture(
     let lower = output.to_lowercase();
     let looks_like_openclaw_action = lower.contains("[action:")
         && lower.contains("openclaw")
-        && (lower.contains("secure")
-            || lower.contains("credential")
-            || lower.contains("api key")
-            || lower.contains("token"));
+        && (lower.contains("secure credential form")
+            || lower.contains("secure form")
+            || lower.contains("capture")
+            || lower.contains("credentials were submitted"));
     if !looks_like_openclaw_action {
         return None;
     }
@@ -114,21 +129,76 @@ async fn maybe_simulate_openclaw_secure_capture(
     let Some(obj) = root.as_object_mut() else {
         return None;
     };
-    obj.insert(
-        "model_provider".to_string(),
+    obj.remove("model_provider");
+    obj.remove("chat_integration");
+    let auth_path = match openclaw_auth_profiles_path() {
+        Ok(p) => p,
+        Err(_) => return None,
+    };
+    if let Some(parent) = auth_path.parent() {
+        if std::fs::create_dir_all(parent).is_err() {
+            return None;
+        }
+    }
+
+    let mut auth_root = if auth_path.exists() {
+        match std::fs::read_to_string(&auth_path)
+            .ok()
+            .and_then(|raw| serde_json::from_str::<serde_json::Value>(&raw).ok())
+        {
+            Some(v) if v.is_object() => v,
+            _ => serde_json::json!({}),
+        }
+    } else {
+        serde_json::json!({})
+    };
+    let Some(auth_obj) = auth_root.as_object_mut() else {
+        return None;
+    };
+    auth_obj.insert(
+        provider_id(&provider),
         serde_json::json!({
-            "name": provider,
-            "token": provider_token,
+            "apiKey": provider_token,
         }),
     );
+    let auth_rendered = match serde_json::to_string_pretty(&auth_root) {
+        Ok(v) => v,
+        Err(_) => return None,
+    };
+    if std::fs::write(&auth_path, auth_rendered).is_err() {
+        return None;
+    }
+
     if let (Some(ch), Some(tok)) = (chat_channel.clone(), chat_token) {
-        obj.insert(
-            "chat_integration".to_string(),
-            serde_json::json!({
-                "channel": ch,
-                "token": tok,
-            }),
-        );
+        let ch_key = ch.to_lowercase();
+        let channels = obj
+            .entry("channels".to_string())
+            .or_insert_with(|| serde_json::json!({}));
+        if !channels.is_object() {
+            *channels = serde_json::json!({});
+        }
+        if let Some(ch_obj) = channels.as_object_mut() {
+            ch_obj.insert(
+                ch_key.clone(),
+                serde_json::json!({
+                    "botToken": tok,
+                    "enabled": true,
+                }),
+            );
+        }
+
+        let plugins = obj
+            .entry("plugins".to_string())
+            .or_insert_with(|| serde_json::json!({ "entries": {} }));
+        if !plugins.is_object() {
+            *plugins = serde_json::json!({ "entries": {} });
+        }
+        if let Some(entries) = plugins
+            .as_object_mut()
+            .and_then(|p| p.entry("entries".to_string()).or_insert_with(|| serde_json::json!({})).as_object_mut())
+        {
+            entries.insert(ch_key, serde_json::json!({ "enabled": true }));
+        }
     }
     let rendered = match serde_json::to_string_pretty(&root) {
         Ok(v) => v,
@@ -277,10 +347,15 @@ pub async fn run_prompt_flow(prompt: &str, max_turns: usize) -> Result<PromptRun
             journal::save_message(&conn, &session_id, "user", &input)?;
         }
 
-        let output = orchestrator
-            .send_message(&session_id, &input, &app_handle, &db_arc)
-            .await
-            .context("orchestrator send_message failed")?;
+        let output = match tokio::time::timeout(
+            std::time::Duration::from_secs(90),
+            orchestrator.send_message(&session_id, &input, &app_handle, &db_arc),
+        )
+        .await
+        {
+            Ok(res) => res.context("orchestrator send_message failed")?,
+            Err(_) => "[INFO]\nRunner timeout waiting for assistant response.".to_string(),
+        };
         {
             let conn = db_arc.lock().await;
             journal::save_message(&conn, &session_id, "assistant", &output)?;

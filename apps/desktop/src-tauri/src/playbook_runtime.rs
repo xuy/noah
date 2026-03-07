@@ -295,6 +295,18 @@ pub fn blocked_openclaw_shell_command(stage: OpenclawStage, command: &str) -> Op
         return Some("blocked_loop_or_manual_schema_surgery");
     }
 
+    if lower.contains("auth-profiles.json")
+        || lower.contains("jq 'del(")
+        || lower.contains("~/.openclaw/openclaw.json >")
+        || lower.contains("mv ~/.openclaw/openclaw_temp.json")
+    {
+        return Some("blocked_manual_config_file_surgery");
+    }
+
+    if lower.starts_with("find ~") || lower.contains(" -type f | head") {
+        return Some("blocked_broad_filesystem_scan");
+    }
+
     if stage == OpenclawStage::PrimaryProviderVerify
         && (lower.contains("openclaw memory status")
             || lower.contains("memorysearch.provider")
@@ -309,12 +321,44 @@ pub fn blocked_openclaw_shell_command(stage: OpenclawStage, command: &str) -> Op
         return Some("avoid_manual_channel_token_cli_handoff");
     }
 
+    if (stage == OpenclawStage::PrimaryProviderVerify
+        || stage == OpenclawStage::ChannelCapture
+        || stage == OpenclawStage::ChannelVerify)
+        && lower.starts_with("openclaw ")
+    {
+        let allowed = [
+            "openclaw --version",
+            "openclaw doctor",
+            "openclaw health",
+            "openclaw config show",
+            "openclaw config get",
+            "openclaw config validate",
+            "openclaw config file",
+            "openclaw config --help",
+            "openclaw channels list",
+        ];
+        if !allowed.iter().any(|pat| lower.starts_with(pat)) {
+            return Some("non_readonly_verification_command_blocked");
+        }
+    }
+
     None
 }
 
 pub fn has_disallowed_openclaw_text(text: &str) -> bool {
     let lower = text.to_lowercase();
     if lower.contains("openclaw configure") {
+        return true;
+    }
+    if lower.contains("http://127.0.0.1:18789")
+        || lower.contains("openclaw's local dashboard")
+        || lower.contains("openclaw dashboard")
+    {
+        return true;
+    }
+    if lower.contains("openclaw's secure credential form")
+        && !lower.contains("noah")
+    {
         return true;
     }
     if lower.contains("secure credential form is not available")
@@ -361,6 +405,10 @@ pub fn has_overly_technical_manual_edit(text: &str) -> bool {
     lower.contains("nano ~/.openclaw/openclaw.json")
         || (lower.contains("edit the configuration file") && lower.contains("json"))
         || lower.contains("add a \"channels\" section")
+        || lower.contains("auth-profiles.json")
+        || lower.contains("jq 'del(")
+        || lower.contains("openclaw config set")
+        || lower.contains("chmod 600 ~/.openclaw/openclaw.json")
 }
 
 pub fn has_manual_channel_command_handoff(text: &str) -> bool {
