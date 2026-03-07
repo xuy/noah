@@ -707,14 +707,14 @@ function SuggestionCards({
 
   return (
     <div className="flex flex-col items-center justify-center h-full text-text-muted">
-      <NoahIcon className="w-16 h-16 rounded-2xl mb-6" alt="Noah" />
-      <p className="text-3xl font-semibold text-text-primary mb-2">
-        How can I help?
+      <NoahIcon className="w-14 h-14 rounded-2xl mb-4" alt="Noah" />
+      <p className="text-2xl font-semibold text-text-primary mb-1">
+        Hey, I'm Noah
       </p>
       <p className="text-base text-text-secondary mb-8">
         {contextual.length > 0
-          ? "Based on what I know about your system, or try something new."
-          : "Describe your problem, or try one of these:"}
+          ? "What's going on? Or check in on something I know about."
+          : "Your computer helper. What's going on?"}
       </p>
       <div className="grid grid-cols-2 gap-3 w-full max-w-md">
         {allSuggestions.map((s) => (
@@ -793,29 +793,12 @@ export function ChatPanel() {
                 m.role === "assistant" && parseResponse(m.content).type === "done",
             )?.id ?? null;
 
-          if (messages.length === 0) {
+          if (messages.length === 0 || (messages.length === 1 && messages[0].role === "system")) {
             return (
               <SuggestionCards
                 onSelect={(text) => sendMessage(text)}
                 disabled={isProcessing}
               />
-            );
-          }
-          if (messages.length === 1 && messages[0].role === "system") {
-            return (
-              <div className="max-w-3xl w-full mx-auto space-y-5">
-                <MessageDisplay
-                  message={messages[0]}
-                  isProcessing={isProcessing}
-                  isLatestDone={messages[0].id === latestDoneId}
-                  sessionId={sessionId}
-                  onConfirm={sendConfirmation}
-                />
-                <SuggestionCards
-                  onSelect={(text) => sendMessage(text)}
-                  disabled={isProcessing}
-                />
-              </div>
             );
           }
           return (
