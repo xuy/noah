@@ -17,6 +17,38 @@ function formatTime(ts: number) {
 
 const URL_PATTERN = /((?:https?:\/\/)?(?:[a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}(?:\/[^\s)]*)?)/g;
 
+function normalizeSpaText(input: string): string {
+  return input
+    .replace(/^\s*\*\*\s*$/gm, "")
+    .replace(/\*\*(.*?)\*\*/g, "$1")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function humanizeActionLabel(label: string, actionType?: string): string {
+  const raw = (label || "").trim();
+  const type = (actionType || "").trim();
+
+  const mapByType: Record<string, string> = {
+    OPENCLAW_SECURE_CAPTURE: "Open Secure Form",
+    RUN_STEP: "Continue",
+  };
+
+  if (!raw) return mapByType[type] || "Continue";
+
+  const looksEnum = /^[A-Z0-9_]+$/.test(raw);
+  if (looksEnum) {
+    if (mapByType[raw]) return mapByType[raw];
+    return raw
+      .toLowerCase()
+      .split("_")
+      .map((w) => (w ? w[0].toUpperCase() + w.slice(1) : w))
+      .join(" ");
+  }
+
+  return raw;
+}
+
 function LinkedText({ text }: { text: string }) {
   const parts = text.split(URL_PATTERN);
   return (
@@ -248,6 +280,7 @@ function ActionCard({
   situation,
   plan,
   actionLabel,
+  actionType,
   actionTaken,
   isProcessing,
   timestamp,
@@ -256,11 +289,16 @@ function ActionCard({
   situation: string;
   plan: string;
   actionLabel: string;
+  actionType?: string;
   actionTaken?: boolean;
   isProcessing: boolean;
   timestamp: number;
   onDoIt: () => void;
 }) {
+  const prettySituation = normalizeSpaText(situation);
+  const prettyPlan = normalizeSpaText(plan);
+  const prettyActionLabel = humanizeActionLabel(actionLabel, actionType);
+
   return (
     <div className="group animate-fade-in">
       <div className="rounded-xl border border-border-primary/50 bg-bg-secondary overflow-hidden">
@@ -271,7 +309,7 @@ function ActionCard({
           </div>
           <div className="rounded-lg border border-accent-blue/20 bg-accent-blue/5 px-3.5 py-3 text-base text-text-primary leading-relaxed">
             <div className="whitespace-pre-wrap break-words">
-              <LinkedText text={situation} />
+              <LinkedText text={prettySituation} />
             </div>
           </div>
         </div>
@@ -283,7 +321,7 @@ function ActionCard({
           </div>
           <div className="rounded-lg border border-accent-purple/20 bg-accent-purple/5 px-3.5 py-3 text-base text-text-secondary leading-relaxed">
             <div className="whitespace-pre-wrap break-words">
-              <LinkedText text={plan} />
+              <LinkedText text={prettyPlan} />
             </div>
           </div>
         </div>
@@ -304,7 +342,7 @@ function ActionCard({
               }
             `}
           >
-            {actionTaken ? "Sent" : actionLabel}
+            {actionTaken ? "Sent" : prettyActionLabel}
           </button>
         </div>
       </div>
@@ -792,9 +830,9 @@ function MessageDisplay({
     if (ui.kind === "spa") {
       return {
         type: "action" as const,
-        situation: ui.situation,
-        plan: ui.plan,
-        actionLabel: ui.action.label,
+        situation: normalizeSpaText(ui.situation),
+        plan: normalizeSpaText(ui.plan),
+        actionLabel: humanizeActionLabel(ui.action.label, ui.action.type),
         actionType: ui.action.type,
       };
     }
@@ -833,6 +871,7 @@ function MessageDisplay({
           situation={parsed.situation}
           plan={parsed.plan}
           actionLabel={parsed.actionLabel}
+          actionType={(parsed as { actionType?: string }).actionType}
           actionTaken={message.actionTaken}
           isProcessing={isProcessing}
           timestamp={message.timestamp}

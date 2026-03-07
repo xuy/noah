@@ -105,7 +105,8 @@ fn playbook_mode_overlay(active_playbook: Option<&str>) -> String {
             "\n\n## Playbook Governance Mode\n\
 Active playbook: `openclaw-install-config`.\n\
 Treat this as a constrained sub-agent protocol for this session.\n\
-- Use `[SITUATION]` + `[PLAN]` + `[ACTION:...]` for guided setup turns (including provider/channel selection checkpoints).\n\
+- Use SPA JSON for guided setup turns: `{ \"kind\":\"spa\", \"situation\":\"...\", \"plan\":\"...\", \"action\": {\"label\":\"...\", \"type\":\"RUN_STEP|OPENCLAW_SECURE_CAPTURE\"} }`.\n\
+- For question prompts, use JSON: `{ \"kind\":\"user_question\", \"questions\":[...] }`.\n\
 - When collecting credentials, direct the user to Noah's secure credential form (privacy-preserving local capture), not plain chat token entry.\n\
 - Do not claim a command/wizard ran unless a tool result explicitly confirms it.\n\
 - If `shell_run` says a command was blocked or not executed, explicitly state that and switch to a supported path.\n\
@@ -123,7 +124,17 @@ Treat this as a constrained sub-agent protocol for this session.\n\
 }
 
 fn final_user_visible_segment(text: &str) -> String {
-    let markers = ["[SITUATION]", "[DONE]", "[INFO]", "[CREDENTIALS_COLLECTED]"];
+    let markers = [
+        "[SITUATION]",
+        "[DONE]",
+        "[INFO]",
+        "[CREDENTIALS_COLLECTED]",
+        r#"{"kind":"spa""#,
+        r#"{"kind": "spa""#,
+        r#"{"kind":"done""#,
+        r#"{"kind":"info""#,
+        r#"{"kind":"user_question""#,
+    ];
     let mut best_idx: Option<usize> = None;
     for marker in markers {
         if let Some(idx) = text.rfind(marker) {

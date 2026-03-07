@@ -381,9 +381,16 @@ pub fn has_disallowed_openclaw_text(text: &str) -> bool {
 }
 
 pub fn missing_openclaw_action_format(text: &str) -> bool {
-    let has_action = text.contains("[SITUATION]") && text.contains("[PLAN]") && text.contains("[ACTION:");
-    let has_done = text.contains("[DONE]");
-    !has_action && !has_done
+    let lower = text.to_lowercase();
+    let legacy_action =
+        lower.contains("[situation]") && lower.contains("[plan]") && lower.contains("[action:");
+    let legacy_done = lower.contains("[done]");
+    let json_spa = lower.contains(r#""kind":"spa""#) || lower.contains(r#""kind": "spa""#);
+    let json_done = lower.contains(r#""kind":"done""#) || lower.contains(r#""kind": "done""#);
+    let json_info = lower.contains(r#""kind":"info""#) || lower.contains(r#""kind": "info""#);
+    let json_question =
+        lower.contains(r#""kind":"user_question""#) || lower.contains(r#""kind": "user_question""#);
+    !(legacy_action || legacy_done || json_spa || json_done || json_info || json_question)
 }
 
 pub fn has_awkward_provider_shorthand(text: &str) -> bool {
@@ -470,7 +477,7 @@ pub fn validate_openclaw_final_response(
     }
     if missing_openclaw_action_format(visible_text) {
         return Some(
-            "Policy guard: OpenClaw setup responses must use [SITUATION], [PLAN], and [ACTION:...] until completion. Rewrite this response in the structured setup format."
+            "Policy guard: OpenClaw setup responses must use SPA JSON (`kind: spa`) or `kind: done/info/user_question` until completion. Rewrite in structured JSON format."
                 .to_string(),
         );
     }
@@ -520,9 +527,11 @@ pub fn validate_openclaw_final_response(
     if (ctx.stage == OpenclawStage::ChannelCapture || ctx.stage == OpenclawStage::ChannelVerify)
         && ctx.stage_attempts >= 3
         && !visible_text.contains("[DONE]")
+        && !visible_text.to_lowercase().contains(r#""kind":"done""#)
+        && !visible_text.to_lowercase().contains(r#""kind": "done""#)
     {
         return Some(
-            "Policy guard: channel setup is optional. End the basic setup with [DONE] and clearly mark channel setup as optional pending next step."
+            "Policy guard: channel setup is optional. End the basic setup with done JSON (`kind: done`) and clearly mark channel setup as optional pending next step."
                 .to_string(),
         );
     }
