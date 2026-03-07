@@ -228,6 +228,17 @@ async function main() {
     await rm(BUNDLE_DIR, { recursive: true, force: true });
   }
 
+  // macOS code signing + notarization (set env vars or use defaults from keychain profile)
+  if (process.platform === "darwin") {
+    if (!process.env.APPLE_SIGNING_IDENTITY) {
+      console.warn("==> APPLE_SIGNING_IDENTITY not set — macOS build will not be signed");
+      console.warn("    Set it to your 'Developer ID Application: ...' identity");
+    } else {
+      process.env.APPLE_NOTARIZATION_CREDENTIALS = process.env.APPLE_NOTARIZATION_CREDENTIALS || "noah-notarize";
+      console.log("==> macOS signing + notarization enabled");
+    }
+  }
+
   console.log("==> Running tauri build...");
   await runCommand("pnpm", ["--filter", "@itman/desktop", "tauri", "build"]);
 
