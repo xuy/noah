@@ -152,4 +152,22 @@ Some extra text after.`;
       expect(result.actionLabel).toBe("Fix");
     }
   });
+
+  it("parses SPA json payload with prefixed prose", () => {
+    const raw = `I checked your system.
+{
+  "kind":"spa",
+  "situation":"CPU is high",
+  "plan":"Stop heavy app",
+  "action":{"label":"Stop App","type":"RUN_STEP"}
+}`;
+    const result = parseResponse(raw);
+    expect(result.type).toBe("action");
+    if (result.type === "action") {
+      expect(result.situation).toBe("CPU is high");
+      expect(result.plan).toBe("Stop heavy app");
+      expect(result.actionLabel).toBe("Stop App");
+      expect(result.actionType).toBe("RUN_STEP");
+    }
+  });
 });

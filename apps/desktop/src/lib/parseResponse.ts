@@ -1,5 +1,26 @@
 export type ParsedResponse =
-  | { type: "action"; situation: string; plan: string; actionLabel: string }
+  | {
+      type: "action";
+      situation: string;
+      plan: string;
+      actionLabel: string;
+      actionType?: string;
+      actionQuestions?: Array<{
+        question: string;
+        header: string;
+        options: Array<{ label: string; description: string }>;
+        multiSelect: boolean;
+      }>;
+    }
+  | {
+      type: "user_question";
+      questions: Array<{
+        question: string;
+        header: string;
+        options: Array<{ label: string; description: string }>;
+        multiSelect: boolean;
+      }>;
+    }
   | { type: "done"; summary: string }
   | { type: "info"; summary: string }
   | {
@@ -20,6 +41,84 @@ export type ParsedResponse =
 export function parseResponse(raw: string): ParsedResponse {
   // Strip any <think>...</think> blocks (some models emit reasoning tags).
   const trimmed = raw.replace(/<think>[\s\S]*?<\/think>\s*/g, "").trim();
+
+  // JSON SPA / user_question payloads (optionally with prefixed prose)
+  {
+    const candidate = (() => {
+      const start = trimmed.indexOf("{");
+      const end = trimmed.lastIndexOf("}");
+      if (start === -1 || end === -1 || end <= start) return null;
+      return trimmed.slice(start, end + 1);
+    })();
+
+    if (candidate) {
+      try {
+        const obj = JSON.parse(candidate) as {
+          kind?: string;
+          summary?: string;
+          situation?: string;
+          plan?: string;
+          action?: {
+            label?: string;
+            type?: string;
+            questions?: Array<{
+              question: string;
+              header: string;
+              options: Array<{ label: string; description: string }>;
+              multiSelect?: boolean;
+            }>;
+          };
+          questions?: Array<{
+            question: string;
+            header: string;
+            options: Array<{ label: string; description: string }>;
+            multiSelect?: boolean;
+          }>;
+        };
+
+        const kind = (obj.kind || "").toLowerCase();
+        if (
+          kind === "spa"
+          && obj.situation
+          && obj.plan
+          && obj.action?.label
+        ) {
+          return {
+            type: "action",
+            situation: obj.situation,
+            plan: obj.plan,
+            actionLabel: obj.action.label,
+            actionType: obj.action.type,
+            actionQuestions: obj.action.questions?.map((q) => ({
+              question: q.question,
+              header: q.header,
+              options: q.options,
+              multiSelect: Boolean(q.multiSelect),
+            })),
+          };
+        }
+        if (kind === "user_question" && Array.isArray(obj.questions)) {
+          return {
+            type: "user_question",
+            questions: obj.questions.map((q) => ({
+              question: q.question,
+              header: q.header,
+              options: q.options,
+              multiSelect: Boolean(q.multiSelect),
+            })),
+          };
+        }
+        if (kind === "done" && obj.summary) {
+          return { type: "done", summary: obj.summary };
+        }
+        if (kind === "info" && obj.summary) {
+          return { type: "info", summary: obj.summary };
+        }
+      } catch {
+        // ignore and continue with legacy marker parsing
+      }
+    }
+  }
 
   // Action card: [SITUATION]...[PLAN]...[ACTION:Label]
   const actionMatch = trimmed.match(
