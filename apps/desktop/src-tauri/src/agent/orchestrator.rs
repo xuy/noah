@@ -78,6 +78,37 @@ pub struct Orchestrator {
 
 pub type PendingApprovals = Arc<Mutex<HashMap<String, oneshot::Sender<bool>>>>;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum OpenclawStage {
+    InstallCheck,
+    PrimaryProviderCapture,
+    PrimaryProviderVerify,
+    ChannelCapture,
+    ChannelVerify,
+    Done,
+}
+
+impl OpenclawStage {
+    fn as_str(self) -> &'static str {
+        match self {
+            OpenclawStage::InstallCheck => "INSTALL_CHECK",
+            OpenclawStage::PrimaryProviderCapture => "PRIMARY_PROVIDER_CAPTURE",
+            OpenclawStage::PrimaryProviderVerify => "PRIMARY_PROVIDER_VERIFY",
+            OpenclawStage::ChannelCapture => "CHANNEL_CAPTURE",
+            OpenclawStage::ChannelVerify => "CHANNEL_VERIFY",
+            OpenclawStage::Done => "DONE",
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct OpenclawContext {
+    stage: OpenclawStage,
+    provider: Option<String>,
+    channel: Option<String>,
+    credential_ref: Option<String>,
+}
+
 fn active_playbook_name(messages: &[Message]) -> Option<String> {
     let mut active: Option<String> = None;
     for message in messages {
@@ -96,6 +127,188 @@ fn active_playbook_name(messages: &[Message]) -> Option<String> {
         }
     }
     active
+}
+
+fn extract_text(content: &MessageContent) -> Option<&str> {
+    match content {
+        MessageContent::Text(t) => Some(t.as_str()),
+        MessageContent::Blocks(_) => None,
+    }
+}
+
+fn parse_labeled_value(haystack: &str, label: &str) -> Option<String> {
+    for line in haystack.lines() {
+        let trimmed = line.trim();
+        if trimmed.to_lowercase().starts_with(&format!("{}:", label.to_lowercase())) {
+            let v = trimmed.split_once(':')?.1.trim();
+            if !v.is_empty() {
+                return Some(v.to_string());
+            }
+        }
+    }
+    None
+}
+
+fn parse_openclaw_context(messages: &[Message]) -> OpenclawContext {
+    let mut install_checked = false;
+    let mut provider_verified = false;
+    let mut channel_verified = false;
+    let mut provider: Option<String> = None;
+    let mut channel: Option<String> = None;
+    let mut credential_ref: Option<String> = None;
+
+    for message in messages {
+        if let Some(text) = extract_text(&message.content) {
+            let lower = text.to_lowercase();
+            if credential_ref.is_none() && lower.contains("credential reference: openclaw-") {
+                credential_ref = parse_labeled_value(text, "Credential reference");
+            }
+            if provider.is_none() {
+                provider = parse_labeled_value(text, "Provider");
+            }
+            if channel.is_none() {
+                channel = parse_labeled_value(text, "Chat channel");
+            }
+            if lower.contains("openclaw --version") || lower.contains("openclaw is installed") {
+                install_checked = true;
+            }
+            if lower.contains("provider verified")
+                || lower.contains("provider connection is working")
+                || lower.contains("provider connection verified")
+            {
+                provider_verified = true;
+            }
+            if lower.contains("telegram bot connection verified")
+                || lower.contains("discord connection verified")
+                || lower.contains("channel verification passed")
+            {
+                channel_verified = true;
+            }
+        }
+        if let MessageContent::Blocks(blocks) = &message.content {
+            for b in blocks {
+                if let ContentBlock::ToolUse { name, input, .. } = b {
+                    if name == "shell_run" {
+                        if let Some(cmd) = input.get("command").and_then(|v| v.as_str()) {
+                            let cmd_l = cmd.to_lowercase();
+                            if cmd_l.contains("openclaw --version") {
+                                install_checked = true;
+                            }
+                            if cmd_l.contains("openclaw doctor") && !cmd_l.contains("--fix") {
+                                // Treat a doctor run after credential capture as provider verification attempt.
+                                if credential_ref.is_some() {
+                                    provider_verified = true;
+                                }
+                            }
+                            if cmd_l.contains("telegram") || cmd_l.contains("discord") {
+                                channel_verified = true;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    let stage = if !install_checked {
+        OpenclawStage::InstallCheck
+    } else if credential_ref.is_none() {
+        OpenclawStage::PrimaryProviderCapture
+    } else if !provider_verified {
+        OpenclawStage::PrimaryProviderVerify
+    } else if channel.as_deref().is_some_and(|c| !c.eq_ignore_ascii_case("none")) && !channel_verified {
+        // Channel is optional. Only enter channel stages when user actually selected one.
+        OpenclawStage::ChannelCapture
+    } else if channel.is_some() && !channel_verified {
+        OpenclawStage::ChannelVerify
+    } else {
+        OpenclawStage::Done
+    };
+
+    OpenclawContext {
+        stage,
+        provider,
+        channel,
+        credential_ref,
+    }
+}
+
+fn openclaw_stage_overlay(ctx: &OpenclawContext) -> String {
+    let mut out = format!(
+        "\n\n## OpenClaw Stage Machine\n\
+Current stage: `{}`.\n\
+Treat this as the skeleton. Keep natural, human guidance as the conversational layer.\n",
+        ctx.stage.as_str()
+    );
+    match ctx.stage {
+        OpenclawStage::InstallCheck => {
+            out.push_str("- Goal: confirm OpenClaw install and version.\n- Next: move to PRIMARY_PROVIDER_CAPTURE.\n");
+        }
+        OpenclawStage::PrimaryProviderCapture => {
+            out.push_str(
+                "- Goal: capture primary model provider credentials through Noah secure credential form.\n\
+- UX: suggest two common channels (Telegram, Discord), but explicitly allow user to choose another channel.\n\
+- Do not ask for secrets in plain chat text.\n\
+- Memory/embedding provider is optional at this stage. Do not block setup on memory provider.\n",
+            );
+        }
+        OpenclawStage::PrimaryProviderVerify => {
+            out.push_str(
+                "- Goal: verify primary provider works.\n\
+- Use read-only checks first (e.g., doctor/health). Avoid filesystem surgery and avoid `doctor --fix` loops.\n\
+- If credential appears test/dummy/invalid, explain clearly and keep user in controlled retry path.\n\
+- Memory/embedding issues are non-blocking; defer them.\n",
+            );
+        }
+        OpenclawStage::ChannelCapture => {
+            out.push_str(
+                "- Goal: capture optional chat channel token securely.\n\
+- Keep channel setup optional and skippable.\n\
+- If user picks Telegram/Discord, provide concise token acquisition guidance.\n",
+            );
+        }
+        OpenclawStage::ChannelVerify => {
+            out.push_str("- Goal: verify optional channel integration or mark as pending.\n");
+        }
+        OpenclawStage::Done => {
+            out.push_str("- Goal reached: required stages complete. [DONE] is allowed.\n");
+        }
+    }
+    if let Some(p) = &ctx.provider {
+        out.push_str(&format!("- Provider: {}\n", p));
+    }
+    if let Some(ch) = &ctx.channel {
+        out.push_str(&format!("- Channel: {}\n", ch));
+    }
+    if let Some(cref) = &ctx.credential_ref {
+        out.push_str(&format!("- Credential reference: {}\n", cref));
+    }
+    out
+}
+
+fn blocked_openclaw_shell_command(stage: OpenclawStage, command: &str) -> Option<&'static str> {
+    let lower = command.trim().to_lowercase();
+
+    // Global hard-blocks for this playbook to prevent repair loops and ad-hoc config surgery.
+    let hard_blocks = [
+        "openclaw doctor --fix",
+        "mkdir -p ~/.openclaw/agents/main/agent",
+        "auth-profiles.json",
+        "openclaw config set agents.defaults.memorysearch.provider",
+    ];
+    if hard_blocks.iter().any(|p| lower.contains(p)) {
+        return Some("blocked_loop_or_manual_schema_surgery");
+    }
+
+    if stage == OpenclawStage::PrimaryProviderVerify
+        && (lower.contains("openclaw memory status")
+            || lower.contains("memorysearch.provider")
+            || lower.contains("embedding"))
+    {
+        return Some("memory_provider_is_optional_in_primary_verify");
+    }
+
+    None
 }
 
 fn playbook_mode_overlay(active_playbook: Option<&str>) -> String {
@@ -327,10 +540,19 @@ impl Orchestrator {
             );
 
             let active_playbook = active_playbook_name(&messages);
+            let openclaw_ctx = if active_playbook.as_deref() == Some("openclaw-install-config") {
+                Some(parse_openclaw_context(&messages))
+            } else {
+                None
+            };
             let system = format!(
-                "{}{}",
+                "{}{}{}",
                 base_system,
-                playbook_mode_overlay(active_playbook.as_deref())
+                playbook_mode_overlay(active_playbook.as_deref()),
+                openclaw_ctx
+                    .as_ref()
+                    .map(openclaw_stage_overlay)
+                    .unwrap_or_default()
             );
 
             let response = self
@@ -566,6 +788,22 @@ impl Orchestrator {
         app_handle: &tauri::AppHandle<R>,
         db: &tokio::sync::Mutex<rusqlite::Connection>,
     ) -> Result<String> {
+        if tool_name == "shell_run" {
+            if let Some(session) = self.sessions.get(session_id) {
+                if active_playbook_name(&session.messages).as_deref() == Some("openclaw-install-config") {
+                    let ctx = parse_openclaw_context(&session.messages);
+                    let command = tool_input.get("command").and_then(|v| v.as_str()).unwrap_or("");
+                    if let Some(reason) = blocked_openclaw_shell_command(ctx.stage, command) {
+                        return Ok(format!(
+                            "COMMAND NOT EXECUTED: blocked by OpenClaw stage policy (stage={}, reason={}). Use stage-appropriate verification/capture steps instead.",
+                            ctx.stage.as_str(),
+                            reason
+                        ));
+                    }
+                }
+            }
+        }
+
         let tool = self
             .router
             .find_tool(tool_name)
