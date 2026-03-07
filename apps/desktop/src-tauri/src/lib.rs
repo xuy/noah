@@ -4,6 +4,7 @@ pub mod debug_runner;
 mod knowledge;
 mod machine_context;
 mod platform;
+mod playbook_runtime;
 mod playbooks;
 mod proactive;
 mod safety;
