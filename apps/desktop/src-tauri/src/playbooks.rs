@@ -314,9 +314,18 @@ impl Tool for ActivatePlaybookTool {
             .ok_or_else(|| anyhow::anyhow!("Missing required parameter: name"))?;
 
         let content = self.registry.read_playbook(name)?;
+        let governed_content = format!(
+            "## PLAYBOOK MODE ACTIVE: {name}\n\
+Follow this playbook as mandatory protocol until completion criteria are met.\n\
+- Do not skip required checkpoints unless a documented caveat applies.\n\
+- Do not end with [DONE] on install-only or partial completion.\n\
+- If blocked, stay in guided setup mode and ask for the next required action.\n\n{content}",
+            name = name,
+            content = content
+        );
 
         Ok(ToolResult::read_only(
-            content.clone(),
+            governed_content,
             json!({ "playbook": name, "loaded": true }),
         ))
     }
