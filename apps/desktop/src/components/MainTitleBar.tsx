@@ -10,7 +10,7 @@ export function MainTitleBar() {
 
   return (
     <div
-      className={`flex items-center justify-between h-11 pr-3 flex-shrink-0 select-none ${
+      className={`flex items-center justify-between h-[28px] pr-3 flex-shrink-0 select-none ${
         isMac ? "pl-[76px]" : "pl-3"
       }`}
       data-tauri-drag-region=""
