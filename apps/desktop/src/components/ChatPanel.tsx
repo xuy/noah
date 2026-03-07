@@ -263,7 +263,7 @@ function ActionCard({
                   ? "bg-bg-tertiary text-text-muted cursor-default"
                   : isProcessing
                     ? "bg-bg-tertiary text-text-muted cursor-not-allowed"
-                    : "bg-accent-green text-white hover:bg-accent-green/80"
+                    : "bg-accent-blue text-white hover:bg-accent-blue/80"
               }
             `}
           >
@@ -322,7 +322,7 @@ function DoneCard({
   return (
     <div className="group animate-fade-in">
       {/* Summary card */}
-      <div className="rounded-xl border-l-2 border-accent-green/40 bg-accent-green/5 px-5 py-4">
+      <div className="rounded-xl border border-border-primary/50 bg-bg-secondary px-5 py-4">
         <div className="flex items-start gap-2.5">
           <span className="text-accent-green text-lg mt-0.5">{"\u2713"}</span>
           <div className="flex-1">
@@ -341,7 +341,7 @@ function DoneCard({
             <span className="text-xs text-text-muted">Fixed?</span>
             <button
               onClick={() => handleResolve(true)}
-              className="px-2.5 py-1 rounded-lg text-xs font-medium text-accent-green bg-accent-green/10 hover:bg-accent-green/20 transition-colors cursor-pointer"
+              className="px-2.5 py-1 rounded-lg text-xs font-medium text-accent-blue bg-accent-blue/10 hover:bg-accent-blue/20 transition-colors cursor-pointer"
             >
               Yes
             </button>
@@ -355,7 +355,7 @@ function DoneCard({
         )}
         {resolved === true && (
           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
-            <span className="text-accent-green text-xs">{"\u2713"}</span>
+            <span className="text-accent-blue text-xs">{"\u2713"}</span>
             <span className="text-xs text-text-muted">Resolved</span>
           </div>
         )}
@@ -385,7 +385,7 @@ function InfoCard({
 }) {
   return (
     <div className="group animate-fade-in">
-      <div className="rounded-xl border-l-2 border-accent-blue/40 bg-accent-blue/5 px-5 py-4">
+      <div className="rounded-xl border border-border-primary/50 bg-bg-secondary px-5 py-4">
         <div className="flex items-start gap-2.5">
           <span className="text-accent-blue text-lg mt-0.5">{"\u2139"}</span>
           <div className="flex-1">
@@ -407,7 +407,7 @@ function InfoCard({
 function ConfirmationPill({ timestamp }: { timestamp: number }) {
   return (
     <div className="group flex flex-col items-end animate-fade-in">
-      <div className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-accent-green/15 text-accent-green text-sm font-medium">
+      <div className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-bg-user-bubble/15 text-bg-user-bubble text-sm font-medium">
         <span>{"\u2713"}</span>
         <span>Go ahead</span>
       </div>
