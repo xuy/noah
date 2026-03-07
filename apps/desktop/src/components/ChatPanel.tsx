@@ -278,6 +278,130 @@ function ActionCard({
   );
 }
 
+function OpenclawCredentialModal({
+  open,
+  isSaving,
+  onClose,
+  onSubmit,
+}: {
+  open: boolean;
+  isSaving: boolean;
+  onClose: () => void;
+  onSubmit: (payload: {
+    provider: string;
+    providerToken: string;
+    chatChannel?: string;
+    chatToken?: string;
+  }) => Promise<void>;
+}) {
+  const [provider, setProvider] = useState("OpenAI");
+  const [providerToken, setProviderToken] = useState("");
+  const [chatChannel, setChatChannel] = useState("Telegram");
+  const [chatToken, setChatToken] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  if (!open) return null;
+
+  const submit = async () => {
+    setError(null);
+    if (!providerToken.trim()) {
+      setError("Provider API key is required.");
+      return;
+    }
+    try {
+      await onSubmit({
+        provider,
+        providerToken,
+        chatChannel: chatToken.trim() ? chatChannel : undefined,
+        chatToken: chatToken.trim() ? chatToken : undefined,
+      });
+      setProviderToken("");
+      setChatToken("");
+      onClose();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/45 backdrop-blur-[1px] flex items-center justify-center p-4">
+      <div className="w-full max-w-lg rounded-2xl border border-border-primary bg-bg-secondary shadow-xl">
+        <div className="px-5 pt-5 pb-3 border-b border-border-primary/60">
+          <div className="text-xl font-semibold text-text-primary">Secure OpenClaw Setup</div>
+          <p className="text-sm text-text-muted mt-1">
+            Values entered here are written directly to local OpenClaw config and are not posted into chat history.
+          </p>
+        </div>
+        <div className="px-5 py-4 space-y-3">
+          <label className="block">
+            <div className="text-sm font-medium text-text-secondary mb-1">Model provider</div>
+            <select
+              value={provider}
+              onChange={(e) => setProvider(e.target.value)}
+              className="w-full px-3 py-2 rounded-lg bg-bg-input border border-border-primary text-sm text-text-primary outline-none focus:border-border-focus"
+            >
+              <option>OpenAI</option>
+              <option>Anthropic</option>
+              <option>OpenRouter</option>
+              <option>Google Gemini</option>
+              <option>Together AI</option>
+              <option>Groq</option>
+            </select>
+          </label>
+          <label className="block">
+            <div className="text-sm font-medium text-text-secondary mb-1">Provider API key</div>
+            <input
+              type="password"
+              value={providerToken}
+              onChange={(e) => setProviderToken(e.target.value)}
+              placeholder="Paste provider API key"
+              className="w-full px-3 py-2 rounded-lg bg-bg-input border border-border-primary text-sm text-text-primary outline-none focus:border-border-focus"
+            />
+          </label>
+          <label className="block">
+            <div className="text-sm font-medium text-text-secondary mb-1">Chat channel (optional)</div>
+            <select
+              value={chatChannel}
+              onChange={(e) => setChatChannel(e.target.value)}
+              className="w-full px-3 py-2 rounded-lg bg-bg-input border border-border-primary text-sm text-text-primary outline-none focus:border-border-focus"
+            >
+              <option>Telegram</option>
+              <option>Discord</option>
+            </select>
+          </label>
+          <label className="block">
+            <div className="text-sm font-medium text-text-secondary mb-1">Chat token (optional)</div>
+            <input
+              type="password"
+              value={chatToken}
+              onChange={(e) => setChatToken(e.target.value)}
+              placeholder="Paste chat token"
+              className="w-full px-3 py-2 rounded-lg bg-bg-input border border-border-primary text-sm text-text-primary outline-none focus:border-border-focus"
+            />
+          </label>
+          {error && <div className="text-sm text-accent-red">{error}</div>}
+        </div>
+        <div className="px-5 pb-5 pt-1 flex gap-2 justify-end">
+          <button
+            onClick={onClose}
+            disabled={isSaving}
+            className="px-4 py-2 rounded-lg border border-border-primary text-text-secondary hover:bg-bg-tertiary cursor-pointer"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={submit}
+            disabled={isSaving}
+            className="px-4 py-2 rounded-lg bg-accent-blue text-white hover:bg-accent-blue/80 disabled:opacity-60 cursor-pointer"
+          >
+            {isSaving ? "Saving..." : "Save Securely"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Done Card ──
 
 function DoneCard({
@@ -470,12 +594,14 @@ function MessageDisplay({
   isLatestDone,
   sessionId,
   onConfirm,
+  onOpenOpenclawForm,
 }: {
   message: Message;
   isProcessing: boolean;
   isLatestDone: boolean;
   sessionId: string | null;
   onConfirm: (messageId: string) => void;
+  onOpenOpenclawForm: (messageId: string) => void;
 }) {
   // User confirmation pill
   if (message.role === "user" && message.actionConfirmation) {
@@ -494,6 +620,13 @@ function MessageDisplay({
   let card: React.ReactNode;
   switch (parsed.type) {
     case "action":
+      {
+        const openclawHint = `${parsed.situation}\n${parsed.plan}\n${message.content}`.toLowerCase();
+        const isOpenclawSetup =
+          openclawHint.includes("openclaw")
+          && (openclawHint.includes("token")
+            || openclawHint.includes("provider")
+            || openclawHint.includes("config"));
       card = (
         <ActionCard
           situation={parsed.situation}
@@ -502,9 +635,10 @@ function MessageDisplay({
           actionTaken={message.actionTaken}
           isProcessing={isProcessing}
           timestamp={message.timestamp}
-          onDoIt={() => onConfirm(message.id)}
+          onDoIt={() => (isOpenclawSetup ? onOpenOpenclawForm(message.id) : onConfirm(message.id))}
         />
       );
+      }
       break;
     case "done":
       card = <DoneCard summary={parsed.summary} timestamp={message.timestamp} isLatestDone={isLatestDone} sessionId={sessionId} />;
@@ -734,11 +868,15 @@ function WelcomeHero({ hasContextual }: { hasContextual: boolean }) {
 
 export function ChatPanel() {
   const messages = useChatStore((s) => s.messages);
+  const markActionTaken = useChatStore((s) => s.markActionTaken);
   const sessionId = useSessionStore((s) => s.sessionId);
   const { sendMessage, sendConfirmation, cancelProcessing, isProcessing } =
     useAgent();
 
   const [input, setInput] = useState("");
+  const [openclawModalOpen, setOpenclawModalOpen] = useState(false);
+  const [openclawModalSaving, setOpenclawModalSaving] = useState(false);
+  const [openclawActionMessageId, setOpenclawActionMessageId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -771,6 +909,44 @@ export function ChatPanel() {
   };
 
   const showWelcome = messages.length === 0 || (messages.length === 1 && messages[0].role === "system");
+
+  const handleOpenOpenclawForm = useCallback((messageId: string) => {
+    setOpenclawActionMessageId(messageId);
+    setOpenclawModalOpen(true);
+  }, []);
+
+  const handleSubmitOpenclawForm = useCallback(
+    async (payload: {
+      provider: string;
+      providerToken: string;
+      chatChannel?: string;
+      chatToken?: string;
+    }) => {
+      setOpenclawModalSaving(true);
+      try {
+        await commands.saveOpenclawCredentials({
+          provider: payload.provider,
+          provider_token: payload.providerToken,
+          chat_channel: payload.chatChannel,
+          chat_token: payload.chatToken,
+        });
+
+        const validation = await commands.validateOpenclawSetup();
+        if (openclawActionMessageId) {
+          markActionTaken(openclawActionMessageId);
+        }
+
+        const versionText = validation.version || "installed";
+        await sendMessage(
+          `I used Noah's secure OpenClaw credential form. Provider configured: ${payload.provider}. Chat channel configured: ${payload.chatChannel || "none"}. Validate and continue setup. Current install: ${versionText}.`,
+        );
+      } finally {
+        setOpenclawModalSaving(false);
+        setOpenclawActionMessageId(null);
+      }
+    },
+    [markActionTaken, openclawActionMessageId, sendMessage],
+  );
 
   // Shared floating input card
   const inputCard = (
@@ -858,6 +1034,7 @@ export function ChatPanel() {
                     isLatestDone={msg.id === latestDoneId}
                     sessionId={sessionId}
                     onConfirm={sendConfirmation}
+                    onOpenOpenclawForm={handleOpenOpenclawForm}
                   />
                 ));
               })()}
@@ -870,6 +1047,20 @@ export function ChatPanel() {
           </div>
         )}
       </div>
+      <OpenclawCredentialModal
+        open={openclawModalOpen}
+        isSaving={openclawModalSaving}
+        onClose={() => {
+          if (!openclawModalSaving) {
+            setOpenclawModalOpen(false);
+            setOpenclawActionMessageId(null);
+          }
+        }}
+        onSubmit={async (payload) => {
+          await handleSubmitOpenclawForm(payload);
+          setOpenclawModalOpen(false);
+        }}
+      />
     </div>
   );
 }

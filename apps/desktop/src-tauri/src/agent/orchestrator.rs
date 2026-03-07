@@ -105,6 +105,7 @@ fn playbook_mode_overlay(active_playbook: Option<&str>) -> String {
 Active playbook: `openclaw-install-config`.\n\
 Treat this as a constrained sub-agent protocol for this session.\n\
 - Use `[SITUATION]` + `[PLAN]` + `[ACTION:...]` for guided setup turns (including provider/channel selection checkpoints).\n\
+- When collecting credentials, direct the user to Noah's secure credential form (privacy-preserving local capture), not plain chat token entry.\n\
 - Do not claim a command/wizard ran unless a tool result explicitly confirms it.\n\
 - If `shell_run` says a command was blocked or not executed, explicitly state that and switch to a supported path.\n\
 - Do not hand off setup as \"configure via app UI\" and stop.\n\
@@ -125,6 +126,11 @@ fn has_disallowed_openclaw_text(text: &str) -> bool {
     if lower.contains("openclaw configure") {
         return true;
     }
+    if lower.contains("secure credential form is not available")
+        || lower.contains("secure credential form isn't available")
+    {
+        return true;
+    }
     if !lower.contains("openclaw config") {
         return false;
     }
@@ -137,6 +143,19 @@ fn has_disallowed_openclaw_text(text: &str) -> bool {
         "openclaw config --help",
     ];
     !allowed.iter().any(|pat| lower.contains(pat))
+}
+
+fn missing_openclaw_action_format(text: &str) -> bool {
+    let has_action = text.contains("[SITUATION]") && text.contains("[PLAN]") && text.contains("[ACTION:");
+    let has_done = text.contains("[DONE]");
+    !has_action && !has_done
+}
+
+fn has_awkward_provider_shorthand(text: &str) -> bool {
+    let lower = text.to_lowercase();
+    (lower.contains("`openai` - for") || lower.contains("openai - for"))
+        || (lower.contains("`anthropic` - for") || lower.contains("anthropic - for"))
+        || (lower.contains("`openrouter` - access") || lower.contains("openrouter - access"))
 }
 
 impl Orchestrator {
@@ -405,6 +424,38 @@ impl Orchestrator {
                         "Rejected non-compliant OpenClaw response and requested retry",
                         json!({"reason": "disallowed_openclaw_wizard_instruction"}),
                     );
+                    continue;
+                }
+                if active_playbook.as_deref() == Some("openclaw-install-config")
+                    && missing_openclaw_action_format(&candidate_text)
+                {
+                    for _ in 0..appended_text_count {
+                        let _ = all_text_parts.pop();
+                    }
+                    let guard_feedback = "Policy guard: OpenClaw setup responses must use [SITUATION], [PLAN], and [ACTION:...] until completion. Rewrite this response in the structured setup format.".to_string();
+                    {
+                        let session = self.sessions.get_mut(session_id).unwrap();
+                        session.messages.push(Message {
+                            role: "user".to_string(),
+                            content: MessageContent::Text(guard_feedback),
+                        });
+                    }
+                    continue;
+                }
+                if active_playbook.as_deref() == Some("openclaw-install-config")
+                    && has_awkward_provider_shorthand(&candidate_text)
+                {
+                    for _ in 0..appended_text_count {
+                        let _ = all_text_parts.pop();
+                    }
+                    let guard_feedback = "Policy guard: provider guidance must use human-readable names (OpenAI, Anthropic, OpenRouter) and plain language, not code-like shorthand list formatting.".to_string();
+                    {
+                        let session = self.sessions.get_mut(session_id).unwrap();
+                        session.messages.push(Message {
+                            role: "user".to_string(),
+                            content: MessageContent::Text(guard_feedback),
+                        });
+                    }
                     continue;
                 }
                 return Ok(all_text_parts.join("\n"));

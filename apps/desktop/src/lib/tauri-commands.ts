@@ -196,6 +196,31 @@ export async function getFeedbackContext(): Promise<FeedbackContext> {
   return await invoke<FeedbackContext>("get_feedback_context");
 }
 
+export interface SaveOpenclawCredentialsRequest {
+  provider: string;
+  provider_token: string;
+  chat_channel?: string;
+  chat_token?: string;
+}
+
+export async function saveOpenclawCredentials(
+  request: SaveOpenclawCredentialsRequest,
+): Promise<void> {
+  await invoke<void>("save_openclaw_credentials", { request });
+}
+
+export interface OpenclawValidationResult {
+  installed: boolean;
+  version: string | null;
+  config_exists: boolean;
+  health_ok: boolean;
+  health_output: string;
+}
+
+export async function validateOpenclawSetup(): Promise<OpenclawValidationResult> {
+  return await invoke<OpenclawValidationResult>("validate_openclaw_setup");
+}
+
 // ── Proactive Suggestions ──
 
 export async function getProactiveEnabled(): Promise<boolean> {

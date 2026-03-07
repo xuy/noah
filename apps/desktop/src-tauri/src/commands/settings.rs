@@ -5,6 +5,130 @@ use crate::agent::llm_client::AuthMode;
 use crate::safety::journal;
 use crate::AppState;
 
+fn openclaw_config_path() -> Result<std::path::PathBuf, String> {
+    let home = std::env::var("HOME").map_err(|e| format!("HOME is not set: {}", e))?;
+    Ok(std::path::PathBuf::from(home).join(".openclaw/openclaw.json"))
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub struct SaveOpenclawCredentialsRequest {
+    pub provider: String,
+    pub provider_token: String,
+    pub chat_channel: Option<String>,
+    pub chat_token: Option<String>,
+}
+
+#[tauri::command]
+pub async fn save_openclaw_credentials(
+    _state: State<'_, AppState>,
+    request: SaveOpenclawCredentialsRequest,
+) -> Result<(), String> {
+    if request.provider.trim().is_empty() {
+        return Err("Provider is required".to_string());
+    }
+    if request.provider_token.trim().is_empty() {
+        return Err("Provider token is required".to_string());
+    }
+
+    let path = openclaw_config_path()?;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("Failed to create OpenClaw config directory: {}", e))?;
+    }
+
+    let mut root = if path.exists() {
+        let raw = std::fs::read_to_string(&path)
+            .map_err(|e| format!("Failed to read OpenClaw config: {}", e))?;
+        serde_json::from_str::<serde_json::Value>(&raw).unwrap_or_else(|_| serde_json::json!({}))
+    } else {
+        serde_json::json!({})
+    };
+
+    if !root.is_object() {
+        root = serde_json::json!({});
+    }
+
+    let obj = root
+        .as_object_mut()
+        .ok_or_else(|| "Invalid config object".to_string())?;
+
+    obj.insert(
+        "model_provider".to_string(),
+        serde_json::json!({
+            "name": request.provider.trim(),
+            "token": request.provider_token,
+        }),
+    );
+
+    if let (Some(channel), Some(token)) = (request.chat_channel, request.chat_token) {
+        if !channel.trim().is_empty() && !token.trim().is_empty() {
+            obj.insert(
+                "chat_integration".to_string(),
+                serde_json::json!({
+                    "channel": channel.trim(),
+                    "token": token,
+                }),
+            );
+        }
+    }
+
+    let rendered = serde_json::to_string_pretty(&root)
+        .map_err(|e| format!("Failed to serialize OpenClaw config: {}", e))?;
+    std::fs::write(&path, rendered)
+        .map_err(|e| format!("Failed to write OpenClaw config: {}", e))?;
+    Ok(())
+}
+
+#[derive(Debug, Serialize)]
+pub struct OpenclawValidationResult {
+    pub installed: bool,
+    pub version: Option<String>,
+    pub config_exists: bool,
+    pub health_ok: bool,
+    pub health_output: String,
+}
+
+#[tauri::command]
+pub async fn validate_openclaw_setup() -> Result<OpenclawValidationResult, String> {
+    let version_out = tokio::process::Command::new("openclaw")
+        .arg("--version")
+        .output()
+        .await
+        .map_err(|e| format!("Failed to run openclaw --version: {}", e))?;
+
+    let installed = version_out.status.success();
+    let version = if installed {
+        let v = String::from_utf8_lossy(&version_out.stdout).trim().to_string();
+        if v.is_empty() { None } else { Some(v) }
+    } else {
+        None
+    };
+
+    let path = openclaw_config_path()?;
+    let config_exists = path.exists();
+
+    let health_out = tokio::process::Command::new("openclaw")
+        .arg("health")
+        .output()
+        .await;
+    let (health_ok, health_output) = match health_out {
+        Ok(out) => (
+            out.status.success(),
+            String::from_utf8_lossy(&out.stdout).trim().to_string(),
+        ),
+        Err(e) => (false, format!("health check failed to run: {}", e)),
+    };
+
+    Ok(OpenclawValidationResult {
+        installed,
+        version,
+        config_exists,
+        health_ok,
+        health_output,
+    })
+}
+
 #[tauri::command]
 pub async fn has_api_key(state: State<'_, AppState>) -> Result<bool, String> {
     let orch = state.orchestrator.lock().await;

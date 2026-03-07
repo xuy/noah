@@ -38,6 +38,7 @@ Tell the user exactly what is needed:
 Never ask users to paste secrets in chat text if secure field capture is available.
 - Direct user to OpenClaw's secure token input flow (wizard/secure prompts) so secrets are written to local config without appearing in conversation history.
 - Confirm that Noah cannot read back the secret values after save.
+- When asking about providers, use human-readable names ("OpenAI", "Anthropic", "OpenRouter"), not code-style shorthand lists.
 - After install, your next action should explicitly direct the user to secure capture (not app wizard-only handoff).
 - Do not run interactive TUI commands like `openclaw config` / `openclaw configure` via `shell_run` as if Noah can operate arrow-key prompts. Instead, tell the user exactly what to run and what to select, then wait for confirmation.
 - If a command is blocked as interactive, do not pretend it launched. Treat that as a hard stop for that command path and switch to explicit user-guided steps.

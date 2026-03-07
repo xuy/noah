@@ -302,6 +302,8 @@ pub fn run() {
             commands::settings::set_proactive_enabled,
             commands::settings::dismiss_proactive_suggestion,
             commands::settings::act_on_proactive_suggestion,
+            commands::settings::save_openclaw_credentials,
+            commands::settings::validate_openclaw_setup,
             commands::knowledge::list_knowledge,
             commands::knowledge::read_knowledge_file,
             commands::knowledge::delete_knowledge_file,
