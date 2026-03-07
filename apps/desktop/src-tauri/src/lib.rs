@@ -286,6 +286,7 @@ pub fn run() {
             commands::agent::approve_action,
             commands::agent::deny_action,
             commands::agent::cancel_processing,
+            commands::agent::record_action_confirmation,
             commands::safety::get_changes,
             commands::safety::undo_change,
             commands::settings::has_api_key,

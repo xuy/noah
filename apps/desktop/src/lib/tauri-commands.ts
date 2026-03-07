@@ -165,6 +165,13 @@ export async function cancelProcessing(): Promise<void> {
   await invoke<void>("cancel_processing");
 }
 
+export async function recordActionConfirmation(
+  sessionId: string,
+  message: string,
+): Promise<void> {
+  await invoke<void>("record_action_confirmation", { sessionId, message });
+}
+
 export async function getTelemetryConsent(): Promise<boolean> {
   return await invoke<boolean>("get_telemetry_consent");
 }

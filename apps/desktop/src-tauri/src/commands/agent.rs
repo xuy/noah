@@ -124,3 +124,17 @@ pub async fn cancel_processing(state: State<'_, AppState>) -> Result<(), String>
     state.cancelled.store(true, Ordering::SeqCst);
     Ok(())
 }
+
+#[tauri::command]
+pub async fn record_action_confirmation(
+    state: State<'_, AppState>,
+    session_id: String,
+    message: String,
+) -> Result<(), String> {
+    let conn = state.db.lock().await;
+    journal::save_message_with_flags(&conn, &session_id, "user", &message, false, true)
+        .map_err(|e| format!("Failed to save confirmation message: {}", e))?;
+    journal::mark_last_action_taken(&conn, &session_id)
+        .map_err(|e| format!("Failed to mark action taken: {}", e))?;
+    Ok(())
+}

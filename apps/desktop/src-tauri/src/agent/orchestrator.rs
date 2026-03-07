@@ -158,6 +158,20 @@ fn has_awkward_provider_shorthand(text: &str) -> bool {
         || (lower.contains("`openrouter` - access") || lower.contains("openrouter - access"))
 }
 
+fn final_user_visible_segment(text: &str) -> String {
+    let markers = ["[SITUATION]", "[DONE]", "[INFO]", "[CREDENTIALS_COLLECTED]"];
+    let mut best_idx: Option<usize> = None;
+    for marker in markers {
+        if let Some(idx) = text.rfind(marker) {
+            best_idx = Some(best_idx.map_or(idx, |cur| cur.max(idx)));
+        }
+    }
+    match best_idx {
+        Some(idx) => text[idx..].trim().to_string(),
+        None => text.trim().to_string(),
+    }
+}
+
 impl Orchestrator {
     pub fn new(
         llm: LlmClient,
@@ -291,7 +305,7 @@ impl Orchestrator {
             // Check for cancellation before each iteration.
             if self.cancelled.load(Ordering::SeqCst) {
                 all_text_parts.push("[INFO] Stopped by user.".to_string());
-                return Ok(all_text_parts.join("\n"));
+                return Ok(final_user_visible_segment(&all_text_parts.join("\n")));
             }
 
             // Clone messages for the LLM call to avoid borrow issues.
@@ -458,7 +472,7 @@ impl Orchestrator {
                     }
                     continue;
                 }
-                return Ok(all_text_parts.join("\n"));
+                return Ok(final_user_visible_segment(&all_text_parts.join("\n")));
             }
 
             // Execute each tool call.

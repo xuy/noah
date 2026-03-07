@@ -1013,7 +1013,11 @@ export function ChatPanel() {
         });
 
         const validation = await commands.validateOpenclawSetup();
-        if (openclawActionMessageId) {
+        if (openclawActionMessageId && sessionId) {
+          await commands.recordActionConfirmation(
+            sessionId,
+            "Used Noah secure OpenClaw credential form",
+          );
           markActionTaken(openclawActionMessageId);
         }
         setOpenclawLastProvider(saved.provider);
@@ -1035,7 +1039,7 @@ Chat channel: ${saved.chat_channel || "None"}`,
         setOpenclawActionMessageId(null);
       }
     },
-    [addMessage, markActionTaken, openclawActionMessageId, sendMessage],
+    [addMessage, markActionTaken, openclawActionMessageId, sendMessage, sessionId],
   );
 
   // Shared floating input card
