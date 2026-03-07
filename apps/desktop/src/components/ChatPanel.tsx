@@ -329,7 +329,7 @@ function OpenclawCredentialCard({
         <div className="px-5 pt-5 pb-3 border-b border-border-primary/60">
           <div className="text-lg font-semibold text-text-primary">Secure OpenClaw Setup</div>
           <p className="text-sm text-text-muted mt-1">
-            Values entered here are written directly to local OpenClaw config and are not posted into chat history.
+            Your credentials are directly used by OpenClaw and not seen by Noah.
           </p>
         </div>
         <div className="px-5 py-4 space-y-3">
