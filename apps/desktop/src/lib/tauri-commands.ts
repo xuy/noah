@@ -212,3 +212,34 @@ export async function dismissProactiveSuggestion(id: string): Promise<void> {
 export async function actOnProactiveSuggestion(id: string): Promise<void> {
   await invoke<void>("act_on_proactive_suggestion", { id });
 }
+
+// ── Scanner / Diagnostics ──
+
+export interface ScanJobRecord {
+  id: string;
+  scan_type: string;
+  status: string;
+  progress_pct: number;
+  progress_detail: string | null;
+  budget_secs: number | null;
+  started_at: string | null;
+  updated_at: string | null;
+  completed_at: string | null;
+  config: string | null;
+}
+
+export async function getScanJobs(): Promise<ScanJobRecord[]> {
+  return await invoke<ScanJobRecord[]>("get_scan_jobs");
+}
+
+export async function triggerScan(scanType: string): Promise<string> {
+  return await invoke<string>("trigger_scan", { scanType });
+}
+
+export async function pauseScan(scanType: string): Promise<void> {
+  await invoke<void>("pause_scan", { scanType });
+}
+
+export async function resumeScan(scanType: string): Promise<void> {
+  await invoke<void>("resume_scan", { scanType });
+}

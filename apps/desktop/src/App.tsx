@@ -8,6 +8,7 @@ import { MainTitleBar } from "./components/MainTitleBar";
 import { ActionApproval } from "./components/ActionApproval";
 import { Sidebar } from "./components/Sidebar";
 import { KnowledgeView } from "./components/KnowledgePanel";
+import { DiagnosticsView } from "./components/DiagnosticsPanel";
 import { DebugPanel } from "./components/DebugPanel";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { UpdateBanner } from "./components/UpdateBanner";
@@ -110,7 +111,13 @@ function MainApp() {
         {/* Only the main content area zooms — title bar & sidebar stay fixed */}
         <div className="flex flex-col flex-1 min-w-0 origin-top-left" style={{ zoom }}>
           <SessionSummary />
-          {activeView === "knowledge" ? <KnowledgeView /> : <ChatPanel />}
+          {activeView === "knowledge" ? (
+            <KnowledgeView />
+          ) : activeView === "diagnostics" ? (
+            <DiagnosticsView />
+          ) : (
+            <ChatPanel />
+          )}
           <DebugPanel />
           <SettingsPanel />
           <ActionApproval />

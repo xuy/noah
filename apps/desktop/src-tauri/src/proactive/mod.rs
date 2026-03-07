@@ -90,7 +90,7 @@ impl ProactiveMonitor {
             });
             pipelines.push(Pipeline {
                 category: "disk",
-                tool: Box::new(DiskAudit),
+                tool: Box::new(DiskAudit::new()),
                 input: serde_json::json!({}),
             });
             pipelines.push(Pipeline {

@@ -57,7 +57,7 @@ mod tests {
     #[test]
     fn test_register_and_find() {
         let mut router = ToolRouter::new();
-        platform::register_platform_tools(&mut router);
+        platform::register_platform_tools(&mut router, None);
 
         // Should find platform-appropriate tools
         #[cfg(target_os = "macos")]
@@ -77,7 +77,7 @@ mod tests {
     #[test]
     fn test_tool_definitions_nonempty() {
         let mut router = ToolRouter::new();
-        platform::register_platform_tools(&mut router);
+        platform::register_platform_tools(&mut router, None);
 
         let defs = router.tool_definitions();
         assert!(!defs.is_empty(), "No tools registered");
@@ -98,7 +98,7 @@ mod tests {
     #[test]
     fn test_no_duplicate_tool_names() {
         let mut router = ToolRouter::new();
-        platform::register_platform_tools(&mut router);
+        platform::register_platform_tools(&mut router, None);
 
         let defs = router.tool_definitions();
         let mut names: Vec<&str> = defs.iter().map(|d| d.name.as_str()).collect();

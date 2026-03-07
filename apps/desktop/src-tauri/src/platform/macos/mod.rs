@@ -7,10 +7,12 @@ pub mod performance;
 pub mod printer;
 pub mod wifi;
 
+use std::path::Path;
+
 use crate::agent::tool_router::ToolRouter;
 
 /// Register all macOS tools with the tool router.
-pub fn register_tools(router: &mut ToolRouter) {
+pub fn register_tools(router: &mut ToolRouter, db_path: Option<&Path>) {
     // Network tools
     router.register(Box::new(network::MacNetworkInfo));
     router.register(Box::new(network::MacPing));
@@ -46,6 +48,9 @@ pub fn register_tools(router: &mut ToolRouter) {
 
     // Compound diagnostic tools
     router.register(Box::new(wifi::WifiScan));
-    router.register(Box::new(disk_audit::DiskAudit));
+    router.register(match db_path {
+        Some(p) => Box::new(disk_audit::DiskAudit::with_db(p.to_path_buf())),
+        None => Box::new(disk_audit::DiskAudit::new()),
+    });
     router.register(Box::new(crash_logs::CrashLogReader));
 }

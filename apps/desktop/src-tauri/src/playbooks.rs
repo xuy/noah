@@ -682,7 +682,7 @@ mod tests {
 
         // Build the real tool router to get all registered tool names.
         let mut router = ToolRouter::new();
-        crate::platform::macos::register_tools(&mut router);
+        crate::platform::macos::register_tools(&mut router, None);
         let tool_defs = router.tool_definitions();
         let tool_names: Vec<&str> = tool_defs.iter().map(|d| d.name.as_str()).collect();
 

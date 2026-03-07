@@ -5,7 +5,7 @@ import type {
   SessionRecord,
 } from "../lib/tauri-commands";
 
-type ActiveView = "chat" | "knowledge";
+type ActiveView = "chat" | "knowledge" | "diagnostics";
 
 interface SessionState {
   sessionId: string | null;

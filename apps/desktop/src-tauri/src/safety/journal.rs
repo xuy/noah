@@ -56,7 +56,7 @@ pub struct SessionRecord {
 }
 
 /// Current schema version. Increment when adding migrations.
-const SCHEMA_VERSION: i32 = 6;
+const SCHEMA_VERSION: i32 = 7;
 
 /// Initialise the journal database, creating tables if they don't exist,
 /// then run any pending migrations.
@@ -261,8 +261,44 @@ fn apply_migrations(conn: &Connection, current: i32) -> Result<()> {
         set_schema_version(conn, 6)?;
     }
 
+    if current < 7 {
+        // Migration 7: Background scanner tables.
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS system_scan_results (
+                id          INTEGER PRIMARY KEY,
+                scan_type   TEXT NOT NULL,
+                category    TEXT,
+                path        TEXT,
+                key         TEXT,
+                value_num   REAL,
+                value_text  TEXT,
+                metadata    TEXT,
+                stale       INTEGER NOT NULL DEFAULT 0,
+                scanned_at  TEXT NOT NULL,
+                generation  INTEGER NOT NULL DEFAULT 0
+            );
+            CREATE INDEX IF NOT EXISTS idx_ssr_type ON system_scan_results(scan_type);
+            CREATE INDEX IF NOT EXISTS idx_ssr_type_cat ON system_scan_results(scan_type, category);
+
+            CREATE TABLE IF NOT EXISTS scan_jobs (
+                id              TEXT PRIMARY KEY,
+                scan_type       TEXT NOT NULL,
+                status          TEXT NOT NULL,
+                progress_pct    INTEGER NOT NULL DEFAULT 0,
+                progress_detail TEXT,
+                budget_secs     INTEGER,
+                started_at      TEXT,
+                updated_at      TEXT,
+                completed_at    TEXT,
+                config          TEXT
+            );",
+        )
+        .context("Migration 7 failed")?;
+        set_schema_version(conn, 7)?;
+    }
+
     // ── Add new migrations here ──
-    // if current < 7 { ... }
+    // if current < 8 { ... }
 
     Ok(())
 }
@@ -769,10 +805,10 @@ mod tests {
     }
 
     #[test]
-    fn test_schema_version_is_6() {
+    fn test_schema_version_is_7() {
         let conn = test_db();
         let version = get_schema_version(&conn);
-        assert_eq!(version, 6);
+        assert_eq!(version, 7);
     }
 
     #[test]
@@ -1000,4 +1036,219 @@ pub fn set_setting(conn: &Connection, key: &str, value: &str) -> Result<()> {
     .context("Failed to set setting")?;
 
     Ok(())
+}
+
+// ── Scan Jobs ────────────────────────────────────────────────────────
+
+/// A scan job record from the scan_jobs table.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ScanJobRecord {
+    pub id: String,
+    pub scan_type: String,
+    pub status: String,
+    pub progress_pct: i32,
+    pub progress_detail: Option<String>,
+    pub budget_secs: Option<i32>,
+    pub started_at: Option<String>,
+    pub updated_at: Option<String>,
+    pub completed_at: Option<String>,
+    pub config: Option<String>,
+}
+
+/// Upsert a scan job (insert or update by id).
+pub fn upsert_scan_job(conn: &Connection, job: &ScanJobRecord) -> Result<()> {
+    conn.execute(
+        "INSERT OR REPLACE INTO scan_jobs (id, scan_type, status, progress_pct, progress_detail, budget_secs, started_at, updated_at, completed_at, config)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+        rusqlite::params![
+            job.id,
+            job.scan_type,
+            job.status,
+            job.progress_pct,
+            job.progress_detail,
+            job.budget_secs,
+            job.started_at,
+            job.updated_at,
+            job.completed_at,
+            job.config,
+        ],
+    )
+    .context("Failed to upsert scan job")?;
+    Ok(())
+}
+
+/// Get the most recent scan job for a given scan_type.
+pub fn get_latest_scan_job(conn: &Connection, scan_type: &str) -> Result<Option<ScanJobRecord>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, scan_type, status, progress_pct, progress_detail, budget_secs, started_at, updated_at, completed_at, config
+         FROM scan_jobs WHERE scan_type = ?1
+         ORDER BY COALESCE(updated_at, started_at) DESC LIMIT 1",
+    )?;
+
+    let mut rows = stmt.query_map(rusqlite::params![scan_type], |row| {
+        Ok(ScanJobRecord {
+            id: row.get(0)?,
+            scan_type: row.get(1)?,
+            status: row.get(2)?,
+            progress_pct: row.get(3)?,
+            progress_detail: row.get(4)?,
+            budget_secs: row.get(5)?,
+            started_at: row.get(6)?,
+            updated_at: row.get(7)?,
+            completed_at: row.get(8)?,
+            config: row.get(9)?,
+        })
+    })?;
+
+    match rows.next() {
+        Some(Ok(job)) => Ok(Some(job)),
+        Some(Err(e)) => Err(e.into()),
+        None => Ok(None),
+    }
+}
+
+/// Get all scan jobs (for the Diagnostics UI).
+pub fn list_scan_jobs(conn: &Connection) -> Result<Vec<ScanJobRecord>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, scan_type, status, progress_pct, progress_detail, budget_secs, started_at, updated_at, completed_at, config
+         FROM scan_jobs ORDER BY COALESCE(updated_at, started_at) DESC",
+    )?;
+
+    let rows = stmt.query_map([], |row| {
+        Ok(ScanJobRecord {
+            id: row.get(0)?,
+            scan_type: row.get(1)?,
+            status: row.get(2)?,
+            progress_pct: row.get(3)?,
+            progress_detail: row.get(4)?,
+            budget_secs: row.get(5)?,
+            started_at: row.get(6)?,
+            updated_at: row.get(7)?,
+            completed_at: row.get(8)?,
+            config: row.get(9)?,
+        })
+    })?;
+
+    rows.collect::<std::result::Result<Vec<_>, _>>().map_err(Into::into)
+}
+
+// ── System Scan Results ──────────────────────────────────────────────
+
+/// A row from the system_scan_results table.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ScanResult {
+    pub id: i64,
+    pub scan_type: String,
+    pub category: Option<String>,
+    pub path: Option<String>,
+    pub key: Option<String>,
+    pub value_num: Option<f64>,
+    pub value_text: Option<String>,
+    pub metadata: Option<String>,
+    pub stale: bool,
+    pub scanned_at: String,
+    pub generation: i64,
+}
+
+/// Insert a batch of scan results, replacing any existing rows for the same paths within a scan_type.
+pub fn upsert_scan_results(conn: &Connection, scan_type: &str, results: &[(String, Option<String>, Option<String>, Option<f64>, Option<String>, Option<String>, bool, i64)]) -> Result<()> {
+    let now = chrono::Utc::now().to_rfc3339();
+    let mut stmt = conn.prepare(
+        "INSERT OR REPLACE INTO system_scan_results (scan_type, category, path, key, value_num, value_text, metadata, stale, scanned_at, generation)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+    )?;
+
+    for (path, category, key, value_num, value_text, metadata, stale, generation) in results {
+        // Delete existing row for this path+scan_type first so we don't accumulate.
+        conn.execute(
+            "DELETE FROM system_scan_results WHERE scan_type = ?1 AND path = ?2",
+            rusqlite::params![scan_type, path],
+        )?;
+        stmt.execute(rusqlite::params![
+            scan_type,
+            category,
+            path,
+            key,
+            value_num,
+            value_text,
+            metadata,
+            *stale as i32,
+            now,
+            generation,
+        ])?;
+    }
+
+    Ok(())
+}
+
+/// Query scan results for a scan_type, optionally filtered by category, min value, and path prefix.
+pub fn query_scan_results(
+    conn: &Connection,
+    scan_type: &str,
+    category: Option<&str>,
+    min_value: Option<f64>,
+    path_prefix: Option<&str>,
+    limit: usize,
+) -> Result<Vec<ScanResult>> {
+    let mut sql = String::from(
+        "SELECT id, scan_type, category, path, key, value_num, value_text, metadata, stale, scanned_at, generation
+         FROM system_scan_results WHERE scan_type = ?1",
+    );
+    let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = vec![Box::new(scan_type.to_string())];
+    let mut idx = 2;
+
+    if let Some(cat) = category {
+        sql.push_str(&format!(" AND category = ?{}", idx));
+        params.push(Box::new(cat.to_string()));
+        idx += 1;
+    }
+
+    if let Some(min) = min_value {
+        sql.push_str(&format!(" AND value_num >= ?{}", idx));
+        params.push(Box::new(min));
+        idx += 1;
+    }
+
+    if let Some(prefix) = path_prefix {
+        sql.push_str(&format!(" AND path LIKE ?{}", idx));
+        params.push(Box::new(format!("{}%", prefix)));
+        // idx += 1;
+    }
+
+    sql.push_str(" ORDER BY value_num DESC");
+    sql.push_str(&format!(" LIMIT {}", limit));
+
+    let param_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt.query_map(param_refs.as_slice(), |row| {
+        Ok(ScanResult {
+            id: row.get(0)?,
+            scan_type: row.get(1)?,
+            category: row.get(2)?,
+            path: row.get(3)?,
+            key: row.get(4)?,
+            value_num: row.get(5)?,
+            value_text: row.get(6)?,
+            metadata: row.get(7)?,
+            stale: row.get::<_, i32>(8)? != 0,
+            scanned_at: row.get(9)?,
+            generation: row.get(10)?,
+        })
+    })?;
+
+    rows.collect::<std::result::Result<Vec<_>, _>>().map_err(Into::into)
+}
+
+/// Get the timestamp of the most recent scan result for a scan_type.
+pub fn latest_scan_timestamp(conn: &Connection, scan_type: &str) -> Result<Option<String>> {
+    let mut stmt = conn.prepare(
+        "SELECT MAX(scanned_at) FROM system_scan_results WHERE scan_type = ?1",
+    )?;
+    let mut rows = stmt.query_map(rusqlite::params![scan_type], |row| row.get::<_, Option<String>>(0))?;
+    match rows.next() {
+        Some(Ok(ts)) => Ok(ts),
+        Some(Err(e)) => Err(e.into()),
+        None => Ok(None),
+    }
 }

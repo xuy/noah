@@ -6,6 +6,7 @@ mod platform;
 mod playbooks;
 mod proactive;
 mod safety;
+mod scanner;
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -31,6 +32,10 @@ pub struct AppState {
     pub knowledge_dir: PathBuf,
     /// Cancellation flag — can be set without holding the orchestrator lock.
     pub cancelled: Arc<AtomicBool>,
+    /// Scanner trigger handle — set a scan_type string to request an on-demand scan.
+    pub scanner_trigger: Arc<std::sync::Mutex<Option<String>>>,
+    /// Scanner pause handle — add scan_type strings to pause specific scanners.
+    pub scanner_pause: Arc<std::sync::Mutex<std::collections::HashSet<String>>>,
 }
 
 /// Load auth: proxy.json first, then api_key.txt, then env var.
@@ -192,7 +197,7 @@ pub fn run() {
 
             // Build the tool router and register platform tools.
             let mut router = ToolRouter::new();
-            platform::register_platform_tools(&mut router);
+            platform::register_platform_tools(&mut router, Some(&db_path));
 
             // Register knowledge tools.
             router.register(Box::new(knowledge::WriteKnowledgeTool::new(knowledge_dir.clone())));
@@ -222,6 +227,13 @@ pub fn run() {
                 Orchestrator::new(llm, router, os_context, pending_approvals.clone(), db_arc.clone(), knowledge_dir.clone());
             let cancelled = orchestrator.cancelled_flag();
 
+            // Build the scanner manager with registered scanners.
+            let mut scanner_mgr = scanner::ScannerManager::new(db_arc.clone(), Some(app.handle().clone()));
+            #[cfg(target_os = "macos")]
+            scanner_mgr.register(Box::new(scanner::disk::DiskScanner));
+            let scanner_trigger = scanner_mgr.trigger_handle();
+            let scanner_pause = scanner_mgr.pause_handle();
+
             // Manage shared state.
             app.manage(AppState {
                 orchestrator: Mutex::new(orchestrator),
@@ -230,6 +242,8 @@ pub fn run() {
                 app_dir,
                 knowledge_dir,
                 cancelled,
+                scanner_trigger,
+                scanner_pause,
             });
 
             // Spawn the proactive health monitor in the background.
@@ -237,6 +251,23 @@ pub fn run() {
                 llm_for_monitor, db_arc, app.handle().clone(),
             );
             tauri::async_runtime::spawn(async move { monitor.run_forever().await });
+
+            // Spawn the scanner manager: initial light scan after 5 min, then periodic.
+            tauri::async_runtime::spawn(async move {
+                // Initial delay — let app finish starting.
+                tokio::time::sleep(std::time::Duration::from_secs(300)).await;
+                eprintln!("[scanner] starting initial scan");
+                scanner_mgr.run_cycle(std::time::Duration::from_secs(30)).await;
+
+                // Then run every 6 hours alongside proactive monitor.
+                loop {
+                    tokio::time::sleep(std::time::Duration::from_secs(6 * 60 * 60)).await;
+                    // Check for on-demand triggers first.
+                    scanner_mgr.run_triggered().await;
+                    // Regular cycle.
+                    scanner_mgr.run_cycle(std::time::Duration::from_secs(60)).await;
+                }
+            });
 
             Ok(())
         })
@@ -273,6 +304,10 @@ pub fn run() {
             commands::knowledge::list_knowledge,
             commands::knowledge::read_knowledge_file,
             commands::knowledge::delete_knowledge_file,
+            commands::scanner::trigger_scan,
+            commands::scanner::pause_scan,
+            commands::scanner::resume_scan,
+            commands::scanner::get_scan_jobs,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
