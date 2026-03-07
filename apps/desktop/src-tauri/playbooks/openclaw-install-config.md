@@ -46,6 +46,8 @@ Run validation checks after each major step:
 - Provider token configured
 - Chat channel token configured
 - Ready for first chat test
+- Do NOT mark setup complete after install only.
+- If you cannot run token checks directly, keep the session in setup mode and guide the user through secure capture + verification checkpoints.
 
 ### 6. Save non-secret profile for future repair
 After successful setup, save an OpenClaw profile to knowledge so future troubleshooting can use the user's actual setup.
@@ -65,6 +67,7 @@ After successful setup, save an OpenClaw profile to knowledge so future troubles
 - "I don't want tokens in chat" -> force secure capture path and avoid any text-based token request.
 - "It used to cause high CPU" -> include immediate post-install sanity check and confirm no runaway process.
 - "Help me connect Telegram" -> guide bot creation step, then secure token capture, then channel verification.
+- "The app opened a wizard" -> do not hand off and stop. Continue as Noah: explain the exact next checkpoint and stay in guided setup.
 
 ## Tools referenced
 - `activate_playbook` — load this protocol for setup consistency
@@ -78,3 +81,12 @@ If install and token checks pass but OpenClaw still cannot complete first chat:
 - Ask user to share the non-secret error output from validation/doctor commands.
 - Recommend upgrading runtime + reinstalling OpenClaw once.
 - If still failing, escalate with exact environment details (OS, runtime version, OpenClaw version, enabled channel) and avoid repeated blind reinstalls.
+
+## Completion criteria
+Only return a final setup [DONE] when ALL are true:
+- OpenClaw is installed and version check succeeds.
+- Provider token is configured (through secure capture or equivalent non-chat method).
+- At least one intended chat channel token is configured when channel usage is requested.
+- User has a concrete next action for first chat verification (or verification already passed).
+
+Install-only success is not setup success.
