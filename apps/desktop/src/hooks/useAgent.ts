@@ -23,6 +23,7 @@ export function useAgent(): UseAgentReturn {
   const markActionTaken = useChatStore((s) => s.markActionTaken);
   const sessionId = useSessionStore((s) => s.sessionId);
   const setChanges = useSessionStore((s) => s.setChanges);
+  const setPastSessions = useSessionStore((s) => s.setPastSessions);
   const changes = useSessionStore((s) => s.changes);
 
   const sendMessage = useCallback(
@@ -56,6 +57,13 @@ export function useAgent(): UseAgentReturn {
         } catch {
           // best-effort
         }
+
+        try {
+          const sessions = await commands.listSessions();
+          setPastSessions(sessions);
+        } catch {
+          // best-effort
+        }
       } catch (err) {
         console.error("Agent communication error:", err);
         addMessage({
@@ -66,7 +74,7 @@ export function useAgent(): UseAgentReturn {
         setIsProcessing(false);
       }
     },
-    [sessionId, addMessage, updateMessage, setChanges, changes],
+    [sessionId, addMessage, updateMessage, setChanges, setPastSessions, changes],
   );
 
   const sendConfirmation = useCallback(
@@ -99,6 +107,13 @@ export function useAgent(): UseAgentReturn {
         } catch {
           // best-effort
         }
+
+        try {
+          const sessions = await commands.listSessions();
+          setPastSessions(sessions);
+        } catch {
+          // best-effort
+        }
       } catch (err) {
         console.error("Agent communication error:", err);
         addMessage({
@@ -109,7 +124,7 @@ export function useAgent(): UseAgentReturn {
         setIsProcessing(false);
       }
     },
-    [sessionId, addMessage, updateMessage, markActionTaken, setChanges, changes],
+    [sessionId, addMessage, updateMessage, markActionTaken, setChanges, setPastSessions, changes],
   );
 
   const cancelProcessing = useCallback(async () => {

@@ -14,6 +14,38 @@ function formatTime(ts: number) {
   return new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
+const URL_PATTERN = /((?:https?:\/\/)?(?:[a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}(?:\/[^\s)]*)?)/g;
+
+function LinkedText({ text }: { text: string }) {
+  const parts = text.split(URL_PATTERN);
+  return (
+    <>
+      {parts.map((part, i) => {
+        if (!part) return null;
+        if (!URL_PATTERN.test(part)) {
+          URL_PATTERN.lastIndex = 0;
+          return <span key={i}>{part}</span>;
+        }
+        URL_PATTERN.lastIndex = 0;
+        const href = part.startsWith("http://") || part.startsWith("https://")
+          ? part
+          : `https://${part}`;
+        return (
+          <a
+            key={i}
+            href={href}
+            target="_blank"
+            rel="noreferrer"
+            className="underline decoration-accent-blue/50 underline-offset-2 hover:text-accent-blue"
+          >
+            {part}
+          </a>
+        );
+      })}
+    </>
+  );
+}
+
 // ── Tool Call Display ──
 
 function ToolCallItem({ toolCall }: { toolCall: ToolCall }) {
@@ -233,21 +265,25 @@ function ActionCard({
       <div className="rounded-xl border border-border-primary/50 bg-bg-secondary overflow-hidden">
         {/* Situation */}
         <div className="px-5 pt-4 pb-2">
-          <div className="text-sm font-semibold text-text-secondary mb-1">
+          <div className="text-sm font-semibold text-accent-blue mb-1.5 tracking-wide">
             Situation
           </div>
-          <div className="text-base text-text-primary leading-relaxed">
-            {situation}
+          <div className="rounded-lg border border-accent-blue/20 bg-accent-blue/5 px-3.5 py-3 text-base text-text-primary leading-relaxed">
+            <div className="whitespace-pre-wrap break-words">
+              <LinkedText text={situation} />
+            </div>
           </div>
         </div>
 
         {/* Plan */}
         <div className="px-5 pb-3">
-          <div className="text-sm font-semibold text-text-secondary mb-1">
+          <div className="text-sm font-semibold text-accent-purple mb-1.5 tracking-wide">
             Plan
           </div>
-          <div className="text-base text-text-secondary leading-relaxed">
-            {plan}
+          <div className="rounded-lg border border-accent-purple/20 bg-accent-purple/5 px-3.5 py-3 text-base text-text-secondary leading-relaxed">
+            <div className="whitespace-pre-wrap break-words">
+              <LinkedText text={plan} />
+            </div>
           </div>
         </div>
 
@@ -454,7 +490,9 @@ function DoneCard({
           <span className="text-accent-green text-lg mt-0.5">{"\u2713"}</span>
           <div className="flex-1">
             <div className="text-base text-text-primary leading-relaxed">
-              {summary}
+              <span className="whitespace-pre-wrap break-words">
+                <LinkedText text={summary} />
+              </span>
             </div>
           </div>
         </div>
@@ -517,7 +555,9 @@ function InfoCard({
           <span className="text-accent-blue text-lg mt-0.5">{"\u2139"}</span>
           <div className="flex-1">
             <div className="text-base text-text-primary leading-relaxed">
-              {summary}
+              <span className="whitespace-pre-wrap break-words">
+                <LinkedText text={summary} />
+              </span>
             </div>
           </div>
         </div>
@@ -610,7 +650,7 @@ function MessageBubble({ message }: { message: Message }) {
   return (
     <div className="group animate-fade-in">
       <div className="text-base text-text-primary leading-relaxed whitespace-pre-wrap break-words">
-        {message.content}
+        <LinkedText text={message.content} />
       </div>
 
       {showToolCalls && message.toolCalls && message.toolCalls.length > 0 && (
