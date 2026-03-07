@@ -4,6 +4,7 @@ version = "0.12.0"
 description = "ITMan - AI-Powered IT Support"
 authors = ["ITMan"]
 edition = "2021"
+default-run = "itman-desktop"
 
 [lib]
 name = "itman_desktop_lib"
