@@ -38,6 +38,7 @@ Tell the user exactly what is needed:
 Never ask users to paste secrets in chat text if secure field capture is available.
 - Direct user to the secure token input flow (Settings secure capture) so secrets are written to local config without appearing in conversation history.
 - Confirm that Noah cannot read back the secret values after save.
+- After install, your next action should explicitly direct the user to secure capture (not app wizard-only handoff).
 
 ### 5. Verify configuration end-to-end
 Run validation checks after each major step:
@@ -85,8 +86,9 @@ If install and token checks pass but OpenClaw still cannot complete first chat:
 ## Completion criteria
 Only return a final setup [DONE] when ALL are true:
 - OpenClaw is installed and version check succeeds.
-- Provider token is configured (through secure capture or equivalent non-chat method).
-- At least one intended chat channel token is configured when channel usage is requested.
+- User explicitly confirms provider token is configured via secure capture (or equivalent non-chat method).
+- User explicitly confirms at least one intended chat channel token is configured when channel usage is requested.
 - User has a concrete next action for first chat verification (or verification already passed).
 
 Install-only success is not setup success.
+Wizard-only handoff is not setup success.
