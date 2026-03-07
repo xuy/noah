@@ -38,24 +38,29 @@ export function useAgent(): UseAgentReturn {
 
       try {
         const content = await commands.sendMessage(sessionId, trimmed);
-        addMessage({ role: "assistant", content });
+        const stillActive = useSessionStore.getState().sessionId === sessionId;
+        if (stillActive) {
+          addMessage({ role: "assistant", content });
+        }
 
-        try {
-          const updatedChanges = await commands.getChanges(sessionId);
-          setChanges(updatedChanges);
-          const newChangeIds = updatedChanges
-            .filter((c) => !prevChangeIds.has(c.id))
-            .map((c) => c.id);
-          if (newChangeIds.length > 0) {
-            // Update the assistant message we just added
-            const latestMsgs = useChatStore.getState().messages;
-            const lastAssistant = latestMsgs[latestMsgs.length - 1];
-            if (lastAssistant?.role === "assistant") {
-              updateMessage(lastAssistant.id, { changeIds: newChangeIds });
+        if (stillActive) {
+          try {
+            const updatedChanges = await commands.getChanges(sessionId);
+            setChanges(updatedChanges);
+            const newChangeIds = updatedChanges
+              .filter((c) => !prevChangeIds.has(c.id))
+              .map((c) => c.id);
+            if (newChangeIds.length > 0) {
+              // Update the assistant message we just added
+              const latestMsgs = useChatStore.getState().messages;
+              const lastAssistant = latestMsgs[latestMsgs.length - 1];
+              if (lastAssistant?.role === "assistant") {
+                updateMessage(lastAssistant.id, { changeIds: newChangeIds });
+              }
             }
+          } catch {
+            // best-effort
           }
-        } catch {
-          // best-effort
         }
 
         try {
@@ -89,23 +94,28 @@ export function useAgent(): UseAgentReturn {
 
       try {
         const content = await commands.sendMessage(sessionId, "Go ahead", true);
-        addMessage({ role: "assistant", content });
+        const stillActive = useSessionStore.getState().sessionId === sessionId;
+        if (stillActive) {
+          addMessage({ role: "assistant", content });
+        }
 
-        try {
-          const updatedChanges = await commands.getChanges(sessionId);
-          setChanges(updatedChanges);
-          const newChangeIds = updatedChanges
-            .filter((c) => !prevChangeIds.has(c.id))
-            .map((c) => c.id);
-          if (newChangeIds.length > 0) {
-            const latestMsgs = useChatStore.getState().messages;
-            const lastAssistant = latestMsgs[latestMsgs.length - 1];
-            if (lastAssistant?.role === "assistant") {
-              updateMessage(lastAssistant.id, { changeIds: newChangeIds });
+        if (stillActive) {
+          try {
+            const updatedChanges = await commands.getChanges(sessionId);
+            setChanges(updatedChanges);
+            const newChangeIds = updatedChanges
+              .filter((c) => !prevChangeIds.has(c.id))
+              .map((c) => c.id);
+            if (newChangeIds.length > 0) {
+              const latestMsgs = useChatStore.getState().messages;
+              const lastAssistant = latestMsgs[latestMsgs.length - 1];
+              if (lastAssistant?.role === "assistant") {
+                updateMessage(lastAssistant.id, { changeIds: newChangeIds });
+              }
             }
+          } catch {
+            // best-effort
           }
-        } catch {
-          // best-effort
         }
 
         try {
