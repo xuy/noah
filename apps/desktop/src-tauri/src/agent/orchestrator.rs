@@ -149,6 +149,34 @@ fn parse_labeled_value(haystack: &str, label: &str) -> Option<String> {
     None
 }
 
+fn infer_provider_from_text(haystack: &str) -> Option<String> {
+    let lower = haystack.to_lowercase();
+    if lower.contains("anthropic") || lower.contains("claude") {
+        return Some("Anthropic".to_string());
+    }
+    if lower.contains("openai") || lower.contains("gpt") {
+        return Some("OpenAI".to_string());
+    }
+    if lower.contains("openrouter") {
+        return Some("OpenRouter".to_string());
+    }
+    if lower.contains("gemini") || lower.contains("google") {
+        return Some("Google Gemini".to_string());
+    }
+    None
+}
+
+fn infer_channel_from_text(haystack: &str) -> Option<String> {
+    let lower = haystack.to_lowercase();
+    if lower.contains("telegram") {
+        return Some("Telegram".to_string());
+    }
+    if lower.contains("discord") {
+        return Some("Discord".to_string());
+    }
+    None
+}
+
 fn parse_openclaw_context(messages: &[Message]) -> OpenclawContext {
     let mut install_checked = false;
     let mut provider_verified = false;
@@ -168,6 +196,12 @@ fn parse_openclaw_context(messages: &[Message]) -> OpenclawContext {
             }
             if channel.is_none() {
                 channel = parse_labeled_value(text, "Chat channel");
+            }
+            if provider.is_none() {
+                provider = infer_provider_from_text(text);
+            }
+            if channel.is_none() {
+                channel = infer_channel_from_text(text);
             }
             if lower.contains("openclaw --version") || lower.contains("openclaw is installed") {
                 install_checked = true;
@@ -251,6 +285,25 @@ Treat this as the skeleton. Keep natural, human guidance as the conversational l
 - Do not ask for secrets in plain chat text.\n\
 - Memory/embedding provider is optional at this stage. Do not block setup on memory provider.\n",
             );
+            if let Some(provider) = &ctx.provider {
+                match provider.to_lowercase().as_str() {
+                    "anthropic" => out.push_str(
+                        "- Explain where to get Anthropic API key in plain language: Anthropic Console (console.anthropic.com → Account Settings/API Keys).\n\
+- Mention alternative for Anthropic subscription users: `claude setup-token` (if they prefer setup-token auth).\n",
+                    ),
+                    "openai" => out.push_str(
+                        "- Explain where to get OpenAI API key in plain language: OpenAI platform API keys page (platform.openai.com/api-keys).\n",
+                    ),
+                    "openrouter" => out.push_str(
+                        "- Explain where to get OpenRouter key in plain language: OpenRouter dashboard keys page.\n",
+                    ),
+                    _ => {}
+                }
+            } else {
+                out.push_str(
+                    "- If provider is unknown, ask one plain-language provider choice question (OpenAI or Anthropic as common defaults).\n",
+                );
+            }
         }
         OpenclawStage::PrimaryProviderVerify => {
             out.push_str(
@@ -265,6 +318,11 @@ Treat this as the skeleton. Keep natural, human guidance as the conversational l
                 "- Goal: capture optional chat channel token securely.\n\
 - Keep channel setup optional and skippable.\n\
 - If user picks Telegram/Discord, provide concise token acquisition guidance.\n",
+            );
+            out.push_str(
+                "- Telegram guidance: talk to @BotFather, run /newbot, copy token.\n\
+- Discord guidance: Developer Portal → create app/bot → copy bot token.\n\
+- If user picks another channel, adapt guidance instead of refusing.\n",
             );
         }
         OpenclawStage::ChannelVerify => {
@@ -382,6 +440,33 @@ fn final_user_visible_segment(text: &str) -> String {
     match best_idx {
         Some(idx) => text[idx..].trim().to_string(),
         None => text.trim().to_string(),
+    }
+}
+
+fn asks_where_to_get_key(user_message: &str) -> bool {
+    let lower = user_message.to_lowercase();
+    (lower.contains("where") || lower.contains("find") || lower.contains("get"))
+        && (lower.contains("api key") || lower.contains("credential") || lower.contains("token"))
+}
+
+fn missing_provider_source_guidance(
+    user_message: &str,
+    candidate_text: &str,
+    provider: Option<&str>,
+) -> bool {
+    if !asks_where_to_get_key(user_message) {
+        return false;
+    }
+    let resp = candidate_text.to_lowercase();
+    match provider.unwrap_or("").to_lowercase().as_str() {
+        "anthropic" => !(resp.contains("console.anthropic.com") || resp.contains("anthropic console")),
+        "openai" => !(resp.contains("platform.openai.com/api-keys") || resp.contains("openai api keys")),
+        "openrouter" => !(resp.contains("openrouter") && resp.contains("key")),
+        _ => !(
+            resp.contains("console.anthropic.com")
+                || resp.contains("platform.openai.com/api-keys")
+                || resp.contains("api keys")
+        ),
     }
 }
 
@@ -685,6 +770,28 @@ impl Orchestrator {
                         let _ = all_text_parts.pop();
                     }
                     let guard_feedback = "Policy guard: provider guidance must use human-readable names (OpenAI, Anthropic, OpenRouter) and plain language, not code-like shorthand list formatting.".to_string();
+                    {
+                        let session = self.sessions.get_mut(session_id).unwrap();
+                        session.messages.push(Message {
+                            role: "user".to_string(),
+                            content: MessageContent::Text(guard_feedback),
+                        });
+                    }
+                    continue;
+                }
+                if active_playbook.as_deref() == Some("openclaw-install-config")
+                    && openclaw_ctx.as_ref().is_some_and(|ctx| {
+                        missing_provider_source_guidance(
+                            user_message,
+                            &candidate_text,
+                            ctx.provider.as_deref(),
+                        )
+                    })
+                {
+                    for _ in 0..appended_text_count {
+                        let _ = all_text_parts.pop();
+                    }
+                    let guard_feedback = "Policy guard: user asked where to get API credentials. Provide concrete source guidance (provider console URL and plain steps) before proceeding.".to_string();
                     {
                         let session = self.sessions.get_mut(session_id).unwrap();
                         session.messages.push(Message {
