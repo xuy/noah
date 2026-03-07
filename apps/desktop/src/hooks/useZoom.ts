@@ -14,17 +14,15 @@ function loadZoom(): number {
 }
 
 /**
- * CSS-based zoom controlled by Cmd+/-/0.
- * Applies zoom to document.documentElement so the entire page scales,
- * including coordinates — meaning fixed-position native elements
- * (like macOS traffic lights) stay aligned with CSS-positioned content.
+ * Content-only zoom controlled by Cmd+/-/0.
+ * Returns the zoom value — the caller applies it to the content container,
+ * leaving the title bar and sidebar unzoomed (and aligned with traffic lights).
  */
 export function useZoom() {
   const [zoom, setZoom] = useState(loadZoom);
 
-  // Apply zoom to <html> element
+  // Persist zoom level
   useEffect(() => {
-    document.documentElement.style.zoom = String(zoom);
     try {
       localStorage.setItem(STORAGE_KEY, String(zoom));
     } catch {}

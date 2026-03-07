@@ -99,7 +99,7 @@ function MainApp() {
   return (
     <div className="flex flex-col h-screen bg-bg-primary text-text-primary">
       {/* Title bar — spans full width, sits in macOS overlay region */}
-      <MainTitleBar zoom={zoom} />
+      <MainTitleBar />
       <UpdateBanner />
       <ProactiveSuggestionBanner />
 
@@ -107,7 +107,8 @@ function MainApp() {
       <div className="flex flex-1 min-h-0">
         <Sidebar session={session} />
 
-        <div className="flex flex-col flex-1 min-w-0">
+        {/* Only the main content area zooms — title bar & sidebar stay fixed */}
+        <div className="flex flex-col flex-1 min-w-0 origin-top-left" style={{ zoom }}>
           <SessionSummary />
           {activeView === "knowledge" ? <KnowledgeView /> : <ChatPanel />}
           <DebugPanel />

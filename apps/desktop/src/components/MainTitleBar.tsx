@@ -2,14 +2,14 @@ import { useSessionStore } from "../stores/sessionStore";
 
 const isMac = navigator.platform.startsWith("Mac");
 
-export function MainTitleBar({ zoom = 1 }: { zoom?: number }) {
+export function MainTitleBar() {
   const sidebarOpen = useSessionStore((s) => s.sidebarOpen);
   const toggleSidebar = useSessionStore((s) => s.toggleSidebar);
   const toggleSettings = useSessionStore((s) => s.toggleSettings);
   const settingsOpen = useSessionStore((s) => s.settingsOpen);
-  // Traffic lights are native (fixed at ~76pt). CSS zoom scales our padding,
-  // so divide by zoom to compensate: (76/zoom) * zoom = 76 physical pixels.
-  const paddingLeft = isMac ? 76 / zoom : 12;
+  // On macOS, pad left to clear native traffic lights (76px).
+  // Title bar is outside the zoom container, so no compensation needed.
+  const paddingLeft = isMac ? 76 : 12;
 
   return (
     <div
