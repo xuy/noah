@@ -87,6 +87,7 @@ pub fn parse_openclaw_context(messages: &[Message]) -> OpenclawContext {
     let mut install_checked = false;
     let mut provider_verified = false;
     let mut channel_verified = false;
+    let mut channel_captured = false;
     let mut provider: Option<String> = None;
     let mut channel: Option<String> = None;
     let mut credential_ref: Option<String> = None;
@@ -122,6 +123,20 @@ pub fn parse_openclaw_context(messages: &[Message]) -> OpenclawContext {
             {
                 provider_verified = true;
             }
+            if lower.contains("[credentials_collected]")
+                && channel
+                    .as_deref()
+                    .is_some_and(|c| !c.eq_ignore_ascii_case("none"))
+            {
+                channel_captured = true;
+            }
+            if lower.contains("chat channel:")
+                && channel
+                    .as_deref()
+                    .is_some_and(|c| !c.eq_ignore_ascii_case("none"))
+            {
+                channel_captured = true;
+            }
             if lower.contains("telegram bot connection verified")
                 || lower.contains("discord connection verified")
                 || lower.contains("channel verification passed")
@@ -137,14 +152,6 @@ pub fn parse_openclaw_context(messages: &[Message]) -> OpenclawContext {
                             let cmd_l = cmd.to_lowercase();
                             if cmd_l.contains("openclaw --version") {
                                 install_checked = true;
-                            }
-                            if cmd_l.contains("openclaw doctor") && !cmd_l.contains("--fix") {
-                                if credential_ref.is_some() {
-                                    provider_verified = true;
-                                }
-                            }
-                            if cmd_l.contains("telegram") || cmd_l.contains("discord") {
-                                channel_verified = true;
                             }
                         }
                     }
@@ -162,10 +169,14 @@ pub fn parse_openclaw_context(messages: &[Message]) -> OpenclawContext {
     } else if channel
         .as_deref()
         .is_some_and(|c| !c.eq_ignore_ascii_case("none"))
-        && !channel_verified
+        && !channel_captured
     {
         OpenclawStage::ChannelCapture
-    } else if channel.is_some() && !channel_verified {
+    } else if channel
+        .as_deref()
+        .is_some_and(|c| !c.eq_ignore_ascii_case("none"))
+        && !channel_verified
+    {
         OpenclawStage::ChannelVerify
     } else {
         OpenclawStage::Done
