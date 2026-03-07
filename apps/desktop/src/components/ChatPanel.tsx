@@ -706,7 +706,7 @@ function SuggestionCards({
   const allSuggestions = [...contextual, ...SUGGESTIONS].slice(0, 4);
 
   return (
-    <div className="flex flex-col items-center justify-center h-full text-text-muted">
+    <div className="flex flex-col items-center text-text-muted">
       <NoahIcon className="w-14 h-14 rounded-2xl mb-4" alt="Noah" />
       <p className="text-2xl font-semibold text-text-primary mb-1">
         Hey, I'm Noah
@@ -780,113 +780,103 @@ export function ChatPanel() {
     }
   };
 
+  const showWelcome = messages.length === 0 || (messages.length === 1 && messages[0].role === "system");
+
+  // Shared floating input card
+  const inputCard = (
+    <div className="max-w-3xl w-full mx-auto">
+      <div className="flex items-end gap-2 bg-bg-secondary rounded-2xl border border-border-primary focus-within:border-accent-blue/40 transition-colors shadow-sm">
+        <textarea
+          ref={textareaRef}
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder="Tell Noah what you need help with..."
+          rows={1}
+          disabled={isProcessing}
+          className="flex-1 bg-transparent text-base text-text-primary placeholder-text-muted px-4 py-3 resize-none outline-none min-h-[44px] max-h-[120px]"
+        />
+        <div className="flex items-center gap-1 pr-2 pb-1.5">
+          {isProcessing ? (
+            <button
+              onClick={cancelProcessing}
+              title="Stop processing"
+              className="flex items-center justify-center w-9 h-9 rounded-lg bg-accent-red/15 text-accent-red hover:bg-accent-red/25 transition-all duration-200 cursor-pointer"
+            >
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                <rect x="3" y="3" width="8" height="8" rx="1.5" fill="currentColor" />
+              </svg>
+            </button>
+          ) : (
+            <button
+              onClick={handleSubmit}
+              disabled={!input.trim()}
+              className={`
+                flex items-center justify-center w-9 h-9 rounded-lg
+                transition-all duration-200 cursor-pointer
+                ${
+                  input.trim()
+                    ? "bg-accent-blue text-white hover:bg-accent-blue/80"
+                    : "text-text-muted cursor-not-allowed"
+                }
+              `}
+            >
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <path d="M2 8L14 2L8 14V8H2Z" fill="currentColor" />
+              </svg>
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <div className="flex flex-col flex-1 min-h-0">
-      {/* Messages area */}
       <div className="flex-1 overflow-y-auto px-6 py-4">
-        {(() => {
-          // Find the last "done" message so only it shows the resolution prompt
-          const latestDoneId = [...messages]
-            .reverse()
-            .find(
-              (m) =>
-                m.role === "assistant" && parseResponse(m.content).type === "done",
-            )?.id ?? null;
-
-          if (messages.length === 0 || (messages.length === 1 && messages[0].role === "system")) {
-            return (
-              <SuggestionCards
-                onSelect={(text) => sendMessage(text)}
-                disabled={isProcessing}
-              />
-            );
-          }
-          return (
-            <div className="max-w-3xl w-full mx-auto space-y-5">
-              {messages.map((msg) => (
-                <MessageDisplay
-                  key={msg.id}
-                  message={msg}
-                  isProcessing={isProcessing}
-                  isLatestDone={msg.id === latestDoneId}
-                  sessionId={sessionId}
-                  onConfirm={sendConfirmation}
-                />
-              ))}
-              {isProcessing && <ThinkingIndicator />}
-              <div ref={messagesEndRef} />
-            </div>
-          );
-        })()}
-      </div>
-
-      {/* Input area */}
-      <div className="border-t border-border-primary bg-bg-secondary px-6 py-3">
-          <div className="max-w-3xl w-full mx-auto">
-            <div className="flex items-end gap-2 bg-bg-input rounded-xl border border-border-primary focus-within:border-accent-blue/40 transition-colors">
-              <textarea
-                ref={textareaRef}
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder="Tell Noah what you need help with..."
-                rows={1}
-                disabled={isProcessing}
-                className="flex-1 bg-transparent text-base text-text-primary placeholder-text-muted px-4 py-3 resize-none outline-none min-h-[44px] max-h-[120px]"
-              />
-              <div className="flex items-center gap-1 pr-2 pb-1.5">
-                {isProcessing ? (
-                  <button
-                    onClick={cancelProcessing}
-                    title="Stop processing"
-                    className="flex items-center justify-center w-9 h-9 rounded-lg bg-accent-red/15 text-accent-red hover:bg-accent-red/25 transition-all duration-200 cursor-pointer"
-                  >
-                    <svg
-                      width="14"
-                      height="14"
-                      viewBox="0 0 14 14"
-                      fill="none"
-                      xmlns="http://www.w3.org/2000/svg"
-                    >
-                      <rect
-                        x="3"
-                        y="3"
-                        width="8"
-                        height="8"
-                        rx="1.5"
-                        fill="currentColor"
-                      />
-                    </svg>
-                  </button>
-                ) : (
-                  <button
-                    onClick={handleSubmit}
-                    disabled={!input.trim()}
-                    className={`
-                      flex items-center justify-center w-9 h-9 rounded-lg
-                      transition-all duration-200 cursor-pointer
-                      ${
-                        input.trim()
-                          ? "bg-accent-blue text-white hover:bg-accent-blue/80"
-                          : "text-text-muted cursor-not-allowed"
-                      }
-                    `}
-                  >
-                    <svg
-                      width="16"
-                      height="16"
-                      viewBox="0 0 16 16"
-                      fill="none"
-                      xmlns="http://www.w3.org/2000/svg"
-                    >
-                      <path d="M2 8L14 2L8 14V8H2Z" fill="currentColor" />
-                    </svg>
-                  </button>
-                )}
-              </div>
+        {showWelcome ? (
+          /* Welcome: hero + input centered in viewport */
+          <div className="flex flex-col items-center justify-center h-full">
+            <SuggestionCards
+              onSelect={(text) => sendMessage(text)}
+              disabled={isProcessing}
+            />
+            <div className="w-full mt-8 mb-4">
+              {inputCard}
             </div>
           </div>
-        </div>
+        ) : (
+          /* Conversation: messages then input floating at bottom */
+          <div className="flex flex-col min-h-full">
+            <div className="max-w-3xl w-full mx-auto space-y-5 flex-1">
+              {(() => {
+                const latestDoneId = [...messages]
+                  .reverse()
+                  .find(
+                    (m) =>
+                      m.role === "assistant" && parseResponse(m.content).type === "done",
+                  )?.id ?? null;
+
+                return messages.map((msg) => (
+                  <MessageDisplay
+                    key={msg.id}
+                    message={msg}
+                    isProcessing={isProcessing}
+                    isLatestDone={msg.id === latestDoneId}
+                    sessionId={sessionId}
+                    onConfirm={sendConfirmation}
+                  />
+                ));
+              })()}
+              {isProcessing && <ThinkingIndicator />}
+            </div>
+            <div className="sticky bottom-0 pt-4 pb-4 bg-gradient-to-t from-bg-primary from-80% to-transparent">
+              {inputCard}
+            </div>
+            <div ref={messagesEndRef} />
+          </div>
+        )}
+      </div>
     </div>
   );
 }
