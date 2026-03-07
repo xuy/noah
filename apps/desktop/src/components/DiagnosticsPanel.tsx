@@ -287,10 +287,10 @@ export function DiagnosticsView() {
         <div className="max-w-3xl w-full mx-auto py-4 px-6">
           <div className="pb-4">
             <h1 className="text-2xl font-semibold text-text-primary">
-              Diagnostics
+              Actions
             </h1>
             <p className="text-sm text-text-muted mt-1">
-              Background scans that help Noah understand your system.
+              Background scans and tasks Noah is working on.
               Scans run quietly when your computer is idle.
             </p>
           </div>
