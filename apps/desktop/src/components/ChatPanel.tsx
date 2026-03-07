@@ -659,6 +659,7 @@ const SUGGESTIONS = [
   { icon: "\uD83C\uDF10", label: "My internet is slow", description: "Diagnose network issues" },
   { icon: "\uD83D\uDC22", label: "My computer feels sluggish", description: "Check performance" },
   { icon: "\uD83D\uDCA5", label: "A program keeps crashing", description: "Find the cause" },
+  { icon: "\uD83E\uDDF0", label: "Set up OpenClaw", description: "Guided secure setup" },
   { icon: "\uD83D\uDDA8\uFE0F", label: "Set up my printer", description: "Fix printing problems" },
 ];
 
@@ -734,6 +735,7 @@ function WelcomeHero({ hasContextual }: { hasContextual: boolean }) {
 export function ChatPanel() {
   const messages = useChatStore((s) => s.messages);
   const sessionId = useSessionStore((s) => s.sessionId);
+  const setSettingsOpen = useSessionStore((s) => s.setSettingsOpen);
   const { sendMessage, sendConfirmation, cancelProcessing, isProcessing } =
     useAgent();
 
@@ -829,7 +831,13 @@ export function ChatPanel() {
             <WelcomeHero hasContextual={false} />
             {!input.trim() && (
               <SuggestionCards
-                onSelect={(text) => sendMessage(text)}
+                onSelect={(text) => {
+                  if (text === "Set up OpenClaw") {
+                    setSettingsOpen(true);
+                    return;
+                  }
+                  sendMessage(text);
+                }}
                 disabled={isProcessing}
               />
             )}
