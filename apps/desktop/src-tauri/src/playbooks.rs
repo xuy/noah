@@ -70,6 +70,10 @@ const BUILTIN_PLAYBOOKS: &[(&str, &str)] = &[
         "windows-printer-repair.md",
         include_str!("../playbooks/windows-printer-repair.md"),
     ),
+    (
+        "openclaw-install-config.md",
+        include_str!("../playbooks/openclaw-install-config.md"),
+    ),
 ];
 
 // ── Frontmatter parser ─────────────────────────────────────────────────
