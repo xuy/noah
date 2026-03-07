@@ -735,7 +735,6 @@ function WelcomeHero({ hasContextual }: { hasContextual: boolean }) {
 export function ChatPanel() {
   const messages = useChatStore((s) => s.messages);
   const sessionId = useSessionStore((s) => s.sessionId);
-  const setSettingsOpen = useSessionStore((s) => s.setSettingsOpen);
   const { sendMessage, sendConfirmation, cancelProcessing, isProcessing } =
     useAgent();
 
@@ -831,13 +830,7 @@ export function ChatPanel() {
             <WelcomeHero hasContextual={false} />
             {!input.trim() && (
               <SuggestionCards
-                onSelect={(text) => {
-                  if (text === "Set up OpenClaw") {
-                    setSettingsOpen(true);
-                    return;
-                  }
-                  sendMessage(text);
-                }}
+                onSelect={(text) => sendMessage(text)}
                 disabled={isProcessing}
               />
             )}
