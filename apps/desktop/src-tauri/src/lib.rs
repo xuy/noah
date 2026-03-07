@@ -284,6 +284,8 @@ pub fn run() {
             commands::session::export_session,
             commands::session::mark_resolved,
             commands::agent::send_message,
+            commands::agent::send_message_v2,
+            commands::agent::send_user_event,
             commands::agent::approve_action,
             commands::agent::deny_action,
             commands::agent::cancel_processing,

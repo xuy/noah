@@ -45,6 +45,52 @@ export interface MessageRecord {
   action_confirmation: boolean;
 }
 
+export type AssistantActionType =
+  | "RUN_STEP"
+  | "OPENCLAW_SECURE_CAPTURE"
+  | "ASK_USER_QUESTION";
+
+export interface AssistantQuestionOption {
+  label: string;
+  description: string;
+}
+
+export interface AssistantQuestion {
+  question: string;
+  header: string;
+  options: AssistantQuestionOption[];
+  multiSelect: boolean;
+}
+
+export interface AssistantUiCard {
+  kind: "card";
+  situation: string;
+  plan: string;
+  action: {
+    label: string;
+    type: AssistantActionType;
+    questions?: AssistantQuestion[];
+  };
+}
+
+export interface AssistantUiInfo {
+  kind: "done" | "info";
+  summary: string;
+}
+
+export type AssistantUiPayload = AssistantUiCard | AssistantUiInfo;
+
+export interface SendMessageV2Result {
+  text: string;
+  assistant_ui?: AssistantUiPayload;
+}
+
+export type UserEventType =
+  | "USER_CONFIRM"
+  | "USER_SKIP_OPTIONAL"
+  | "USER_SUBMIT_SECURE_FORM"
+  | "USER_ANSWER_QUESTION";
+
 export interface KnowledgeEntry {
   category: string;
   filename: string;
@@ -68,6 +114,30 @@ export async function sendMessage(
     sessionId,
     message,
     isConfirmation,
+  });
+}
+
+export async function sendMessageV2(
+  sessionId: string,
+  message: string,
+  isConfirmation?: boolean,
+): Promise<SendMessageV2Result> {
+  return await invoke<SendMessageV2Result>("send_message_v2", {
+    sessionId,
+    message,
+    isConfirmation,
+  });
+}
+
+export async function sendUserEvent(
+  sessionId: string,
+  eventType: UserEventType,
+  payload?: string,
+): Promise<SendMessageV2Result> {
+  return await invoke<SendMessageV2Result>("send_user_event", {
+    sessionId,
+    eventType,
+    payload,
   });
 }
 

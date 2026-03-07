@@ -74,8 +74,8 @@ export function ProactiveSuggestionBanner() {
       addMessage({ role: "user", content: userMessage });
 
       // Send to backend so Noah can investigate further.
-      const reply = await commands.sendMessage(session.id, userMessage);
-      addMessage({ role: "assistant", content: reply });
+      const reply = await commands.sendMessageV2(session.id, userMessage);
+      addMessage({ role: "assistant", content: reply.text, assistantUi: reply.assistant_ui });
     } catch (err) {
       console.error("Failed to start proactive session:", err);
       addMessage({

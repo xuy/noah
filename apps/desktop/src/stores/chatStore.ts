@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import type { AssistantUiPayload } from "../lib/tauri-commands";
 
 export interface ToolCall {
   id: string;
@@ -17,6 +18,7 @@ export interface Message {
   changeIds?: string[];
   actionTaken?: boolean;
   actionConfirmation?: boolean;
+  assistantUi?: AssistantUiPayload;
 }
 
 interface ChatState {

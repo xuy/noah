@@ -7,6 +7,7 @@ use tokio::sync::Mutex;
 
 use crate::agent::llm_client::LlmClient;
 use crate::agent::orchestrator::{Orchestrator, PendingApprovals};
+use crate::commands::agent::{parse_assistant_ui, AssistantActionType, AssistantUiPayload};
 use crate::agent::tool_router::ToolRouter;
 use crate::knowledge;
 use crate::machine_context::MachineContext;
@@ -371,16 +372,20 @@ pub async fn run_prompt_flow(prompt: &str, max_turns: usize) -> Result<PromptRun
             break;
         }
 
-        if output.contains("[ACTION:") {
-            if let Some(saved) = maybe_simulate_openclaw_secure_capture(&output, &db_arc).await {
-                let channel = saved.chat_channel.unwrap_or_else(|| "none".to_string());
-                input = format!(
-                    "OpenClaw credentials were submitted via Noah secure form. Credential reference: {}. Provider: {}. Chat channel: {}. Please continue with validation and next setup checkpoint.",
-                    saved.credential_ref, saved.provider, channel
-                );
-            } else {
-                input = "Go ahead".to_string();
+        if let Some(AssistantUiPayload::Card(card)) = parse_assistant_ui(&output) {
+            if card.action.action_type == AssistantActionType::OpenclawSecureCapture {
+                if let Some(saved) = maybe_simulate_openclaw_secure_capture(&output, &db_arc).await {
+                    let channel = saved.chat_channel.unwrap_or_else(|| "none".to_string());
+                    input = format!(
+                        "OpenClaw credentials were submitted via Noah secure form. Credential reference: {}. Provider: {}. Chat channel: {}. Please continue with validation and next setup checkpoint.",
+                        saved.credential_ref, saved.provider, channel
+                    );
+                } else {
+                    input = "Go ahead".to_string();
+                }
+                continue;
             }
+            input = "Go ahead".to_string();
             continue;
         }
 

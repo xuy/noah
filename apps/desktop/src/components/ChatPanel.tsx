@@ -5,6 +5,7 @@ import { useSessionStore } from "../stores/sessionStore";
 import type { Message, ToolCall } from "../stores/chatStore";
 import { useAgent } from "../hooks/useAgent";
 import { parseResponse } from "../lib/parseResponse";
+import type { AssistantUiPayload } from "../lib/tauri-commands";
 import * as commands from "../lib/tauri-commands";
 import { NoahIcon } from "./NoahIcon";
 
@@ -713,7 +714,22 @@ function MessageDisplay({
   }
 
   // Parse assistant messages for structured format
-  const parsed = parseResponse(message.content);
+  const parsedFromUi = (ui: AssistantUiPayload | undefined) => {
+    if (!ui) return null;
+    if (ui.kind === "card") {
+      return {
+        type: "action" as const,
+        situation: ui.situation,
+        plan: ui.plan,
+        actionLabel: ui.action.label,
+        actionType: ui.action.type,
+      };
+    }
+    if (ui.kind === "done") return { type: "done" as const, summary: ui.summary };
+    return { type: "info" as const, summary: ui.summary };
+  };
+  const parsedUi = parsedFromUi(message.assistantUi);
+  const parsed = parsedUi || parseResponse(message.content);
   const hasActions = message.changeIds && message.changeIds.length > 0;
 
   let card: React.ReactNode;
@@ -721,17 +737,18 @@ function MessageDisplay({
     case "action":
       {
         const openclawHint = `${parsed.situation}\n${parsed.plan}\n${message.content}`.toLowerCase();
-        const isOpenclawSetup =
-          openclawHint.includes("openclaw")
-          && (
-            openclawHint.includes("secure credential form")
-            || openclawHint.includes("secure form")
-            || openclawHint.includes("secure token capture")
-            || (
-              openclawHint.includes("capture")
-              && (openclawHint.includes("api key") || openclawHint.includes("token"))
-            )
-          );
+        const isOpenclawSetup = parsedUi
+          ? (parsed as { actionType?: string }).actionType === "OPENCLAW_SECURE_CAPTURE"
+          : openclawHint.includes("openclaw")
+            && (
+              openclawHint.includes("secure credential form")
+              || openclawHint.includes("secure form")
+              || openclawHint.includes("secure token capture")
+              || (
+                openclawHint.includes("capture")
+                && (openclawHint.includes("api key") || openclawHint.includes("token"))
+              )
+            );
       card = (
         <ActionCard
           situation={parsed.situation}
@@ -997,7 +1014,7 @@ export function ChatPanel() {
   const addMessage = useChatStore((s) => s.addMessage);
   const markActionTaken = useChatStore((s) => s.markActionTaken);
   const sessionId = useSessionStore((s) => s.sessionId);
-  const { sendMessage, sendConfirmation, cancelProcessing, isProcessing } =
+  const { sendMessage, sendConfirmation, sendEvent, cancelProcessing, isProcessing } =
     useAgent();
 
   const [input, setInput] = useState("");
@@ -1059,11 +1076,7 @@ export function ChatPanel() {
         });
 
         const validation = await commands.validateOpenclawSetup();
-        if (openclawActionMessageId && sessionId) {
-          await commands.recordActionConfirmation(
-            sessionId,
-            "Used Noah secure OpenClaw credential form",
-          );
+        if (openclawActionMessageId) {
           markActionTaken(openclawActionMessageId);
         }
         setOpenclawLastProvider(saved.provider);
@@ -1077,15 +1090,21 @@ Chat channel: ${saved.chat_channel || "None"}`,
         });
 
         const versionText = validation.version || "installed";
-        await sendMessage(
-          `OpenClaw credentials were submitted via Noah secure form. Credential reference: ${saved.credential_ref}. Provider: ${saved.provider}. Chat channel: ${saved.chat_channel || "none"}. Please continue with validation and next setup checkpoint. OpenClaw version: ${versionText}.`,
+        await sendEvent(
+          "USER_SUBMIT_SECURE_FORM",
+          JSON.stringify({
+            credential_ref: saved.credential_ref,
+            provider: saved.provider,
+            chat_channel: saved.chat_channel || null,
+            openclaw_version: versionText,
+          }),
         );
       } finally {
         setOpenclawFormSaving(false);
         setOpenclawActionMessageId(null);
       }
     },
-    [addMessage, markActionTaken, openclawActionMessageId, sendMessage, sessionId],
+    [addMessage, markActionTaken, openclawActionMessageId, sendEvent],
   );
 
   // Shared floating input card

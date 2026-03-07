@@ -6,6 +6,7 @@ import * as commands from "../lib/tauri-commands";
 interface UseAgentReturn {
   sendMessage: (text: string) => Promise<void>;
   sendConfirmation: (messageId: string) => Promise<void>;
+  sendEvent: (eventType: "USER_CONFIRM" | "USER_SKIP_OPTIONAL" | "USER_SUBMIT_SECURE_FORM" | "USER_ANSWER_QUESTION", payload?: string) => Promise<void>;
   cancelProcessing: () => Promise<void>;
   isProcessing: boolean;
 }
@@ -37,10 +38,10 @@ export function useAgent(): UseAgentReturn {
       setIsProcessing(true);
 
       try {
-        const content = await commands.sendMessage(sessionId, trimmed);
+        const result = await commands.sendMessageV2(sessionId, trimmed);
         const stillActive = useSessionStore.getState().sessionId === sessionId;
         if (stillActive) {
-          addMessage({ role: "assistant", content });
+          addMessage({ role: "assistant", content: result.text, assistantUi: result.assistant_ui });
         }
 
         if (stillActive) {
@@ -93,10 +94,10 @@ export function useAgent(): UseAgentReturn {
       setIsProcessing(true);
 
       try {
-        const content = await commands.sendMessage(sessionId, "Go ahead", true);
+        const result = await commands.sendUserEvent(sessionId, "USER_CONFIRM");
         const stillActive = useSessionStore.getState().sessionId === sessionId;
         if (stillActive) {
-          addMessage({ role: "assistant", content });
+          addMessage({ role: "assistant", content: result.text, assistantUi: result.assistant_ui });
         }
 
         if (stillActive) {
@@ -137,6 +138,32 @@ export function useAgent(): UseAgentReturn {
     [sessionId, addMessage, updateMessage, markActionTaken, setChanges, setPastSessions, changes],
   );
 
+  const sendEvent = useCallback(
+    async (
+      eventType: "USER_CONFIRM" | "USER_SKIP_OPTIONAL" | "USER_SUBMIT_SECURE_FORM" | "USER_ANSWER_QUESTION",
+      payload?: string,
+    ) => {
+      if (!sessionId) return;
+      setIsProcessing(true);
+      try {
+        const result = await commands.sendUserEvent(sessionId, eventType, payload);
+        const stillActive = useSessionStore.getState().sessionId === sessionId;
+        if (stillActive) {
+          addMessage({ role: "assistant", content: result.text, assistantUi: result.assistant_ui });
+        }
+      } catch (err) {
+        console.error("Agent communication error:", err);
+        addMessage({
+          role: "system",
+          content: cleanError(err),
+        });
+      } finally {
+        setIsProcessing(false);
+      }
+    },
+    [sessionId, addMessage],
+  );
+
   const cancelProcessing = useCallback(async () => {
     try {
       await commands.cancelProcessing();
@@ -145,5 +172,5 @@ export function useAgent(): UseAgentReturn {
     }
   }, []);
 
-  return { sendMessage, sendConfirmation, cancelProcessing, isProcessing };
+  return { sendMessage, sendConfirmation, sendEvent, cancelProcessing, isProcessing };
 }

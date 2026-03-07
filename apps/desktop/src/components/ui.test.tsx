@@ -26,12 +26,15 @@ vi.mock("../lib/tauri-commands", () => ({
   exportSession: vi.fn().mockResolvedValue(""),
   deleteSession: vi.fn().mockResolvedValue(undefined),
   sendMessage: vi.fn().mockResolvedValue(""),
+  sendMessageV2: vi.fn().mockResolvedValue({ text: "", assistant_ui: undefined }),
+  sendUserEvent: vi.fn().mockResolvedValue({ text: "", assistant_ui: undefined }),
   cancelProcessing: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock("../hooks/useAgent", () => ({
   useAgent: () => ({
     sendMessage: vi.fn(),
     sendConfirmation: vi.fn(),
+    sendEvent: vi.fn(),
     cancelProcessing: vi.fn(),
     isProcessing: false,
   }),
