@@ -14,6 +14,137 @@ use crate::platform;
 use crate::playbooks;
 use crate::safety::journal;
 
+#[derive(Debug, Clone)]
+struct DebugOpenclawCredentialCapture {
+    credential_ref: String,
+    provider: String,
+    chat_channel: Option<String>,
+}
+
+fn openclaw_config_path() -> Result<PathBuf> {
+    let home = std::env::var("HOME").context("HOME is not set")?;
+    Ok(PathBuf::from(home).join(".openclaw/openclaw.json"))
+}
+
+async fn maybe_simulate_openclaw_secure_capture(
+    output: &str,
+    db: &Arc<Mutex<rusqlite::Connection>>,
+) -> Option<DebugOpenclawCredentialCapture> {
+    let lower = output.to_lowercase();
+    let looks_like_openclaw_action = lower.contains("[action:")
+        && lower.contains("openclaw")
+        && (lower.contains("secure")
+            || lower.contains("credential")
+            || lower.contains("api key")
+            || lower.contains("token"));
+    if !looks_like_openclaw_action {
+        return None;
+    }
+
+    let provider = if lower.contains("anthropic") {
+        "Anthropic".to_string()
+    } else if lower.contains("openrouter") {
+        "OpenRouter".to_string()
+    } else if lower.contains("gemini") || lower.contains("google") {
+        "Google Gemini".to_string()
+    } else {
+        "OpenAI".to_string()
+    };
+
+    let chat_channel = if lower.contains("telegram") {
+        Some("Telegram".to_string())
+    } else if lower.contains("discord") {
+        Some("Discord".to_string())
+    } else {
+        None
+    };
+
+    let provider_token = std::env::var("NOAH_DEBUG_OPENCLAW_PROVIDER_TOKEN")
+        .ok()
+        .filter(|v| !v.trim().is_empty())
+        .unwrap_or_else(|| format!("debug-{}", uuid::Uuid::new_v4()));
+    let chat_token = chat_channel.as_ref().map(|ch| {
+        std::env::var("NOAH_DEBUG_OPENCLAW_CHAT_TOKEN")
+            .ok()
+            .filter(|v| !v.trim().is_empty())
+            .unwrap_or_else(|| format!("debug-{}-{}", ch.to_lowercase(), uuid::Uuid::new_v4()))
+    });
+
+    let path = match openclaw_config_path() {
+        Ok(p) => p,
+        Err(_) => return None,
+    };
+    if let Some(parent) = path.parent() {
+        if std::fs::create_dir_all(parent).is_err() {
+            return None;
+        }
+    }
+
+    let mut root = if path.exists() {
+        match std::fs::read_to_string(&path)
+            .ok()
+            .and_then(|raw| serde_json::from_str::<serde_json::Value>(&raw).ok())
+        {
+            Some(v) if v.is_object() => v,
+            _ => serde_json::json!({}),
+        }
+    } else {
+        serde_json::json!({})
+    };
+
+    let Some(obj) = root.as_object_mut() else {
+        return None;
+    };
+    obj.insert(
+        "model_provider".to_string(),
+        serde_json::json!({
+            "name": provider,
+            "token": provider_token,
+        }),
+    );
+    if let (Some(ch), Some(tok)) = (chat_channel.clone(), chat_token) {
+        obj.insert(
+            "chat_integration".to_string(),
+            serde_json::json!({
+                "channel": ch,
+                "token": tok,
+            }),
+        );
+    }
+    let rendered = match serde_json::to_string_pretty(&root) {
+        Ok(v) => v,
+        Err(_) => return None,
+    };
+    if std::fs::write(&path, rendered).is_err() {
+        return None;
+    }
+
+    let credential_ref = format!("openclaw-{}", uuid::Uuid::new_v4());
+    let saved_at = chrono::Utc::now().to_rfc3339();
+    let profile = serde_json::json!({
+        "credential_ref": credential_ref,
+        "provider": provider,
+        "chat_channel": chat_channel,
+        "saved_at": saved_at,
+    });
+    let profile_str = match serde_json::to_string(&profile) {
+        Ok(v) => v,
+        Err(_) => return None,
+    };
+
+    let conn = db.lock().await;
+    let write_ok = journal::set_setting(&conn, "openclaw_last_profile", &profile_str).is_ok();
+    if !write_ok {
+        return None;
+    }
+
+    Some(DebugOpenclawCredentialCapture {
+        credential_ref,
+        provider,
+        chat_channel,
+    })
+}
+
 pub struct PromptRunResult {
     pub session_id: String,
     pub turns: Vec<(String, String)>,
@@ -147,7 +278,15 @@ pub async fn run_prompt_flow(prompt: &str, max_turns: usize) -> Result<PromptRun
         }
 
         if output.contains("[ACTION:") {
-            input = "Go ahead".to_string();
+            if let Some(saved) = maybe_simulate_openclaw_secure_capture(&output, &db_arc).await {
+                let channel = saved.chat_channel.unwrap_or_else(|| "none".to_string());
+                input = format!(
+                    "OpenClaw credentials were submitted via Noah secure form. Credential reference: {}. Provider: {}. Chat channel: {}. Please continue with validation and next setup checkpoint.",
+                    saved.credential_ref, saved.provider, channel
+                );
+            } else {
+                input = "Go ahead".to_string();
+            }
             continue;
         }
 
