@@ -29,6 +29,7 @@ pub struct OpenclawContext {
     pub provider: Option<String>,
     pub channel: Option<String>,
     pub credential_ref: Option<String>,
+    pub stage_attempts: usize,
 }
 
 fn extract_text(content: &MessageContent) -> Option<&str> {
@@ -89,10 +90,14 @@ pub fn parse_openclaw_context(messages: &[Message]) -> OpenclawContext {
     let mut provider: Option<String> = None;
     let mut channel: Option<String> = None;
     let mut credential_ref: Option<String> = None;
+    let mut stage_attempts = 0usize;
 
     for message in messages {
         if let Some(text) = extract_text(&message.content) {
             let lower = text.to_lowercase();
+            if lower.contains("[situation]") && lower.contains("[plan]") && lower.contains("[action:") {
+                stage_attempts += 1;
+            }
             if credential_ref.is_none() && lower.contains("credential reference: openclaw-") {
                 credential_ref = parse_labeled_value(text, "Credential reference");
             }
@@ -171,6 +176,7 @@ pub fn parse_openclaw_context(messages: &[Message]) -> OpenclawContext {
         provider,
         channel,
         credential_ref,
+        stage_attempts,
     }
 }
 
@@ -238,9 +244,16 @@ Treat this as the skeleton. Keep natural, human guidance as the conversational l
 - Discord guidance: Developer Portal -> create app/bot -> copy bot token.\n\
 - If user picks another channel, adapt guidance instead of refusing.\n",
             );
+            out.push_str(
+                "- If user feels stuck, allow skipping channel for now and continue to DONE with 'channel pending' note.\n",
+            );
         }
         OpenclawStage::ChannelVerify => {
-            out.push_str("- Goal: verify optional channel integration or mark as pending.\n");
+            out.push_str(
+                "- Goal: verify optional channel integration or mark as pending.\n\
+- Do NOT require manual JSON editing instructions.\n\
+- If channel is not ready after one clear attempt, finish basic setup with [DONE] and mark channel as pending optional next step.\n",
+            );
         }
         OpenclawStage::Done => {
             out.push_str("- Goal reached: required stages complete. [DONE] is allowed.\n");
@@ -277,6 +290,12 @@ pub fn blocked_openclaw_shell_command(stage: OpenclawStage, command: &str) -> Op
             || lower.contains("embedding"))
     {
         return Some("memory_provider_is_optional_in_primary_verify");
+    }
+
+    if (stage == OpenclawStage::ChannelCapture || stage == OpenclawStage::ChannelVerify)
+        && lower.contains("openclaw channels add")
+    {
+        return Some("avoid_manual_channel_token_cli_handoff");
     }
 
     None
@@ -326,6 +345,32 @@ pub fn has_vague_apply_credentials_loop(text: &str) -> bool {
         || lower.contains("confirm when ready")
 }
 
+pub fn has_overly_technical_manual_edit(text: &str) -> bool {
+    let lower = text.to_lowercase();
+    lower.contains("nano ~/.openclaw/openclaw.json")
+        || (lower.contains("edit the configuration file") && lower.contains("json"))
+        || lower.contains("add a \"channels\" section")
+}
+
+pub fn has_manual_channel_command_handoff(text: &str) -> bool {
+    let lower = text.to_lowercase();
+    (lower.contains("openclaw channels add") || lower.contains("--channel telegram"))
+        && (lower.contains("run this command")
+            || lower.contains("run the command")
+            || lower.contains("in your terminal")
+            || lower.contains("manually"))
+}
+
+fn is_soft_confirmation(user_message: &str) -> bool {
+    let lower = user_message.trim().to_lowercase();
+    lower == "go ahead"
+        || lower == "continue"
+        || lower == "ok"
+        || lower == "okay"
+        || lower == "yes"
+        || lower == "done"
+}
+
 fn asks_where_to_get_key(user_message: &str) -> bool {
     let lower = user_message.to_lowercase();
     (lower.contains("where") || lower.contains("find") || lower.contains("get"))
@@ -350,5 +395,113 @@ pub fn missing_provider_source_guidance(
                 || resp.contains("platform.openai.com/api-keys")
                 || resp.contains("api keys")
         ),
+    }
+}
+
+pub fn validate_openclaw_final_response(
+    ctx: &OpenclawContext,
+    user_message: &str,
+    visible_text: &str,
+) -> Option<String> {
+    if has_disallowed_openclaw_text(visible_text) {
+        return Some(
+            "Policy guard: do not instruct `openclaw configure` or interactive OpenClaw wizard commands in this playbook mode. Provide a compliant guided setup response."
+                .to_string(),
+        );
+    }
+    if missing_openclaw_action_format(visible_text) {
+        return Some(
+            "Policy guard: OpenClaw setup responses must use [SITUATION], [PLAN], and [ACTION:...] until completion. Rewrite this response in the structured setup format."
+                .to_string(),
+        );
+    }
+    if has_awkward_provider_shorthand(visible_text) {
+        return Some(
+            "Policy guard: provider guidance must use human-readable names (OpenAI, Anthropic, OpenRouter) and plain language, not code-like shorthand list formatting."
+                .to_string(),
+        );
+    }
+    if missing_provider_source_guidance(user_message, visible_text, ctx.provider.as_deref()) {
+        return Some(
+            "Policy guard: user asked where to get API credentials. Provide concrete source guidance (provider console URL and plain steps) before proceeding."
+                .to_string(),
+        );
+    }
+    if ctx.stage == OpenclawStage::PrimaryProviderVerify
+        && ctx.credential_ref.is_some()
+        && has_vague_apply_credentials_loop(visible_text)
+    {
+        return Some(
+            "Policy guard: avoid vague 'apply credentials' loops. Either verify directly now, or ask user to re-save a real key in Noah secure form with a concrete reason."
+                .to_string(),
+        );
+    }
+    if (ctx.stage == OpenclawStage::ChannelCapture || ctx.stage == OpenclawStage::ChannelVerify)
+        && has_overly_technical_manual_edit(visible_text)
+    {
+        return Some(
+            "Policy guard: avoid manual JSON editing guidance. Give a non-technical optional-channel path and allow [DONE] with channel pending if basic setup is working."
+                .to_string(),
+        );
+    }
+    if (ctx.stage == OpenclawStage::ChannelCapture || ctx.stage == OpenclawStage::ChannelVerify)
+        && has_manual_channel_command_handoff(visible_text)
+    {
+        if is_soft_confirmation(user_message) || ctx.stage_attempts >= 2 {
+            return Some(
+                "Policy guard: do not hand off optional channel setup as manual terminal command loops. Finish basic setup with [DONE] and mark channel as optional pending. Offer secure re-capture later if needed."
+                    .to_string(),
+            );
+        }
+        return Some(
+            "Policy guard: avoid manual channel token CLI handoff for non-technical flow. Ask user to re-open Noah secure credential form for channel token, or allow skip and continue basic setup."
+                .to_string(),
+        );
+    }
+    if (ctx.stage == OpenclawStage::ChannelCapture || ctx.stage == OpenclawStage::ChannelVerify)
+        && ctx.stage_attempts >= 3
+        && !visible_text.contains("[DONE]")
+    {
+        return Some(
+            "Policy guard: channel setup is optional. End the basic setup with [DONE] and clearly mark channel setup as optional pending next step."
+                .to_string(),
+        );
+    }
+    None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn blocks_manual_channel_cli_handoff_in_channel_stage() {
+        let ctx = OpenclawContext {
+            stage: OpenclawStage::ChannelCapture,
+            provider: Some("Anthropic".to_string()),
+            channel: Some("Telegram".to_string()),
+            credential_ref: Some("openclaw-test-ref-1".to_string()),
+            stage_attempts: 1,
+        };
+        let candidate = "[SITUATION] Telegram is next.\n[PLAN] Run this command in your terminal.\n[ACTION:Apply Telegram Token]\nopenclaw channels add --channel telegram --token YOUR_TELEGRAM_BOT_TOKEN";
+        let feedback = validate_openclaw_final_response(&ctx, "Go ahead", candidate);
+        assert!(feedback.is_some());
+        assert!(
+            feedback
+                .unwrap()
+                .contains("Finish basic setup with [DONE]")
+        );
+    }
+
+    #[test]
+    fn blocks_openclaw_channels_add_shell_command() {
+        let reason = blocked_openclaw_shell_command(
+            OpenclawStage::ChannelVerify,
+            "openclaw channels add --channel telegram --token XXX",
+        );
+        assert_eq!(
+            reason,
+            Some("avoid_manual_channel_token_cli_handoff")
+        );
     }
 }

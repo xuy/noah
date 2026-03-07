@@ -53,6 +53,18 @@ Run validation checks after each major step:
 - Do NOT mark setup complete after install only.
 - If you cannot run token checks directly, keep the session in setup mode and guide the user through secure capture + verification checkpoints.
 
+### 5a. User handoff stages (`await_user_step` pattern)
+When the user must do something outside Noah (provider console, Telegram BotFather, Discord portal), use a clear handoff style in chat:
+- Say exactly this is a user step and Noah is waiting.
+- Provide clickable links and a short checklist (3-5 bullets max).
+- Keep instructions plain-language; avoid command-heavy blocks for non-technical users.
+- For optional channel setup, always offer: "skip for now and finish basic setup".
+
+Preferred references:
+- Telegram bot token: https://core.telegram.org/bots/tutorial
+- BotFather entry point: https://t.me/BotFather
+- OpenClaw installer docs: https://docs.openclaw.ai/install/installer
+
 ### 6. Save non-secret profile for future repair
 After successful setup, save an OpenClaw profile to knowledge so future troubleshooting can use the user's actual setup.
 - Include version, platform, enabled channels, and last verification time.
