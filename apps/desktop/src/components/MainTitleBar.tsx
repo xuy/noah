@@ -1,18 +1,55 @@
+import { useState, useEffect } from "react";
 import { useSessionStore } from "../stores/sessionStore";
 
 const isMac = navigator.platform.startsWith("Mac");
+
+// macOS traffic lights are at a fixed native position (~76px from left).
+// When the webview zooms, CSS pixels scale but traffic lights don't.
+// We track the zoom level and compute padding inversely so it stays aligned.
+const TRAFFIC_LIGHT_PX = 76;
+const ZOOM_STEP = 0.2;
+
+function useZoomCompensatedPadding() {
+  const [padding, setPadding] = useState(TRAFFIC_LIGHT_PX);
+
+  useEffect(() => {
+    if (!isMac) return;
+
+    let zoom = 1;
+    const update = () => setPadding(TRAFFIC_LIGHT_PX / zoom);
+
+    const handler = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey)) return;
+      if (e.key === "=" || e.key === "+") {
+        zoom = Math.min(zoom + ZOOM_STEP, 5);
+        update();
+      } else if (e.key === "-") {
+        zoom = Math.max(zoom - ZOOM_STEP, 0.2);
+        update();
+      } else if (e.key === "0") {
+        zoom = 1;
+        update();
+      }
+    };
+
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
+
+  return isMac ? padding : 12;
+}
 
 export function MainTitleBar() {
   const sidebarOpen = useSessionStore((s) => s.sidebarOpen);
   const toggleSidebar = useSessionStore((s) => s.toggleSidebar);
   const toggleSettings = useSessionStore((s) => s.toggleSettings);
   const settingsOpen = useSessionStore((s) => s.settingsOpen);
+  const paddingLeft = useZoomCompensatedPadding();
 
   return (
     <div
-      className={`flex items-center justify-between h-[28px] pr-3 flex-shrink-0 select-none ${
-        isMac ? "pl-[76px]" : "pl-3"
-      }`}
+      className="flex items-center justify-between h-[28px] pr-3 flex-shrink-0 select-none"
+      style={{ paddingLeft }}
       data-tauri-drag-region=""
     >
       {/* Left: Sidebar toggle (always visible, next to traffic lights on Mac) */}
