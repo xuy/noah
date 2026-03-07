@@ -36,9 +36,10 @@ Tell the user exactly what is needed:
 
 ### 4. Capture secrets safely
 Never ask users to paste secrets in chat text if secure field capture is available.
-- Direct user to the secure token input flow (Settings secure capture) so secrets are written to local config without appearing in conversation history.
+- Direct user to OpenClaw's secure token input flow (wizard/secure prompts) so secrets are written to local config without appearing in conversation history.
 - Confirm that Noah cannot read back the secret values after save.
 - After install, your next action should explicitly direct the user to secure capture (not app wizard-only handoff).
+- Do not run interactive TUI commands like `openclaw config` / `openclaw configure` via `shell_run` as if Noah can operate arrow-key prompts. Instead, tell the user exactly what to run and what to select, then wait for confirmation.
 
 ### 5. Verify configuration end-to-end
 Run validation checks after each major step:
@@ -69,6 +70,7 @@ After successful setup, save an OpenClaw profile to knowledge so future troubles
 - "It used to cause high CPU" -> include immediate post-install sanity check and confirm no runaway process.
 - "Help me connect Telegram" -> guide bot creation step, then secure token capture, then channel verification.
 - "The app opened a wizard" -> do not hand off and stop. Continue as Noah: explain the exact next checkpoint and stay in guided setup.
+- "I don't see the wizard" -> do not pretend it started. Ask the user to run the exact command/app and confirm visible output before continuing.
 
 ## Tools referenced
 - `activate_playbook` — load this protocol for setup consistency
