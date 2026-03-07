@@ -17,6 +17,7 @@ import { useSessionStore } from "./stores/sessionStore";
 import { SetupScreen } from "./components/SetupScreen";
 import { useDebugStore, type DebugEvent } from "./stores/debugStore";
 import { useTheme } from "./hooks/useTheme";
+import { useZoom } from "./hooks/useZoom";
 
 const WINDOW_TITLES = [
   "Noah \u2014 Your Trusted Support",
@@ -61,6 +62,7 @@ function App() {
 }
 
 function MainApp() {
+  useZoom(); // CSS-based zoom via Cmd+/-/0 (scales everything incl. traffic lights)
   const session = useSession();
   const activeView = useSessionStore((s) => s.activeView);
   const addEvent = useDebugStore((s) => s.addEvent);

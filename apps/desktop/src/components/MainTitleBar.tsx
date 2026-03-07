@@ -1,65 +1,15 @@
-import { useState, useEffect, useCallback } from "react";
-import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useSessionStore } from "../stores/sessionStore";
 
 const isMac = navigator.platform.startsWith("Mac");
-
-// Traffic lights end at ~76 macOS points from the left edge.
-// Points = CSS pixels at zoom 1.0. At other zoom levels we need to compensate.
-const TRAFFIC_LIGHT_PT = 76;
-
-/**
- * Measure the actual webview zoom by comparing physical window size
- * (from Tauri, fixed regardless of zoom) to CSS viewport width
- * (shrinks when zooming in). Returns compensated padding in CSS px.
- */
-function useTrafficLightPadding() {
-  const [padding, setPadding] = useState(TRAFFIC_LIGHT_PT);
-
-  const measure = useCallback(async () => {
-    if (!isMac) return;
-    try {
-      const { width: physicalWidth } = await getCurrentWindow().innerSize();
-      const cssWidth = window.innerWidth;
-      const dpr = window.devicePixelRatio;
-      const zoom = physicalWidth / (cssWidth * dpr);
-      setPadding(TRAFFIC_LIGHT_PT / zoom);
-    } catch {
-      // Tauri API unavailable (e.g. tests), keep default
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!isMac) return;
-
-    measure();
-
-    // Re-measure when viewport changes (zoom changes innerWidth)
-    window.addEventListener("resize", measure);
-
-    // Also catch zoom hotkeys — small delay for zoom to take effect
-    const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && ["=", "+", "-", "0"].includes(e.key)) {
-        setTimeout(measure, 100);
-      }
-    };
-    window.addEventListener("keydown", onKey);
-
-    return () => {
-      window.removeEventListener("resize", measure);
-      window.removeEventListener("keydown", onKey);
-    };
-  }, [measure]);
-
-  return isMac ? padding : 12;
-}
 
 export function MainTitleBar() {
   const sidebarOpen = useSessionStore((s) => s.sidebarOpen);
   const toggleSidebar = useSessionStore((s) => s.toggleSidebar);
   const toggleSettings = useSessionStore((s) => s.toggleSettings);
   const settingsOpen = useSessionStore((s) => s.settingsOpen);
-  const paddingLeft = useTrafficLightPadding();
+  // On macOS, pad left to clear traffic lights (76px).
+  // CSS zoom (useZoom) scales everything uniformly, so static padding stays aligned.
+  const paddingLeft = isMac ? 76 : 12;
 
   return (
     <div
