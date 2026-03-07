@@ -457,6 +457,19 @@ pub fn is_dangerous_command(command: &str) -> bool {
     false
 }
 
+fn is_interactive_openclaw_command(command: &str) -> bool {
+    let lower = command.trim().to_lowercase();
+    if lower.starts_with("openclaw configure") {
+        return !lower.contains("--help");
+    }
+
+    if lower == "openclaw config" {
+        return true;
+    }
+
+    lower.starts_with("openclaw config --") && !lower.contains("--help")
+}
+
 #[async_trait]
 impl Tool for ShellRun {
     fn name(&self) -> &str {
@@ -501,6 +514,18 @@ impl Tool for ShellRun {
         let command = input["command"]
             .as_str()
             .ok_or_else(|| anyhow::anyhow!("Missing required parameter: command"))?;
+
+        if is_interactive_openclaw_command(command) {
+            return Ok(ToolResult::read_only(
+                "COMMAND NOT EXECUTED: interactive OpenClaw wizard command is blocked in non-interactive shell context. Ask the user to run the wizard locally, then continue with non-interactive verification."
+                    .to_string(),
+                json!({
+                    "command": command,
+                    "blocked": true,
+                    "reason": "interactive_tty_required"
+                }),
+            ));
+        }
 
         // Detect PowerShell commands and run them directly via powershell.exe
         // instead of cmd.exe /c. This avoids cmd.exe interpreting |, $, {, }
@@ -897,6 +922,15 @@ mod tests {
         let tool = ShellRun;
         let input = json!({});
         assert_eq!(tool.safety_tier_for_input(&input), SafetyTier::SafeAction);
+    }
+
+    #[test]
+    fn interactive_openclaw_commands_blocked() {
+        assert!(is_interactive_openclaw_command("openclaw config"));
+        assert!(is_interactive_openclaw_command(
+            "openclaw configure --section model"
+        ));
+        assert!(!is_interactive_openclaw_command("openclaw config --help"));
     }
 
     #[test]

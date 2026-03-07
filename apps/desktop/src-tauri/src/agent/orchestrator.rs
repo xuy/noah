@@ -38,7 +38,12 @@ struct DebugEvent {
     detail: Value,
 }
 
-fn emit_debug(app_handle: &tauri::AppHandle, event_type: &str, summary: &str, detail: Value) {
+fn emit_debug<R: tauri::Runtime>(
+    app_handle: &tauri::AppHandle<R>,
+    event_type: &str,
+    summary: &str,
+    detail: Value,
+) {
     use tauri::Emitter;
 
     let event = DebugEvent {
@@ -72,6 +77,67 @@ pub struct Orchestrator {
 }
 
 pub type PendingApprovals = Arc<Mutex<HashMap<String, oneshot::Sender<bool>>>>;
+
+fn active_playbook_name(messages: &[Message]) -> Option<String> {
+    let mut active: Option<String> = None;
+    for message in messages {
+        let MessageContent::Blocks(blocks) = &message.content else {
+            continue;
+        };
+        for block in blocks {
+            if let ContentBlock::ToolUse { name, input, .. } = block {
+                if name == "activate_playbook" {
+                    active = input
+                        .get("name")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string());
+                }
+            }
+        }
+    }
+    active
+}
+
+fn playbook_mode_overlay(active_playbook: Option<&str>) -> String {
+    match active_playbook {
+        Some("openclaw-install-config") => {
+            "\n\n## Playbook Governance Mode\n\
+Active playbook: `openclaw-install-config`.\n\
+Treat this as a constrained sub-agent protocol for this session.\n\
+- Use `[SITUATION]` + `[PLAN]` + `[ACTION:...]` for guided setup turns (including provider/channel selection checkpoints).\n\
+- Do not claim a command/wizard ran unless a tool result explicitly confirms it.\n\
+- If `shell_run` says a command was blocked or not executed, explicitly state that and switch to a supported path.\n\
+- Do not hand off setup as \"configure via app UI\" and stop.\n\
+- Stay in guided setup mode until completion criteria in the playbook are met.\n\
+- For OpenClaw config, never run interactive wizard commands (`openclaw config` / `openclaw configure`) through `shell_run`."
+                .to_string()
+        }
+        Some(name) => format!(
+            "\n\n## Playbook Governance Mode\nActive playbook: `{}`.\nTreat this playbook as binding protocol until its completion criteria are met.",
+            name
+        ),
+        None => String::new(),
+    }
+}
+
+fn has_disallowed_openclaw_text(text: &str) -> bool {
+    let lower = text.to_lowercase();
+    if lower.contains("openclaw configure") {
+        return true;
+    }
+    if !lower.contains("openclaw config") {
+        return false;
+    }
+
+    let allowed = [
+        "openclaw config show",
+        "openclaw config get",
+        "openclaw config file",
+        "openclaw config validate",
+        "openclaw config --help",
+    ];
+    !allowed.iter().any(|pat| lower.contains(pat))
+}
 
 impl Orchestrator {
     pub fn new(
@@ -169,11 +235,11 @@ impl Orchestrator {
     /// Send a user message and run the agentic loop until a text response
     /// is produced. The `app_handle` is used to emit approval-request events
     /// and the `db` connection is used to record changes in the journal.
-    pub async fn send_message(
+    pub async fn send_message<R: tauri::Runtime>(
         &mut self,
         session_id: &str,
         user_message: &str,
-        app_handle: &tauri::AppHandle,
+        app_handle: &tauri::AppHandle<R>,
         db: &tokio::sync::Mutex<rusqlite::Connection>,
     ) -> Result<String> {
         // Verify session exists.
@@ -191,7 +257,7 @@ impl Orchestrator {
         }
 
         let knowledge_ctx = knowledge::knowledge_toc(&self.knowledge_dir).unwrap_or_default();
-        let system = prompts::system_prompt(&self.os_context, &knowledge_ctx);
+        let base_system = prompts::system_prompt(&self.os_context, &knowledge_ctx);
         let tool_defs = self.router.tool_definitions();
 
         // Reset cancellation flag at the start of each user message.
@@ -225,6 +291,13 @@ impl Orchestrator {
                     "tool_count": tool_defs.len(),
                     "last_user_message_preview": user_message.chars().take(200).collect::<String>(),
                 }),
+            );
+
+            let active_playbook = active_playbook_name(&messages);
+            let system = format!(
+                "{}{}",
+                base_system,
+                playbook_mode_overlay(active_playbook.as_deref())
             );
 
             let response = self
@@ -284,6 +357,7 @@ impl Orchestrator {
             );
 
             // Accumulate any text from this turn.
+            let appended_text_count = text_parts.len();
             all_text_parts.extend(text_parts);
 
             // Add the assistant message to history (as blocks).
@@ -310,6 +384,29 @@ impl Orchestrator {
 
             // If no tool calls, we're done — return all accumulated text.
             if tool_uses.is_empty() {
+                let candidate_text = all_text_parts.join("\n");
+                if active_playbook.as_deref() == Some("openclaw-install-config")
+                    && has_disallowed_openclaw_text(&candidate_text)
+                {
+                    for _ in 0..appended_text_count {
+                        let _ = all_text_parts.pop();
+                    }
+                    let guard_feedback = "Policy guard: do not instruct `openclaw configure` or interactive OpenClaw wizard commands in this playbook mode. Provide a compliant guided setup response.".to_string();
+                    {
+                        let session = self.sessions.get_mut(session_id).unwrap();
+                        session.messages.push(Message {
+                            role: "user".to_string(),
+                            content: MessageContent::Text(guard_feedback.clone()),
+                        });
+                    }
+                    emit_debug(
+                        app_handle,
+                        "playbook_guard",
+                        "Rejected non-compliant OpenClaw response and requested retry",
+                        json!({"reason": "disallowed_openclaw_wizard_instruction"}),
+                    );
+                    continue;
+                }
                 return Ok(all_text_parts.join("\n"));
             }
 
@@ -396,12 +493,12 @@ impl Orchestrator {
     }
 
     /// Execute a single tool call, handling safety tier checks and approvals.
-    async fn execute_tool(
+    async fn execute_tool<R: tauri::Runtime>(
         &self,
         session_id: &str,
         tool_name: &str,
         tool_input: &Value,
-        app_handle: &tauri::AppHandle,
+        app_handle: &tauri::AppHandle<R>,
         db: &tokio::sync::Mutex<rusqlite::Connection>,
     ) -> Result<String> {
         let tool = self
@@ -454,9 +551,9 @@ impl Orchestrator {
     }
 
     /// Emit an approval-request event to the frontend and wait for the response.
-    async fn request_approval(
+    async fn request_approval<R: tauri::Runtime>(
         &self,
-        app_handle: &tauri::AppHandle,
+        app_handle: &tauri::AppHandle<R>,
         tool_name: &str,
         description: &str,
         parameters: &Value,
@@ -553,6 +650,29 @@ mod tests {
         let id1 = orch.create_session();
         let id2 = orch.create_session();
         assert_ne!(id1, id2);
+    }
+
+    #[test]
+    fn test_active_playbook_name_detects_latest_activation() {
+        let messages = vec![Message {
+            role: "assistant".to_string(),
+            content: MessageContent::Blocks(vec![
+                ContentBlock::ToolUse {
+                    id: "1".to_string(),
+                    name: "activate_playbook".to_string(),
+                    input: json!({"name":"network-diagnostics"}),
+                },
+                ContentBlock::ToolUse {
+                    id: "2".to_string(),
+                    name: "activate_playbook".to_string(),
+                    input: json!({"name":"openclaw-install-config"}),
+                },
+            ]),
+        }];
+        assert_eq!(
+            active_playbook_name(&messages).as_deref(),
+            Some("openclaw-install-config")
+        );
     }
 
     #[test]

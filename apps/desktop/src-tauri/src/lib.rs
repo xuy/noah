@@ -1,5 +1,6 @@
 mod agent;
 mod commands;
+pub mod debug_runner;
 mod knowledge;
 mod machine_context;
 mod platform;

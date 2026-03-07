@@ -40,6 +40,7 @@ Never ask users to paste secrets in chat text if secure field capture is availab
 - Confirm that Noah cannot read back the secret values after save.
 - After install, your next action should explicitly direct the user to secure capture (not app wizard-only handoff).
 - Do not run interactive TUI commands like `openclaw config` / `openclaw configure` via `shell_run` as if Noah can operate arrow-key prompts. Instead, tell the user exactly what to run and what to select, then wait for confirmation.
+- If a command is blocked as interactive, do not pretend it launched. Treat that as a hard stop for that command path and switch to explicit user-guided steps.
 
 ### 5. Verify configuration end-to-end
 Run validation checks after each major step:

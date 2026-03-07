@@ -160,7 +160,7 @@ def main() -> int:
         findings.append(Finding("error", "Missing structured [SITUATION]/[PLAN]/[ACTION] response"))
 
     # 3) Do not run interactive OpenClaw config wizards via shell_run
-    interactive_cmd = re.compile(r"\bopenclaw\s+(config|configure)\b(?!\s+--help)", re.IGNORECASE)
+    interactive_cmd = re.compile(r"\bopenclaw\s+(configure\b(?!\s+--help)|config(?:\s*$|\s+--(?!help)))", re.IGNORECASE)
     bad_calls = []
     for c in calls:
         if c["name"] != "shell_run":
