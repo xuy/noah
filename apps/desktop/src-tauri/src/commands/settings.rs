@@ -19,11 +19,19 @@ pub struct SaveOpenclawCredentialsRequest {
     pub chat_token: Option<String>,
 }
 
+#[derive(Debug, Serialize)]
+pub struct SaveOpenclawCredentialsResult {
+    pub credential_ref: String,
+    pub provider: String,
+    pub chat_channel: Option<String>,
+    pub saved_at: String,
+}
+
 #[tauri::command]
 pub async fn save_openclaw_credentials(
-    _state: State<'_, AppState>,
+    state: State<'_, AppState>,
     request: SaveOpenclawCredentialsRequest,
-) -> Result<(), String> {
+) -> Result<SaveOpenclawCredentialsResult, String> {
     if request.provider.trim().is_empty() {
         return Err("Provider is required".to_string());
     }
@@ -52,24 +60,28 @@ pub async fn save_openclaw_credentials(
     let obj = root
         .as_object_mut()
         .ok_or_else(|| "Invalid config object".to_string())?;
+    let provider_name = request.provider.trim().to_string();
 
     obj.insert(
         "model_provider".to_string(),
         serde_json::json!({
-            "name": request.provider.trim(),
+            "name": provider_name,
             "token": request.provider_token,
         }),
     );
 
+    let mut chat_channel_saved: Option<String> = None;
     if let (Some(channel), Some(token)) = (request.chat_channel, request.chat_token) {
         if !channel.trim().is_empty() && !token.trim().is_empty() {
+            let channel_name = channel.trim().to_string();
             obj.insert(
                 "chat_integration".to_string(),
                 serde_json::json!({
-                    "channel": channel.trim(),
+                    "channel": channel_name,
                     "token": token,
                 }),
             );
+            chat_channel_saved = Some(channel_name);
         }
     }
 
@@ -77,7 +89,29 @@ pub async fn save_openclaw_credentials(
         .map_err(|e| format!("Failed to serialize OpenClaw config: {}", e))?;
     std::fs::write(&path, rendered)
         .map_err(|e| format!("Failed to write OpenClaw config: {}", e))?;
-    Ok(())
+
+    let saved_at = chrono::Utc::now().to_rfc3339();
+    let credential_ref = format!("openclaw-{}", uuid::Uuid::new_v4());
+    {
+        let conn = state.db.lock().await;
+        let profile = serde_json::json!({
+            "credential_ref": credential_ref,
+            "provider": provider_name,
+            "chat_channel": chat_channel_saved,
+            "saved_at": saved_at,
+        });
+        let profile_str = serde_json::to_string(&profile)
+            .map_err(|e| format!("Failed to serialize profile: {}", e))?;
+        journal::set_setting(&conn, "openclaw_last_profile", &profile_str)
+            .map_err(|e| format!("Failed to save OpenClaw profile: {}", e))?;
+    }
+
+    Ok(SaveOpenclawCredentialsResult {
+        credential_ref,
+        provider: provider_name,
+        chat_channel: chat_channel_saved,
+        saved_at,
+    })
 }
 
 #[derive(Debug, Serialize)]

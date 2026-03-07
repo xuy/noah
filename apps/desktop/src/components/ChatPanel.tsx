@@ -278,14 +278,16 @@ function ActionCard({
   );
 }
 
-function OpenclawCredentialModal({
-  open,
+function OpenclawCredentialCard({
   isSaving,
+  initialProvider,
+  initialChatChannel,
   onClose,
   onSubmit,
 }: {
-  open: boolean;
   isSaving: boolean;
+  initialProvider?: string;
+  initialChatChannel?: string;
   onClose: () => void;
   onSubmit: (payload: {
     provider: string;
@@ -294,13 +296,11 @@ function OpenclawCredentialModal({
     chatToken?: string;
   }) => Promise<void>;
 }) {
-  const [provider, setProvider] = useState("OpenAI");
+  const [provider, setProvider] = useState(initialProvider || "OpenAI");
   const [providerToken, setProviderToken] = useState("");
-  const [chatChannel, setChatChannel] = useState("Telegram");
+  const [chatChannel, setChatChannel] = useState(initialChatChannel || "Telegram");
   const [chatToken, setChatToken] = useState("");
   const [error, setError] = useState<string | null>(null);
-
-  if (!open) return null;
 
   const submit = async () => {
     setError(null);
@@ -324,10 +324,10 @@ function OpenclawCredentialModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/45 backdrop-blur-[1px] flex items-center justify-center p-4">
-      <div className="w-full max-w-lg rounded-2xl border border-border-primary bg-bg-secondary shadow-xl">
+    <div className="group animate-fade-in">
+      <div className="w-full rounded-xl border border-border-primary/50 bg-bg-secondary overflow-hidden">
         <div className="px-5 pt-5 pb-3 border-b border-border-primary/60">
-          <div className="text-xl font-semibold text-text-primary">Secure OpenClaw Setup</div>
+          <div className="text-lg font-semibold text-text-primary">Secure OpenClaw Setup</div>
           <p className="text-sm text-text-muted mt-1">
             Values entered here are written directly to local OpenClaw config and are not posted into chat history.
           </p>
@@ -397,6 +397,9 @@ function OpenclawCredentialModal({
             {isSaving ? "Saving..." : "Save Securely"}
           </button>
         </div>
+      </div>
+      <div className="text-[10px] mt-1 text-text-muted opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+        in progress
       </div>
     </div>
   );
@@ -526,6 +529,45 @@ function InfoCard({
   );
 }
 
+function CredentialsCollectedCard({
+  reference,
+  provider,
+  chatChannel,
+  timestamp,
+}: {
+  reference: string;
+  provider: string;
+  chatChannel?: string;
+  timestamp: number;
+}) {
+  return (
+    <div className="group animate-fade-in">
+      <div className="rounded-xl border border-accent-green/25 bg-accent-green/5 px-5 py-4">
+        <div className="flex items-start gap-2.5">
+          <span className="text-accent-green text-lg mt-0.5">{"\u2713"}</span>
+          <div className="flex-1">
+            <div className="text-base text-text-primary leading-relaxed">
+              Credentials collected securely.
+            </div>
+            <div className="text-sm text-text-secondary mt-2">
+              Reference: <span className="font-mono">{reference}</span>
+            </div>
+            <div className="text-sm text-text-secondary">
+              Provider: {provider}
+            </div>
+            <div className="text-sm text-text-secondary">
+              Chat channel: {chatChannel || "None"}
+            </div>
+          </div>
+        </div>
+      </div>
+      <div className="text-[10px] mt-1 text-text-muted opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+        {formatTime(timestamp)}
+      </div>
+    </div>
+  );
+}
+
 // ── Confirmation Pill (for "Go ahead" user messages) ──
 
 function ConfirmationPill({ timestamp }: { timestamp: number }) {
@@ -595,6 +637,12 @@ function MessageDisplay({
   sessionId,
   onConfirm,
   onOpenOpenclawForm,
+  openclawFormOpen,
+  openclawInitialProvider,
+  openclawInitialChannel,
+  openclawFormSaving,
+  onSubmitOpenclawForm,
+  onCancelOpenclawForm,
 }: {
   message: Message;
   isProcessing: boolean;
@@ -602,6 +650,17 @@ function MessageDisplay({
   sessionId: string | null;
   onConfirm: (messageId: string) => void;
   onOpenOpenclawForm: (messageId: string) => void;
+  openclawFormOpen: boolean;
+  openclawInitialProvider?: string;
+  openclawInitialChannel?: string;
+  openclawFormSaving: boolean;
+  onSubmitOpenclawForm: (payload: {
+    provider: string;
+    providerToken: string;
+    chatChannel?: string;
+    chatToken?: string;
+  }) => Promise<void>;
+  onCancelOpenclawForm: () => void;
 }) {
   // User confirmation pill
   if (message.role === "user" && message.actionConfirmation) {
@@ -646,17 +705,38 @@ function MessageDisplay({
     case "info":
       card = <InfoCard summary={parsed.summary} timestamp={message.timestamp} />;
       break;
+    case "credentials_collected":
+      card = (
+        <CredentialsCollectedCard
+          reference={parsed.reference}
+          provider={parsed.provider}
+          chatChannel={parsed.chatChannel}
+          timestamp={message.timestamp}
+        />
+      );
+      break;
     default:
       card = <MessageBubble message={message} />;
   }
 
-  if (!hasActions) return card;
+  if (!hasActions && !openclawFormOpen) return card;
 
   return (
     <div>
       {card}
+      {openclawFormOpen && (
+        <div className="mt-2">
+          <OpenclawCredentialCard
+            isSaving={openclawFormSaving}
+            initialProvider={openclawInitialProvider}
+            initialChatChannel={openclawInitialChannel}
+            onClose={onCancelOpenclawForm}
+            onSubmit={onSubmitOpenclawForm}
+          />
+        </div>
+      )}
       <div className="mt-1">
-        <ChangesBlock changeIds={message.changeIds!} />
+        {hasActions && <ChangesBlock changeIds={message.changeIds!} />}
       </div>
     </div>
   );
@@ -868,15 +948,17 @@ function WelcomeHero({ hasContextual }: { hasContextual: boolean }) {
 
 export function ChatPanel() {
   const messages = useChatStore((s) => s.messages);
+  const addMessage = useChatStore((s) => s.addMessage);
   const markActionTaken = useChatStore((s) => s.markActionTaken);
   const sessionId = useSessionStore((s) => s.sessionId);
   const { sendMessage, sendConfirmation, cancelProcessing, isProcessing } =
     useAgent();
 
   const [input, setInput] = useState("");
-  const [openclawModalOpen, setOpenclawModalOpen] = useState(false);
-  const [openclawModalSaving, setOpenclawModalSaving] = useState(false);
+  const [openclawFormSaving, setOpenclawFormSaving] = useState(false);
   const [openclawActionMessageId, setOpenclawActionMessageId] = useState<string | null>(null);
+  const [openclawLastProvider, setOpenclawLastProvider] = useState<string>("OpenAI");
+  const [openclawLastChannel, setOpenclawLastChannel] = useState<string>("Telegram");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -912,7 +994,6 @@ export function ChatPanel() {
 
   const handleOpenOpenclawForm = useCallback((messageId: string) => {
     setOpenclawActionMessageId(messageId);
-    setOpenclawModalOpen(true);
   }, []);
 
   const handleSubmitOpenclawForm = useCallback(
@@ -922,9 +1003,9 @@ export function ChatPanel() {
       chatChannel?: string;
       chatToken?: string;
     }) => {
-      setOpenclawModalSaving(true);
+      setOpenclawFormSaving(true);
       try {
-        await commands.saveOpenclawCredentials({
+        const saved = await commands.saveOpenclawCredentials({
           provider: payload.provider,
           provider_token: payload.providerToken,
           chat_channel: payload.chatChannel,
@@ -935,17 +1016,26 @@ export function ChatPanel() {
         if (openclawActionMessageId) {
           markActionTaken(openclawActionMessageId);
         }
+        setOpenclawLastProvider(saved.provider);
+        setOpenclawLastChannel(saved.chat_channel || "Telegram");
+        addMessage({
+          role: "assistant",
+          content: `[CREDENTIALS_COLLECTED]
+Reference: ${saved.credential_ref}
+Provider: ${saved.provider}
+Chat channel: ${saved.chat_channel || "None"}`,
+        });
 
         const versionText = validation.version || "installed";
         await sendMessage(
-          `I used Noah's secure OpenClaw credential form. Provider configured: ${payload.provider}. Chat channel configured: ${payload.chatChannel || "none"}. Validate and continue setup. Current install: ${versionText}.`,
+          `OpenClaw credentials were submitted via Noah secure form. Credential reference: ${saved.credential_ref}. Provider: ${saved.provider}. Chat channel: ${saved.chat_channel || "none"}. Please continue with validation and next setup checkpoint. OpenClaw version: ${versionText}.`,
         );
       } finally {
-        setOpenclawModalSaving(false);
+        setOpenclawFormSaving(false);
         setOpenclawActionMessageId(null);
       }
     },
-    [markActionTaken, openclawActionMessageId, sendMessage],
+    [addMessage, markActionTaken, openclawActionMessageId, sendMessage],
   );
 
   // Shared floating input card
@@ -1035,6 +1125,12 @@ export function ChatPanel() {
                     sessionId={sessionId}
                     onConfirm={sendConfirmation}
                     onOpenOpenclawForm={handleOpenOpenclawForm}
+                    openclawFormOpen={openclawActionMessageId === msg.id}
+                    openclawInitialProvider={openclawLastProvider}
+                    openclawInitialChannel={openclawLastChannel}
+                    openclawFormSaving={openclawFormSaving}
+                    onSubmitOpenclawForm={handleSubmitOpenclawForm}
+                    onCancelOpenclawForm={() => setOpenclawActionMessageId(null)}
                   />
                 ));
               })()}
@@ -1047,20 +1143,6 @@ export function ChatPanel() {
           </div>
         )}
       </div>
-      <OpenclawCredentialModal
-        open={openclawModalOpen}
-        isSaving={openclawModalSaving}
-        onClose={() => {
-          if (!openclawModalSaving) {
-            setOpenclawModalOpen(false);
-            setOpenclawActionMessageId(null);
-          }
-        }}
-        onSubmit={async (payload) => {
-          await handleSubmitOpenclawForm(payload);
-          setOpenclawModalOpen(false);
-        }}
-      />
     </div>
   );
 }

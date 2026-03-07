@@ -2,6 +2,13 @@ export type ParsedResponse =
   | { type: "action"; situation: string; plan: string; actionLabel: string }
   | { type: "done"; summary: string }
   | { type: "info"; summary: string }
+  | {
+      type: "credentials_collected";
+      reference: string;
+      provider: string;
+      chatChannel?: string;
+      summary: string;
+    }
   | { type: "text"; content: string };
 
 /**
@@ -42,6 +49,31 @@ export function parseResponse(raw: string): ParsedResponse {
     return {
       type: "info",
       summary: infoMatch[1].trim(),
+    };
+  }
+
+  // Credential artifact: [CREDENTIALS_COLLECTED]...
+  const credMatch = trimmed.match(
+    /\[CREDENTIALS_COLLECTED\]\s*([\s\S]+)/,
+  );
+  if (credMatch) {
+    const body = credMatch[1].trim();
+    const ref =
+      body.match(/Reference:\s*([^\n]+)/i)?.[1]?.trim() ||
+      body.match(/Ref:\s*([^\n]+)/i)?.[1]?.trim() ||
+      "unknown";
+    const provider =
+      body.match(/Provider:\s*([^\n]+)/i)?.[1]?.trim() || "Unknown";
+    const chatChannel = body.match(/Chat channel:\s*([^\n]+)/i)?.[1]?.trim();
+
+    return {
+      type: "credentials_collected",
+      reference: ref,
+      provider,
+      chatChannel: chatChannel && chatChannel.toLowerCase() !== "none"
+        ? chatChannel
+        : undefined,
+      summary: body,
     };
   }
 

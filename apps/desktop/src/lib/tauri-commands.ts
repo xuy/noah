@@ -203,10 +203,20 @@ export interface SaveOpenclawCredentialsRequest {
   chat_token?: string;
 }
 
+export interface SaveOpenclawCredentialsResult {
+  credential_ref: string;
+  provider: string;
+  chat_channel?: string;
+  saved_at: string;
+}
+
 export async function saveOpenclawCredentials(
   request: SaveOpenclawCredentialsRequest,
-): Promise<void> {
-  await invoke<void>("save_openclaw_credentials", { request });
+): Promise<SaveOpenclawCredentialsResult> {
+  return await invoke<SaveOpenclawCredentialsResult>(
+    "save_openclaw_credentials",
+    { request },
+  );
 }
 
 export interface OpenclawValidationResult {
