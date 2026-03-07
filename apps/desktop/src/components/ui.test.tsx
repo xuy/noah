@@ -48,7 +48,7 @@ import * as commands from "../lib/tauri-commands";
 
 import { SessionBar } from "./SessionBar";
 import { ChatPanel } from "./ChatPanel";
-import { SessionHistory } from "./SessionHistory";
+import { Sidebar } from "./Sidebar";
 
 // ── Fixtures ─────────────────────────────────────────────────────────────────
 
@@ -71,7 +71,6 @@ const SESSION_WITH_CHANGES: SessionRecord = {
   resolved: true,
 };
 
-const mockSession = { startNewProblem: vi.fn() };
 
 afterEach(() => cleanup());
 
@@ -97,15 +96,15 @@ beforeEach(() => {
 // ── SessionBar ───────────────────────────────────────────────────────────────
 
 describe("SessionBar", () => {
-  it("renders History, Knowledge, and Settings buttons", () => {
-    render(<SessionBar session={mockSession} />);
-    screen.getByText("History");
-    screen.getByText("Knowledge");
+  it("renders sidebar toggle and settings button", () => {
+    render(<SessionBar />);
+    screen.getByTitle("Hide sidebar");
+    screen.getByText("Noah");
   });
 
   it("does not render an Actions button", () => {
     useSessionStore.setState({ changes: [CHANGE] });
-    render(<SessionBar session={mockSession} />);
+    render(<SessionBar />);
     expect(screen.queryByText(/Actions/)).toBeNull();
   });
 });
@@ -237,22 +236,22 @@ describe("ChangesBlock", () => {
   });
 });
 
-// ── SessionHistory actions badge ─────────────────────────────────────────────
+// ── Sidebar session list ─────────────────────────────────────────────────────
 
-describe("SessionHistory actions count", () => {
-  it("shows action count for sessions with actions", async () => {
+const mockSidebarSession = { startNewProblem: vi.fn() };
+
+describe("Sidebar session list", () => {
+  it("shows session titles when sidebar is open", async () => {
     vi.mocked(commands.listSessions).mockResolvedValue([SESSION_WITH_CHANGES]);
-    useSessionStore.setState({ historyOpen: true });
-    render(<SessionHistory />);
-    await screen.findByText("2 actions");
+    useSessionStore.setState({ sidebarOpen: true });
+    render(<Sidebar session={mockSidebarSession} />);
+    await screen.findByText("Fixed DNS");
   });
 
-  it("does not show action count for sessions with zero actions", async () => {
-    const noChanges: SessionRecord = { ...SESSION_WITH_CHANGES, change_count: 0 };
-    vi.mocked(commands.listSessions).mockResolvedValue([noChanges]);
-    useSessionStore.setState({ historyOpen: true });
-    render(<SessionHistory />);
-    await screen.findByText("Fixed DNS");
-    expect(screen.queryByText(/action/)).toBeNull();
+  it("shows empty message when no sessions", async () => {
+    vi.mocked(commands.listSessions).mockResolvedValue([]);
+    useSessionStore.setState({ sidebarOpen: true });
+    render(<Sidebar session={mockSidebarSession} />);
+    await screen.findByText(/Sessions will appear here/);
   });
 });

@@ -5,6 +5,8 @@ import type {
   SessionRecord,
 } from "../lib/tauri-commands";
 
+type ActiveView = "chat" | "knowledge";
+
 interface SessionState {
   sessionId: string | null;
   isActive: boolean;
@@ -14,6 +16,8 @@ interface SessionState {
   historyOpen: boolean;
   knowledgeOpen: boolean;
   settingsOpen: boolean;
+  sidebarOpen: boolean;
+  activeView: ActiveView;
   pastSessions: SessionRecord[];
 
   setSession: (id: string) => void;
@@ -30,6 +34,9 @@ interface SessionState {
   setKnowledgeOpen: (open: boolean) => void;
   toggleSettings: () => void;
   setSettingsOpen: (open: boolean) => void;
+  toggleSidebar: () => void;
+  setSidebarOpen: (open: boolean) => void;
+  setActiveView: (view: ActiveView) => void;
   setPastSessions: (sessions: SessionRecord[]) => void;
 }
 
@@ -50,6 +57,8 @@ export const useSessionStore = create<SessionState>((set) => ({
   historyOpen: false,
   knowledgeOpen: false,
   settingsOpen: false,
+  sidebarOpen: true,
+  activeView: "chat",
   pastSessions: [],
 
   setSession: (id) =>
@@ -118,6 +127,13 @@ export const useSessionStore = create<SessionState>((set) => ({
 
   setSettingsOpen: (open) =>
     set(open ? { ...allPanelsClosed, settingsOpen: true } : { settingsOpen: false }),
+
+  toggleSidebar: () =>
+    set((state) => ({ sidebarOpen: !state.sidebarOpen })),
+
+  setSidebarOpen: (open) => set({ sidebarOpen: open }),
+
+  setActiveView: (view) => set({ activeView: view }),
 
   setPastSessions: (sessions) => set({ pastSessions: sessions }),
 }));

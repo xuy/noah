@@ -6,13 +6,14 @@ import { useSession } from "./hooks/useSession";
 import { SessionBar } from "./components/SessionBar";
 import { ChatPanel } from "./components/ChatPanel";
 import { ActionApproval } from "./components/ActionApproval";
-import { SessionHistory } from "./components/SessionHistory";
-import { KnowledgePanel } from "./components/KnowledgePanel";
+import { Sidebar } from "./components/Sidebar";
+import { KnowledgeView } from "./components/KnowledgePanel";
 import { DebugPanel } from "./components/DebugPanel";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { UpdateBanner } from "./components/UpdateBanner";
 import { ProactiveSuggestionBanner } from "./components/ProactiveSuggestionBanner";
 import { SessionSummary } from "./components/SessionSummary";
+import { useSessionStore } from "./stores/sessionStore";
 import { SetupScreen } from "./components/SetupScreen";
 import { useDebugStore, type DebugEvent } from "./stores/debugStore";
 import { useTheme } from "./hooks/useTheme";
@@ -60,8 +61,8 @@ function App() {
 }
 
 function MainApp() {
-  // Single hook instance that auto-creates session on mount
   const session = useSession();
+  const activeView = useSessionStore((s) => s.activeView);
   const addEvent = useDebugStore((s) => s.addEvent);
   const toggle = useDebugStore((s) => s.toggle);
 
@@ -94,17 +95,21 @@ function MainApp() {
   }, [toggle]);
 
   return (
-    <div className="flex flex-col h-screen bg-bg-primary text-text-primary">
-      <UpdateBanner />
-      <ProactiveSuggestionBanner />
-      <SessionBar session={session} />
-      <SessionSummary />
-      <ChatPanel />
-      <DebugPanel />
-      <SettingsPanel />
-      <ActionApproval />
-      <KnowledgePanel />
-      <SessionHistory />
+    <div className="flex h-screen bg-bg-primary text-text-primary">
+      {/* Left sidebar */}
+      <Sidebar session={session} />
+
+      {/* Main content */}
+      <div className="flex flex-col flex-1 min-w-0">
+        <UpdateBanner />
+        <ProactiveSuggestionBanner />
+        <SessionBar />
+        <SessionSummary />
+        {activeView === "knowledge" ? <KnowledgeView /> : <ChatPanel />}
+        <DebugPanel />
+        <SettingsPanel />
+        <ActionApproval />
+      </div>
     </div>
   );
 }

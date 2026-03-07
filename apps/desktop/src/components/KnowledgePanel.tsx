@@ -15,16 +15,16 @@ function KnowledgeItem({
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   return (
-    <div className="border-b border-border-primary last:border-b-0">
+    <div className="border-b border-border-primary/50 last:border-b-0">
       <button
         onClick={() => onSelect(entry.path)}
-        className="w-full px-4 py-2.5 text-left hover:bg-bg-tertiary/50 transition-colors cursor-pointer"
+        className="w-full px-6 py-3 text-left hover:bg-bg-tertiary/30 transition-colors cursor-pointer"
       >
-        <p className="text-sm text-text-primary leading-snug truncate">
+        <p className="text-base text-text-primary leading-snug">
           {entry.title}
         </p>
-        <div className="flex items-center gap-2 mt-0.5">
-          <span className="text-[10px] text-text-muted font-mono">
+        <div className="flex items-center gap-2 mt-1">
+          <span className="text-xs text-text-muted font-mono">
             {entry.path}
           </span>
           <span className="ml-auto">
@@ -36,7 +36,7 @@ function KnowledgeItem({
                     onDelete(entry.path);
                     setConfirmDelete(false);
                   }}
-                  className="text-[10px] text-accent-red font-medium cursor-pointer"
+                  className="text-xs text-accent-red font-medium cursor-pointer"
                 >
                   Confirm
                 </span>
@@ -45,7 +45,7 @@ function KnowledgeItem({
                     e.stopPropagation();
                     setConfirmDelete(false);
                   }}
-                  className="text-[10px] text-text-muted cursor-pointer ml-2"
+                  className="text-xs text-text-muted cursor-pointer ml-2"
                 >
                   Cancel
                 </span>
@@ -56,7 +56,7 @@ function KnowledgeItem({
                   e.stopPropagation();
                   setConfirmDelete(true);
                 }}
-                className="text-[10px] text-text-muted hover:text-accent-red transition-colors cursor-pointer"
+                className="text-xs text-text-muted hover:text-accent-red transition-colors cursor-pointer"
               >
                 Delete
               </span>
@@ -68,10 +68,8 @@ function KnowledgeItem({
   );
 }
 
-export function KnowledgePanel() {
-  const knowledgeOpen = useSessionStore((s) => s.knowledgeOpen);
-  const setKnowledgeOpen = useSessionStore((s) => s.setKnowledgeOpen);
-
+export function KnowledgeView() {
+  const activeView = useSessionStore((s) => s.activeView);
   const [entries, setEntries] = useState<KnowledgeEntry[]>([]);
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const [fileContent, setFileContent] = useState<string>("");
@@ -86,11 +84,11 @@ export function KnowledgePanel() {
   }, []);
 
   useEffect(() => {
-    if (knowledgeOpen) {
+    if (activeView === "knowledge") {
       loadEntries();
       setSelectedPath(null);
     }
-  }, [knowledgeOpen, loadEntries]);
+  }, [activeView, loadEntries]);
 
   const handleSelect = useCallback(async (path: string) => {
     try {
@@ -121,8 +119,6 @@ export function KnowledgePanel() {
     setSelectedPath(null);
   }, []);
 
-  if (!knowledgeOpen) return null;
-
   // Group entries by category.
   const grouped: Record<string, KnowledgeEntry[]> = {};
   for (const entry of entries) {
@@ -134,168 +130,92 @@ export function KnowledgePanel() {
   const categories = Object.keys(grouped).sort();
 
   return (
-    <>
-      {/* Backdrop */}
-      <div
-        className="fixed inset-0 z-30 bg-black/20"
-        onClick={() => setKnowledgeOpen(false)}
-      />
-
-      {/* Slide-out panel */}
-      <div className="fixed top-0 right-0 bottom-0 z-40 w-80 bg-bg-secondary border-l border-border-primary shadow-2xl flex flex-col animate-slide-in-right">
-        {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-border-primary">
-          {selectedPath ? (
-            <>
-              <button
-                onClick={handleBack}
-                className="flex items-center gap-1.5 text-xs text-text-muted hover:text-text-primary transition-colors cursor-pointer"
-              >
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 14 14"
-                  fill="none"
-                  xmlns="http://www.w3.org/2000/svg"
-                >
-                  <path
-                    d="M9 3L5 7L9 11"
-                    stroke="currentColor"
-                    strokeWidth="1.5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-                Back
-              </button>
-              <button
-                onClick={() => setKnowledgeOpen(false)}
-                className="w-7 h-7 rounded-md flex items-center justify-center text-text-muted hover:text-text-primary hover:bg-bg-tertiary transition-colors cursor-pointer"
-              >
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 14 14"
-                  fill="none"
-                  xmlns="http://www.w3.org/2000/svg"
-                >
-                  <path
-                    d="M3 3L11 11M11 3L3 11"
-                    stroke="currentColor"
-                    strokeWidth="1.5"
-                    strokeLinecap="round"
-                  />
-                </svg>
-              </button>
-            </>
-          ) : (
-            <>
-              <h2 className="text-sm font-semibold text-text-primary">
-                Knowledge
-              </h2>
-              <button
-                onClick={() => setKnowledgeOpen(false)}
-                className="w-7 h-7 rounded-md flex items-center justify-center text-text-muted hover:text-text-primary hover:bg-bg-tertiary transition-colors cursor-pointer"
-              >
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 14 14"
-                  fill="none"
-                  xmlns="http://www.w3.org/2000/svg"
-                >
-                  <path
-                    d="M3 3L11 11M11 3L3 11"
-                    stroke="currentColor"
-                    strokeWidth="1.5"
-                    strokeLinecap="round"
-                  />
-                </svg>
-              </button>
-            </>
-          )}
-        </div>
-
-        {/* Content */}
-        <div className="flex-1 overflow-y-auto">
-          {selectedPath ? (
-            /* Detail view */
-            <div className="px-4 py-3">
-              <p className="text-[10px] text-text-muted font-mono mb-3">
-                {selectedPath}
-              </p>
-              <pre className="text-sm text-text-primary whitespace-pre-wrap break-words leading-relaxed font-sans">
-                {fileContent}
-              </pre>
-            </div>
-          ) : entries.length === 0 ? (
-            /* Empty state */
-            <div className="flex flex-col items-center justify-center h-full text-text-muted px-4">
-              <svg
-                width="32"
-                height="32"
-                viewBox="0 0 32 32"
-                fill="none"
-                xmlns="http://www.w3.org/2000/svg"
-                className="mb-3 opacity-50"
-              >
-                <path
-                  d="M6 4H20L26 10V28H6V4Z"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                  strokeLinejoin="round"
-                />
-                <path
-                  d="M20 4V10H26"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                  strokeLinejoin="round"
-                />
-                <path
-                  d="M10 16H22M10 20H22M10 24H18"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                  strokeLinecap="round"
-                />
+    <div className="flex flex-col flex-1 min-h-0">
+      <div className="flex-1 overflow-y-auto">
+        {selectedPath ? (
+          /* Detail view */
+          <div className="max-w-3xl w-full mx-auto px-6 py-6">
+            <button
+              onClick={handleBack}
+              className="flex items-center gap-1.5 text-sm text-text-muted hover:text-text-primary transition-colors cursor-pointer mb-4"
+            >
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                <path d="M9 3L5 7L9 11" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
-              <p className="text-xs text-center">
-                Noah hasn't learned anything about your system yet.
-                <br />
-                Knowledge will build up as you use the app.
+              Back to knowledge
+            </button>
+            <p className="text-xs text-text-muted font-mono mb-4">
+              {selectedPath}
+            </p>
+            <pre className="text-base text-text-primary whitespace-pre-wrap break-words leading-relaxed font-sans">
+              {fileContent}
+            </pre>
+          </div>
+        ) : entries.length === 0 ? (
+          /* Empty state */
+          <div className="flex flex-col items-center justify-center h-full text-text-muted px-6">
+            <svg
+              width="40"
+              height="40"
+              viewBox="0 0 32 32"
+              fill="none"
+              className="mb-4 opacity-50"
+            >
+              <path
+                d="M6 4H20L26 10V28H6V4Z"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinejoin="round"
+              />
+              <path
+                d="M20 4V10H26"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinejoin="round"
+              />
+              <path
+                d="M10 16H22M10 20H22M10 24H18"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+              />
+            </svg>
+            <p className="text-base text-text-secondary mb-1">
+              No knowledge yet
+            </p>
+            <p className="text-sm text-text-muted text-center max-w-xs">
+              Noah hasn't learned anything about your system yet.
+              Knowledge will build up as you use the app.
+            </p>
+          </div>
+        ) : (
+          /* List view */
+          <div className="max-w-3xl w-full mx-auto py-4">
+            <div className="px-6 pb-4">
+              <h1 className="text-2xl font-semibold text-text-primary">Knowledge</h1>
+              <p className="text-sm text-text-muted mt-1">
+                {entries.length} file{entries.length !== 1 ? "s" : ""} across{" "}
+                {categories.length} categor{categories.length !== 1 ? "ies" : "y"}
               </p>
             </div>
-          ) : (
-            /* Tree view */
-            <div>
-              {categories.map((cat) => (
-                <div key={cat}>
-                  <div className="px-4 py-2 text-[10px] font-medium uppercase tracking-wider text-text-muted bg-bg-primary/50 border-b border-border-primary">
-                    {cat}
-                  </div>
-                  {grouped[cat].map((entry) => (
-                    <KnowledgeItem
-                      key={entry.path}
-                      entry={entry}
-                      onSelect={handleSelect}
-                      onDelete={handleDelete}
-                    />
-                  ))}
+            {categories.map((cat) => (
+              <div key={cat}>
+                <div className="px-6 py-2 text-xs font-semibold text-text-secondary">
+                  {cat.charAt(0).toUpperCase() + cat.slice(1)}
                 </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Footer */}
-        {!selectedPath && entries.length > 0 && (
-          <div className="px-4 py-2.5 border-t border-border-primary">
-            <p className="text-[10px] text-text-muted">
-              {entries.length} file{entries.length !== 1 ? "s" : ""} across{" "}
-              {categories.length} categor{categories.length !== 1 ? "ies" : "y"}
-            </p>
+                {grouped[cat].map((entry) => (
+                  <KnowledgeItem
+                    key={entry.path}
+                    entry={entry}
+                    onSelect={handleSelect}
+                    onDelete={handleDelete}
+                  />
+                ))}
+              </div>
+            ))}
           </div>
         )}
       </div>
-    </>
+    </div>
   );
 }
