@@ -14,7 +14,6 @@ use crate::AppState;
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum AssistantActionType {
     RunStep,
-    Gather,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -37,8 +36,6 @@ pub struct AssistantCardAction {
     pub label: String,
     #[serde(rename = "type")]
     pub action_type: AssistantActionType,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub gather_schema: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -143,11 +140,9 @@ fn parse_assistant_ui_json(text: &str) -> Option<AssistantUiPayload> {
                 .map(|s| s.to_uppercase())
                 .and_then(|s| match s.as_str() {
                     "RUN_STEP" => Some(AssistantActionType::RunStep),
-                    "GATHER" => Some(AssistantActionType::Gather),
                     _ => None,
                 })
                 .unwrap_or(AssistantActionType::RunStep);
-            let gather_schema = action_v.get("gather_schema").cloned();
             Some(AssistantUiPayload::Spa(AssistantSpaUi {
                 kind: "spa".to_string(),
                 situation,
@@ -155,7 +150,6 @@ fn parse_assistant_ui_json(text: &str) -> Option<AssistantUiPayload> {
                 action: AssistantCardAction {
                     label,
                     action_type,
-                    gather_schema,
                 },
             }))
         }
@@ -241,7 +235,6 @@ pub fn parse_assistant_ui(text: &str) -> Option<AssistantUiPayload> {
         action: AssistantCardAction {
             label,
             action_type: AssistantActionType::RunStep,
-            gather_schema: None,
         },
     }))
 }
@@ -485,19 +478,6 @@ mod tests {
         match ui {
             Some(AssistantUiPayload::Spa(card)) => assert_eq!(card.action.label, "Stop App"),
             _ => panic!("expected json card ui with preface"),
-        }
-    }
-
-    #[test]
-    fn parses_json_gather_type() {
-        let text = r#"{"kind":"spa","situation":"Need info","plan":"Collect","action":{"label":"Fill","type":"GATHER","gather_schema":{"type":"object"}}}"#;
-        let ui = parse_assistant_ui(text);
-        match ui {
-            Some(AssistantUiPayload::Spa(card)) => {
-                assert_eq!(card.action.action_type, AssistantActionType::Gather);
-                assert!(card.action.gather_schema.is_some());
-            }
-            _ => panic!("expected gather card"),
         }
     }
 

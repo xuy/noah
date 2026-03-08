@@ -33,7 +33,6 @@ function humanizeActionLabel(label: string, actionType?: string): string {
 
   const mapByType: Record<string, string> = {
     RUN_STEP: "Continue",
-    GATHER: "Fill in Details",
   };
 
   if (!raw) return mapByType[type] || "Continue";

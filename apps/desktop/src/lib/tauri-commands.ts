@@ -55,7 +55,7 @@ export interface KnowledgeEntry {
 
 // ── UI Protocol Types ──
 
-export type AssistantActionType = "RUN_STEP" | "GATHER";
+export type AssistantActionType = "RUN_STEP";
 
 export interface AssistantQuestionOption {
   label: string;
@@ -72,7 +72,6 @@ export interface AssistantQuestion {
 export interface AssistantCardAction {
   label: string;
   type: AssistantActionType;
-  gather_schema?: Record<string, unknown>;
 }
 
 export interface AssistantUiSpa {

@@ -5,7 +5,7 @@ use serde_json::{json, Value};
 use itman_tools::{SafetyTier, Tool, ToolResult};
 
 fn action_type_valid(v: &str) -> bool {
-    matches!(v, "RUN_STEP" | "GATHER")
+    matches!(v, "RUN_STEP")
 }
 
 fn normalize_action_from_input(input: &Value) -> Result<(String, String)> {
@@ -37,24 +37,16 @@ pub fn ui_payload_from_tool_call(name: &str, input: &Value) -> Result<String> {
                 .ok_or_else(|| anyhow!("missing plan_md"))?;
             let (label, action_type) = normalize_action_from_input(input)?;
             if !action_type_valid(&action_type) {
-                return Err(anyhow!("invalid action.type: must be RUN_STEP or GATHER"));
-            }
-            let mut action_obj = json!({
-                "label": label,
-                "type": action_type
-            });
-            // Include gather_schema if present
-            if let Some(schema) = input
-                .get("action")
-                .and_then(|a| a.get("gather_schema"))
-            {
-                action_obj["gather_schema"] = schema.clone();
+                return Err(anyhow!("invalid action.type: must be RUN_STEP"));
             }
             Ok(json!({
                 "kind": "spa",
                 "situation": situation,
                 "plan": plan,
-                "action": action_obj
+                "action": {
+                    "label": label,
+                    "type": action_type
+                }
             })
             .to_string())
         }
@@ -144,8 +136,7 @@ impl Tool for UiSpaTool {
               "type":"object",
               "properties":{
                 "label":{"type":"string","description":"Human-readable button label, e.g. 'Fix it'."},
-                "type":{"type":"string","enum":["RUN_STEP","GATHER"]},
-                "gather_schema":{"type":"object","description":"Optional JSON Schema describing form fields when type is GATHER."}
+                "type":{"type":"string","enum":["RUN_STEP"]}
               },
               "required":["label","type"],
               "additionalProperties":false
@@ -272,23 +263,6 @@ mod tests {
         let v: Value = serde_json::from_str(&result).unwrap();
         assert_eq!(v["kind"], "spa");
         assert_eq!(v["action"]["type"], "RUN_STEP");
-    }
-
-    #[test]
-    fn valid_spa_gather() {
-        let input = json!({
-            "situation_md": "Need info",
-            "plan_md": "Collect details",
-            "action": {
-                "label": "Fill form",
-                "type": "GATHER",
-                "gather_schema": {"type": "object", "properties": {"name": {"type": "string"}}}
-            }
-        });
-        let result = ui_payload_from_tool_call("ui_spa", &input).unwrap();
-        let v: Value = serde_json::from_str(&result).unwrap();
-        assert_eq!(v["action"]["type"], "GATHER");
-        assert!(v["action"]["gather_schema"].is_object());
     }
 
     #[test]

@@ -38,7 +38,7 @@ Every response MUST be exactly one of these tool calls:
 - `situation_md`: 1-3 sentence Markdown summary of what's wrong
 - `plan_md`: 1-3 sentence Markdown plan to fix it
 - `action.label`: short verb phrase ("Fix it", "Clean up")
-- `action.type`: `RUN_STEP` (execute a fix) or `GATHER` (collect info via optional `action.gather_schema`)
+- `action.type`: `RUN_STEP` (execute a fix)
 
 `ui_user_question` — Need user to choose from options:
 - `questions[]` with `question_md` (Markdown)

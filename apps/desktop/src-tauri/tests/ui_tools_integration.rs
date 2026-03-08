@@ -95,40 +95,6 @@ async fn ui_spa_tool_executes_correctly() {
 }
 
 #[tokio::test]
-async fn ui_spa_gather_with_schema() {
-    use itman_desktop_lib::agent::tool_router::ToolRouter;
-
-    let mut router = ToolRouter::new();
-    itman_desktop_lib::ui_tools::register_ui_tools(&mut router);
-
-    let tool = router.find_tool("ui_spa").unwrap();
-    let input = json!({
-        "situation_md": "Need your WiFi password.",
-        "plan_md": "Collect WiFi credentials to connect.",
-        "action": {
-            "label": "Enter credentials",
-            "type": "GATHER",
-            "gather_schema": {
-                "type": "object",
-                "properties": {
-                    "ssid": {"type": "string"},
-                    "password": {"type": "string"}
-                },
-                "required": ["ssid", "password"]
-            }
-        }
-    });
-
-    let result = tool.execute(&input).await.unwrap();
-    let payload: serde_json::Value = serde_json::from_str(&result.output).unwrap();
-
-    assert_eq!(payload["kind"], "spa");
-    assert_eq!(payload["action"]["type"], "GATHER");
-    assert!(payload["action"]["gather_schema"].is_object());
-    assert_eq!(payload["action"]["gather_schema"]["type"], "object");
-}
-
-#[tokio::test]
 async fn ui_user_question_executes_correctly() {
     use itman_desktop_lib::agent::tool_router::ToolRouter;
 
