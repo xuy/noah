@@ -47,6 +47,7 @@ export interface MessageRecord {
 
 export type AssistantActionType =
   | "RUN_STEP"
+  | "OPEN_SECURE_FORM"
   | "OPENCLAW_SECURE_CAPTURE";
 
 export interface AssistantQuestionOption {

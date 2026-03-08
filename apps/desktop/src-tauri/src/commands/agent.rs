@@ -12,7 +12,7 @@ use crate::AppState;
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum AssistantActionType {
     RunStep,
-    OpenclawSecureCapture,
+    OpenSecureForm,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -106,7 +106,7 @@ fn infer_action_type(context: &str, label: &str) -> AssistantActionType {
             || lower.contains("api key")
             || lower.contains("token"))
     {
-        return AssistantActionType::OpenclawSecureCapture;
+        return AssistantActionType::OpenSecureForm;
     }
     AssistantActionType::RunStep
 }
@@ -167,7 +167,7 @@ fn parse_assistant_ui_json(text: &str) -> Option<AssistantUiPayload> {
                 .map(|s| s.to_uppercase())
                 .and_then(|s| match s.as_str() {
                     "RUN_STEP" => Some(AssistantActionType::RunStep),
-                    "OPENCLAW_SECURE_CAPTURE" => Some(AssistantActionType::OpenclawSecureCapture),
+                    "OPEN_SECURE_FORM" | "OPENCLAW_SECURE_CAPTURE" => Some(AssistantActionType::OpenSecureForm),
                     _ => None,
                 })
                 .unwrap_or(AssistantActionType::RunStep);

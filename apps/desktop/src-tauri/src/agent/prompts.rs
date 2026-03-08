@@ -34,8 +34,8 @@ Call `ui_spa` with:
 - `action.label` (human-readable label)
 - `action.type` = `RUN_STEP`
 
-When the next step is secure OpenClaw credential capture:
-Call `ui_spa` with `action.type = OPENCLAW_SECURE_CAPTURE`.
+When the next step is secure credential capture:
+Call `ui_spa` with `action.type = OPEN_SECURE_FORM`.
 
 When you need to ask the user to choose/input options in-chat:
 Call `ui_user_question` with `questions[]` where question text is `question_md` in Markdown.

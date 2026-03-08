@@ -5,7 +5,7 @@ use serde_json::{json, Value};
 use itman_tools::{SafetyTier, Tool, ToolResult};
 
 fn action_type_valid(v: &str) -> bool {
-    matches!(v, "RUN_STEP" | "OPENCLAW_SECURE_CAPTURE")
+    matches!(v, "RUN_STEP" | "OPEN_SECURE_FORM" | "OPENCLAW_SECURE_CAPTURE")
 }
 
 fn extract_between<'a>(s: &'a str, start: &str, end: &str) -> Option<&'a str> {
@@ -32,8 +32,10 @@ fn normalize_action_from_input(input: &Value) -> Result<(String, String)> {
         let action_type = extract_between(action_raw, r#"name="type">"#, "<")
             .or_else(|| extract_between(action_raw, "type>", "<"))
             .or_else(|| {
-                if action_raw.to_uppercase().contains("OPENCLAW_SECURE_CAPTURE") {
-                    Some("OPENCLAW_SECURE_CAPTURE")
+                if action_raw.to_uppercase().contains("OPEN_SECURE_FORM") {
+                    Some("OPEN_SECURE_FORM")
+                } else if action_raw.to_uppercase().contains("OPENCLAW_SECURE_CAPTURE") {
+                    Some("OPEN_SECURE_FORM")
                 } else if action_raw.to_uppercase().contains("RUN_STEP") {
                     Some("RUN_STEP")
                 } else {
@@ -167,7 +169,7 @@ impl Tool for UiSpaTool {
               "type":"object",
               "properties":{
                 "label":{"type":"string","description":"Human-readable button label, e.g. 'Open Secure Form'."},
-                "type":{"type":"string","enum":["RUN_STEP","OPENCLAW_SECURE_CAPTURE"]}
+                "type":{"type":"string","enum":["RUN_STEP","OPEN_SECURE_FORM"]}
               },
               "required":["label","type"],
               "additionalProperties":false

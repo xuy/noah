@@ -30,6 +30,7 @@ function humanizeActionLabel(label: string, actionType?: string): string {
   const type = (actionType || "").trim();
 
   const mapByType: Record<string, string> = {
+    OPEN_SECURE_FORM: "Open Secure Form",
     OPENCLAW_SECURE_CAPTURE: "Open Secure Form",
     RUN_STEP: "Continue",
   };
@@ -937,7 +938,7 @@ function MessageDisplay({
       {
         const openclawHint = `${parsed.situation}\n${parsed.plan}\n${message.content}`.toLowerCase();
         const isOpenclawSetup = parsedUi
-          ? (parsed as { actionType?: string }).actionType === "OPENCLAW_SECURE_CAPTURE"
+          ? ["OPEN_SECURE_FORM", "OPENCLAW_SECURE_CAPTURE"].includes((parsed as { actionType?: string }).actionType || "")
           : openclawHint.includes("openclaw")
             && (
               openclawHint.includes("secure credential form")
