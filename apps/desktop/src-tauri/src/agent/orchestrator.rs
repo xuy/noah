@@ -100,36 +100,11 @@ fn active_playbook_name(messages: &[Message]) -> Option<String> {
     active
 }
 
-fn playbook_mode_overlay(active_playbook: Option<&str>) -> String {
-    match active_playbook {
-        Some("openclaw-install-config") => {
-            "\n\n## Playbook Governance Mode\n\
-Active playbook: `openclaw-install-config`.\n\
-Treat this as a constrained sub-agent protocol for this session.\n\
-- Use `ui_spa` tool calls for guided setup turns.\n\
-- Use `ui_user_question` tool calls for explicit user choices.\n\
-- When collecting credentials, direct the user to Noah's secure credential form (privacy-preserving local capture), not plain chat token entry.\n\
-- Do not claim a command/wizard ran unless a tool result explicitly confirms it.\n\
-- If `shell_run` says a command was blocked or not executed, explicitly state that and switch to a supported path.\n\
-- Do not hand off setup as \"configure via app UI\" and stop.\n\
-- Stay in guided setup mode until completion criteria in the playbook are met.\n\
-- For OpenClaw config, never run interactive wizard commands (`openclaw config` / `openclaw configure`) through `shell_run`."
-                .to_string()
-        }
-        Some(name) => format!(
-            "\n\n## Playbook Governance Mode\nActive playbook: `{}`.\nTreat this playbook as binding protocol until its completion criteria are met.",
-            name
-        ),
-        None => String::new(),
-    }
-}
-
 fn final_user_visible_segment(text: &str) -> String {
     let markers = [
         "[SITUATION]",
         "[DONE]",
         "[INFO]",
-        "[CREDENTIALS_COLLECTED]",
         r#"{"kind":"spa""#,
         r#"{"kind": "spa""#,
         r#"{"kind":"done""#,
@@ -322,19 +297,10 @@ impl Orchestrator {
             );
 
             let active_playbook = active_playbook_name(&messages);
-            let openclaw_ctx = if active_playbook.as_deref() == Some("openclaw-install-config") {
-                Some(playbook_runtime::parse_openclaw_context(&messages))
-            } else {
-                None
-            };
             let system = format!(
-                "{}{}{}",
+                "{}{}",
                 base_system,
-                playbook_mode_overlay(active_playbook.as_deref()),
-                openclaw_ctx
-                    .as_ref()
-                    .map(playbook_runtime::openclaw_stage_overlay)
-                    .unwrap_or_default()
+                playbook_runtime::governance_overlay(active_playbook.as_deref(), &messages),
             );
 
             let response = self
@@ -448,25 +414,22 @@ impl Orchestrator {
                     let (tool_use_id, name, input) = ui_calls[0];
                     match ui_tools::ui_payload_from_tool_call(name, input) {
                         Ok(payload) => {
-                            if active_playbook.as_deref() == Some("openclaw-install-config") {
-                                if let Some(ctx) = openclaw_ctx.as_ref() {
-                                    if let Some(guard_feedback) = playbook_runtime::validate_openclaw_final_response(
-                                        ctx,
-                                        user_message,
-                                        &payload,
-                                    ) {
-                                        let session = self.sessions.get_mut(session_id).unwrap();
-                                        session.messages.push(Message {
-                                            role: "user".to_string(),
-                                            content: MessageContent::Blocks(vec![ContentBlock::ToolResult {
-                                                tool_use_id: tool_use_id.clone(),
-                                                content: guard_feedback,
-                                                is_error: Some(true),
-                                            }]),
-                                        });
-                                        continue;
-                                    }
-                                }
+                            if let Some(guard_feedback) = playbook_runtime::validate_final_response(
+                                active_playbook.as_deref(),
+                                &messages,
+                                user_message,
+                                &payload,
+                            ) {
+                                let session = self.sessions.get_mut(session_id).unwrap();
+                                session.messages.push(Message {
+                                    role: "user".to_string(),
+                                    content: MessageContent::Blocks(vec![ContentBlock::ToolResult {
+                                        tool_use_id: tool_use_id.clone(),
+                                        content: guard_feedback,
+                                        is_error: Some(true),
+                                    }]),
+                                });
+                                continue;
                             }
                             {
                                 let session = self.sessions.get_mut(session_id).unwrap();
@@ -509,24 +472,21 @@ impl Orchestrator {
             if tool_uses.is_empty() {
                 let candidate_text = all_text_parts.join("\n");
                 let visible_text = final_user_visible_segment(&candidate_text);
-                if active_playbook.as_deref() == Some("openclaw-install-config") {
-                    if let Some(ctx) = openclaw_ctx.as_ref() {
-                        if let Some(guard_feedback) = playbook_runtime::validate_openclaw_final_response(
-                            ctx,
-                            user_message,
-                            &visible_text,
-                        ) {
-                            for _ in 0..appended_text_count {
-                                let _ = all_text_parts.pop();
-                            }
-                            let session = self.sessions.get_mut(session_id).unwrap();
-                            session.messages.push(Message {
-                                role: "user".to_string(),
-                                content: MessageContent::Text(guard_feedback),
-                            });
-                            continue;
-                        }
+                if let Some(guard_feedback) = playbook_runtime::validate_final_response(
+                    active_playbook.as_deref(),
+                    &messages,
+                    user_message,
+                    &visible_text,
+                ) {
+                    for _ in 0..appended_text_count {
+                        let _ = all_text_parts.pop();
                     }
+                    let session = self.sessions.get_mut(session_id).unwrap();
+                    session.messages.push(Message {
+                        role: "user".to_string(),
+                        content: MessageContent::Text(guard_feedback),
+                    });
+                    continue;
                 }
                 return Ok(visible_text);
             }
@@ -624,16 +584,14 @@ impl Orchestrator {
     ) -> Result<String> {
         if tool_name == "shell_run" {
             if let Some(session) = self.sessions.get(session_id) {
-                if active_playbook_name(&session.messages).as_deref() == Some("openclaw-install-config") {
-                    let ctx = playbook_runtime::parse_openclaw_context(&session.messages);
-                    let command = tool_input.get("command").and_then(|v| v.as_str()).unwrap_or("");
-                    if let Some(reason) = playbook_runtime::blocked_openclaw_shell_command(ctx.stage, command) {
-                        return Ok(format!(
-                            "COMMAND NOT EXECUTED: blocked by OpenClaw stage policy (stage={}, reason={}). STOP calling shell_run in this turn. Respond directly to the user now in [SITUATION]/[PLAN]/[ACTION] format with either secure credential recapture guidance or a basic [DONE] with optional channel pending.",
-                            ctx.stage.as_str(),
-                            reason
-                        ));
-                    }
+                let active_playbook = active_playbook_name(&session.messages);
+                let command = tool_input.get("command").and_then(|v| v.as_str()).unwrap_or("");
+                if let Some(feedback) = playbook_runtime::blocked_shell_command_feedback(
+                    active_playbook.as_deref(),
+                    &session.messages,
+                    command,
+                ) {
+                    return Ok(feedback);
                 }
             }
         }

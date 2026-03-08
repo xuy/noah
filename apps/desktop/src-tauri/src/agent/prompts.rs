@@ -86,8 +86,7 @@ You have a knowledge base of markdown files organized by category. Use these too
 - For non-trivial issues, check whether a diagnostic playbook applies (listed under `playbooks` in the knowledge base) and use `activate_playbook` to load its step-by-step protocol.
 - Once a playbook is activated, treat it as a binding protocol. Do not skip required checkpoints or completion criteria unless a documented caveat in that playbook applies.
 - Do not emit `ui_done` if the activated playbook's completion criteria are not met.
-- For OpenClaw install/config requests, you MUST activate `openclaw-install-config` before proposing the final plan.
-- For OpenClaw setup specifically: install-only is never `ui_done`. After install, continue with guided token-configuration steps and wait for explicit user confirmation before done."#,
+- For domain-specific workflows (software setup, migrations, account linking), activate and follow the relevant playbook before proposing final completion."#,
         os_context = os_context,
         knowledge_section = knowledge_section,
     )

@@ -1,5 +1,66 @@
 use crate::agent::llm_client::{ContentBlock, Message, MessageContent};
 
+pub fn governance_overlay(active_playbook: Option<&str>, messages: &[Message]) -> String {
+    match active_playbook {
+        Some("openclaw-install-config") => {
+            let ctx = parse_openclaw_context(messages);
+            format!(
+                "\n\n## Playbook Governance Mode\n\
+Active playbook: `openclaw-install-config`.\n\
+Treat this as a constrained sub-agent protocol for this session.\n\
+- Use `ui_spa` tool calls for guided setup turns.\n\
+- Use `ui_user_question` tool calls for explicit user choices.\n\
+- When collecting credentials, direct the user to Noah's secure credential form (privacy-preserving local capture), not plain chat token entry.\n\
+- Do not claim a command/wizard ran unless a tool result explicitly confirms it.\n\
+- If `shell_run` says a command was blocked or not executed, explicitly state that and switch to a supported path.\n\
+- Do not hand off setup as \"configure via app UI\" and stop.\n\
+- Stay in guided setup mode until completion criteria in the playbook are met.\n\
+- For OpenClaw config, never run interactive wizard commands (`openclaw config` / `openclaw configure`) through `shell_run`.\n{}",
+                openclaw_stage_overlay(&ctx)
+            )
+        }
+        Some(name) => format!(
+            "\n\n## Playbook Governance Mode\nActive playbook: `{}`.\nTreat this playbook as binding protocol until its completion criteria are met.",
+            name
+        ),
+        None => String::new(),
+    }
+}
+
+pub fn validate_final_response(
+    active_playbook: Option<&str>,
+    messages: &[Message],
+    user_message: &str,
+    visible_text: &str,
+) -> Option<String> {
+    match active_playbook {
+        Some("openclaw-install-config") => {
+            let ctx = parse_openclaw_context(messages);
+            validate_openclaw_final_response(&ctx, user_message, visible_text)
+        }
+        _ => None,
+    }
+}
+
+pub fn blocked_shell_command_feedback(
+    active_playbook: Option<&str>,
+    messages: &[Message],
+    command: &str,
+) -> Option<String> {
+    match active_playbook {
+        Some("openclaw-install-config") => {
+            let ctx = parse_openclaw_context(messages);
+            let reason = blocked_openclaw_shell_command(ctx.stage, command)?;
+            Some(format!(
+                "COMMAND NOT EXECUTED: blocked by playbook stage policy (playbook=openclaw-install-config, stage={}, reason={}). STOP calling shell_run in this turn. Respond directly to the user now with one ui_* tool call.",
+                ctx.stage.as_str(),
+                reason
+            ))
+        }
+        _ => None,
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OpenclawStage {
     InstallCheck,
