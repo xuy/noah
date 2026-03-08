@@ -191,11 +191,11 @@ impl Tool for UiSpaTool {
         json!({
           "type":"object",
           "properties":{
-            "situation_md":{"type":"string","description":"Situation or instruction text in Markdown format."},
-            "plan_md":{"type":"string","description":"Plan text in Markdown format. Omit when using WAIT_FOR_USER with instructions only."},
+            "situation_md":{"type":"string","description":"Markdown text shown to the user. For RUN_STEP: describe what Noah will do. For WAIT_FOR_USER: MUST contain concrete step-by-step instructions the user needs to follow (commands to run, files to edit, etc.) — never just say you will guide them."},
+            "plan_md":{"type":"string","description":"Optional plan text in Markdown. Omit for WAIT_FOR_USER (instructions go in situation_md instead)."},
             "qr_data":{"type":"string","description":"Optional data string to render as a scannable QR code (e.g. a URL or auth token the user must scan with their phone)."},
-            "action_label":{"type":"string","description":"Human-readable button label, e.g. 'Fix it' or 'I've done this'."},
-            "action_type":{"type":"string","enum":["RUN_STEP","WAIT_FOR_USER"],"description":"RUN_STEP: Noah executes an action. WAIT_FOR_USER: user completes an action outside Noah and confirms."}
+            "action_label":{"type":"string","description":"Button label. RUN_STEP examples: 'Fix it', 'Install'. WAIT_FOR_USER examples: 'I've done this', 'Done'."},
+            "action_type":{"type":"string","enum":["RUN_STEP","WAIT_FOR_USER"],"description":"RUN_STEP: Noah executes an action automatically. WAIT_FOR_USER: user must complete a manual action outside Noah — situation_md must contain the exact instructions."}
           },
           "required":["situation_md","action_label","action_type"],
           "additionalProperties":false
