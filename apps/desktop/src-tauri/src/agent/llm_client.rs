@@ -9,31 +9,6 @@ const API_VERSION: &str = "2023-06-01";
 const MAX_TOKENS: u32 = 4096;
 const REQUEST_TIMEOUT_SECS: u64 = 90;
 
-/// Override API URL via NOAH_API_URL env var (e.g. "http://127.0.0.1:8082").
-/// Override model via NOAH_MODEL env var (e.g. "local").
-fn effective_api_url() -> String {
-    std::env::var("NOAH_API_URL")
-        .ok()
-        .filter(|s| !s.is_empty())
-        .map(|u| format!("{}/v1/messages", u.trim_end_matches('/')))
-        .unwrap_or_else(|| ANTHROPIC_API_URL.to_string())
-}
-
-fn effective_model() -> String {
-    std::env::var("NOAH_MODEL")
-        .ok()
-        .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| MODEL.to_string())
-}
-
-/// Use NOAH_MODEL override if set, otherwise fall back to the given default.
-fn effective_model_or(default: &str) -> String {
-    std::env::var("NOAH_MODEL")
-        .ok()
-        .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| default.to_string())
-}
-
 // ── Diagnostic analysis result ─────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -223,10 +198,6 @@ impl LlmClient {
     }
 
     pub fn has_auth(&self) -> bool {
-        // Local server override needs no auth.
-        if std::env::var("NOAH_API_URL").ok().filter(|s| !s.is_empty()).is_some() {
-            return true;
-        }
         match &self.auth {
             AuthMode::ApiKey(key) => !key.is_empty(),
             AuthMode::Proxy { token, .. } => !token.is_empty(),
@@ -240,13 +211,8 @@ impl LlmClient {
         }
     }
 
-    /// Get the API URL based on auth mode (env override takes priority).
+    /// Get the API URL based on auth mode.
     fn api_url(&self) -> String {
-        if let Ok(url) = std::env::var("NOAH_API_URL") {
-            if !url.is_empty() {
-                return format!("{}/v1/messages", url.trim_end_matches('/'));
-            }
-        }
         match &self.auth {
             AuthMode::ApiKey(_) => ANTHROPIC_API_URL.to_string(),
             AuthMode::Proxy { base_url, .. } => format!("{}/v1/messages", base_url.trim_end_matches('/')),
@@ -264,7 +230,7 @@ impl LlmClient {
     /// Generate a short session title from the first user message using a fast, cheap model.
     pub async fn generate_title(&self, user_message: &str) -> Result<String> {
         let body = ApiRequest {
-            model: effective_model_or(TITLE_MODEL),
+            model: TITLE_MODEL.to_string(),
             max_tokens: 30,
             system: system_text("Generate a short title (max 6 words) for a computer support session based on the user's message. Output only the title, nothing else. No quotes."),
             messages: vec![Message {
@@ -311,7 +277,7 @@ impl LlmClient {
     /// Generate a brief session summary using Haiku.
     pub async fn generate_session_summary(&self, messages_text: &str) -> Result<String> {
         let body = ApiRequest {
-            model: effective_model_or(TITLE_MODEL),
+            model: TITLE_MODEL.to_string(),
             max_tokens: 200,
             system: system_text("Summarize this IT support session in 2-3 short bullet points. Focus on: what was the problem, what was done, and the outcome. Be concise. Use plain language."),
             messages: vec![Message {
@@ -371,7 +337,7 @@ impl LlmClient {
         );
 
         let body = ApiRequest {
-            model: effective_model_or(TITLE_MODEL),
+            model: TITLE_MODEL.to_string(),
             max_tokens: 200,
             system: system_text(&system),
             messages: vec![Message {
@@ -433,7 +399,7 @@ impl LlmClient {
         system: Vec<crate::agent::prompts::SystemBlock>,
     ) -> Result<Response> {
         let body = ApiRequest {
-            model: effective_model(),
+            model: MODEL.to_string(),
             max_tokens: MAX_TOKENS,
             system,
             messages,
