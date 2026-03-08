@@ -14,6 +14,7 @@ use crate::machine_context::MachineContext;
 use crate::platform;
 use crate::playbooks;
 use crate::safety::journal;
+use crate::ui_tools;
 
 #[derive(Debug, Clone)]
 struct DebugOpenclawCredentialCapture {
@@ -293,6 +294,7 @@ pub async fn run_prompt_flow(prompt: &str, max_turns: usize) -> Result<PromptRun
 
     let mut router = ToolRouter::new();
     platform::register_platform_tools(&mut router, Some(&db_path));
+    ui_tools::register_ui_tools(&mut router);
     router.register(Box::new(knowledge::WriteKnowledgeTool::new(knowledge_dir.clone())));
     router.register(Box::new(knowledge::SearchKnowledgeTool::new(knowledge_dir.clone())));
     router.register(Box::new(knowledge::ReadKnowledgeTool::new(knowledge_dir.clone())));

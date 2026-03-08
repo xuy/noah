@@ -9,6 +9,7 @@ mod playbooks;
 mod proactive;
 mod safety;
 mod scanner;
+mod ui_tools;
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -200,6 +201,7 @@ pub fn run() {
             // Build the tool router and register platform tools.
             let mut router = ToolRouter::new();
             platform::register_platform_tools(&mut router, Some(&db_path));
+            ui_tools::register_ui_tools(&mut router);
 
             // Register knowledge tools.
             router.register(Box::new(knowledge::WriteKnowledgeTool::new(knowledge_dir.clone())));

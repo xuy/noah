@@ -24,7 +24,7 @@ async fn main() -> ExitCode {
             ExitCode::SUCCESS
         }
         Err(err) => {
-            eprintln!("ERROR: {}", err);
+            eprintln!("ERROR: {:#}", err);
             ExitCode::from(1)
         }
     }

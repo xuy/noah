@@ -18,6 +18,7 @@ use crate::agent::tool_router::ToolRouter;
 use crate::knowledge;
 use crate::playbook_runtime;
 use crate::safety::journal;
+use crate::ui_tools;
 
 /// A pending approval that the frontend must accept or deny.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -105,8 +106,8 @@ fn playbook_mode_overlay(active_playbook: Option<&str>) -> String {
             "\n\n## Playbook Governance Mode\n\
 Active playbook: `openclaw-install-config`.\n\
 Treat this as a constrained sub-agent protocol for this session.\n\
-- Use SPA JSON for guided setup turns: `{ \"kind\":\"spa\", \"situation\":\"...\", \"plan\":\"...\", \"action\": {\"label\":\"...\", \"type\":\"RUN_STEP|OPENCLAW_SECURE_CAPTURE\"} }`.\n\
-- For question prompts, use JSON: `{ \"kind\":\"user_question\", \"questions\":[...] }`.\n\
+- Use `ui_spa` tool calls for guided setup turns.\n\
+- Use `ui_user_question` tool calls for explicit user choices.\n\
 - When collecting credentials, direct the user to Noah's secure credential form (privacy-preserving local capture), not plain chat token entry.\n\
 - Do not claim a command/wizard ran unless a tool result explicitly confirms it.\n\
 - If `shell_run` says a command was blocked or not executed, explicitly state that and switch to a supported path.\n\
@@ -398,6 +399,84 @@ impl Orchestrator {
                     role: "assistant".to_string(),
                     content: MessageContent::Blocks(assistant_blocks),
                 });
+            }
+
+            if !tool_uses.is_empty() {
+                let ui_calls: Vec<&(String, String, Value)> = tool_uses
+                    .iter()
+                    .filter(|(_, name, _)| matches!(name.as_str(), "ui_spa" | "ui_user_question" | "ui_info" | "ui_done"))
+                    .collect();
+                if !ui_calls.is_empty() {
+                    if ui_calls.len() != tool_uses.len() || ui_calls.len() != 1 {
+                        let guard_msg = "Policy guard: do not mix ui_* tools with other tools or multiple ui_* tools in one turn. Use exactly one ui_* tool call as the final response step.";
+                        let mut blocks = Vec::new();
+                        for (id, _, _) in &tool_uses {
+                            blocks.push(ContentBlock::ToolResult {
+                                tool_use_id: id.clone(),
+                                content: guard_msg.to_string(),
+                                is_error: Some(true),
+                            });
+                        }
+                        let session = self.sessions.get_mut(session_id).unwrap();
+                        session.messages.push(Message {
+                            role: "user".to_string(),
+                            content: MessageContent::Blocks(blocks),
+                        });
+                        continue;
+                    }
+                    let (tool_use_id, name, input) = ui_calls[0];
+                    match ui_tools::ui_payload_from_tool_call(name, input) {
+                        Ok(payload) => {
+                            if active_playbook.as_deref() == Some("openclaw-install-config") {
+                                if let Some(ctx) = openclaw_ctx.as_ref() {
+                                    if let Some(guard_feedback) = playbook_runtime::validate_openclaw_final_response(
+                                        ctx,
+                                        user_message,
+                                        &payload,
+                                    ) {
+                                        let session = self.sessions.get_mut(session_id).unwrap();
+                                        session.messages.push(Message {
+                                            role: "user".to_string(),
+                                            content: MessageContent::Blocks(vec![ContentBlock::ToolResult {
+                                                tool_use_id: tool_use_id.clone(),
+                                                content: guard_feedback,
+                                                is_error: Some(true),
+                                            }]),
+                                        });
+                                        continue;
+                                    }
+                                }
+                            }
+                            {
+                                let session = self.sessions.get_mut(session_id).unwrap();
+                                session.messages.push(Message {
+                                    role: "user".to_string(),
+                                    content: MessageContent::Blocks(vec![ContentBlock::ToolResult {
+                                        tool_use_id: tool_use_id.clone(),
+                                        content: payload.clone(),
+                                        is_error: None,
+                                    }]),
+                                });
+                            }
+                            return Ok(payload);
+                        }
+                        Err(err) => {
+                            let session = self.sessions.get_mut(session_id).unwrap();
+                            session.messages.push(Message {
+                                role: "user".to_string(),
+                                content: MessageContent::Blocks(vec![ContentBlock::ToolResult {
+                                    tool_use_id: tool_use_id.clone(),
+                                    content: format!(
+                                        "Policy guard: invalid ui_* payload: {}. Re-emit one valid ui_* tool call matching schema.",
+                                        err
+                                    ),
+                                    is_error: Some(true),
+                                }]),
+                            });
+                            continue;
+                        }
+                    }
+                }
             }
 
             // If no tool calls, we're done — return all accumulated text.
