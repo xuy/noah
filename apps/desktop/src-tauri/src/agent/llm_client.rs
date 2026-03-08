@@ -107,10 +107,19 @@ pub struct Usage {
 struct ApiRequest {
     model: String,
     max_tokens: u32,
-    system: String,
+    system: Vec<crate::agent::prompts::SystemBlock>,
     messages: Vec<Message>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     tools: Vec<ToolDef>,
+}
+
+/// Wrap a plain system prompt string into a single SystemBlock (no caching).
+fn system_text(s: &str) -> Vec<crate::agent::prompts::SystemBlock> {
+    vec![crate::agent::prompts::SystemBlock {
+        block_type: "text",
+        text: s.to_string(),
+        cache_control: None,
+    }]
 }
 
 // ── LLM Client ─────────────────────────────────────────────────────────
@@ -223,7 +232,7 @@ impl LlmClient {
         let body = ApiRequest {
             model: TITLE_MODEL.to_string(),
             max_tokens: 30,
-            system: "Generate a short title (max 6 words) for a computer support session based on the user's message. Output only the title, nothing else. No quotes.".to_string(),
+            system: system_text("Generate a short title (max 6 words) for a computer support session based on the user's message. Output only the title, nothing else. No quotes."),
             messages: vec![Message {
                 role: "user".to_string(),
                 content: MessageContent::Text(user_message.to_string()),
@@ -270,7 +279,7 @@ impl LlmClient {
         let body = ApiRequest {
             model: TITLE_MODEL.to_string(),
             max_tokens: 200,
-            system: "Summarize this IT support session in 2-3 short bullet points. Focus on: what was the problem, what was done, and the outcome. Be concise. Use plain language.".to_string(),
+            system: system_text("Summarize this IT support session in 2-3 short bullet points. Focus on: what was the problem, what was done, and the outcome. Be concise. Use plain language."),
             messages: vec![Message {
                 role: "user".to_string(),
                 content: MessageContent::Text(messages_text.to_string()),
@@ -330,7 +339,7 @@ impl LlmClient {
         let body = ApiRequest {
             model: TITLE_MODEL.to_string(),
             max_tokens: 200,
-            system,
+            system: system_text(&system),
             messages: vec![Message {
                 role: "user".to_string(),
                 content: MessageContent::Text(tool_output.to_string()),
@@ -387,12 +396,12 @@ impl LlmClient {
         &self,
         messages: Vec<Message>,
         tools: Vec<ToolDef>,
-        system: &str,
+        system: Vec<crate::agent::prompts::SystemBlock>,
     ) -> Result<Response> {
         let body = ApiRequest {
             model: MODEL.to_string(),
             max_tokens: MAX_TOKENS,
-            system: system.to_string(),
+            system,
             messages,
             tools,
         };

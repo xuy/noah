@@ -192,7 +192,7 @@ impl Orchestrator {
         }
 
         let knowledge_ctx = knowledge::knowledge_toc(&self.knowledge_dir).unwrap_or_default();
-        let system = prompts::system_prompt(&self.os_context, &knowledge_ctx);
+        let system = prompts::system_prompt_blocks(&self.os_context, &knowledge_ctx);
         let tool_defs = self.router.tool_definitions();
 
         // Reset cancellation flag at the start of each user message.
@@ -248,7 +248,7 @@ impl Orchestrator {
 
             let response = self
                 .llm
-                .send_message(messages.clone(), tool_defs.clone(), &system)
+                .send_message(messages.clone(), tool_defs.clone(), system.clone())
                 .await?;
 
             // Save LLM trace for debugging.
