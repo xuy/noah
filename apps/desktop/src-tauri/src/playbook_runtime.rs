@@ -1,218 +1,168 @@
+use std::collections::HashMap;
+use std::path::Path;
+
+use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
+
 use crate::agent::llm_client::{ContentBlock, Message, MessageContent};
 
-pub fn governance_overlay(active_playbook: Option<&str>, messages: &[Message]) -> String {
-    match active_playbook {
-        Some("openclaw-install-config") => {
-            let ctx = parse_openclaw_context(messages);
-            format!(
-                "\n\n## Playbook Governance Mode\n\
-Active playbook: `openclaw-install-config`.\n\
-Treat this as a constrained sub-agent protocol for this session.\n\
-- Use `ui_spa` tool calls for guided setup turns.\n\
-- Use `ui_user_question` tool calls for explicit user choices.\n\
-- When collecting credentials, direct the user to Noah's secure credential form (privacy-preserving local capture), not plain chat token entry.\n\
-- Do not claim a command/wizard ran unless a tool result explicitly confirms it.\n\
-- If `shell_run` says a command was blocked or not executed, explicitly state that and switch to a supported path.\n\
-- Do not hand off setup as \"configure via app UI\" and stop.\n\
-- Stay in guided setup mode until completion criteria in the playbook are met.\n\
-- For OpenClaw config, never run interactive wizard commands (`openclaw config` / `openclaw configure`) through `shell_run`.\n{}",
-                openclaw_stage_overlay(&ctx)
-            )
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct FsmStateSpec {
+    #[serde(default)]
+    pub summary: String,
+    #[serde(default)]
+    pub llm_guidance: Vec<String>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct FsmTransitionSpec {
+    #[serde(default)]
+    pub id: Option<String>,
+    pub from: String,
+    pub to: String,
+    #[serde(default)]
+    pub goal: String,
+    #[serde(default)]
+    pub acceptance: Vec<String>,
+    #[serde(default)]
+    pub triggers: Vec<String>,
+    #[serde(default)]
+    pub llm_guidance: Vec<String>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct FsmTerminalSpec {
+    #[serde(default)]
+    pub states: Vec<String>,
+    #[serde(default)]
+    pub goal: String,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct FsmGuards {
+    #[serde(default)]
+    pub blocked_commands: HashMap<String, Vec<String>>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct FsmSpec {
+    #[serde(default)]
+    pub version: u32,
+    #[serde(default)]
+    pub machine: String,
+    pub initial_state: String,
+    #[serde(default)]
+    pub states: HashMap<String, FsmStateSpec>,
+    #[serde(default)]
+    pub events: HashMap<String, Value>,
+    #[serde(default)]
+    pub transitions: Vec<FsmTransitionSpec>,
+    #[serde(default)]
+    pub terminal: FsmTerminalSpec,
+    #[serde(default)]
+    pub guards: FsmGuards,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct FsmSnapshot {
+    pub machine: String,
+    pub state: String,
+    pub terminal: bool,
+    pub state_summary: String,
+    pub next: Vec<FsmNextTransition>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct FsmNextTransition {
+    pub to: String,
+    pub goal: String,
+    pub acceptance: Vec<String>,
+    pub triggers: Vec<String>,
+}
+
+fn extract_playbook_name_from_frontmatter(content: &str) -> Option<String> {
+    let trimmed = content.trim_start();
+    if !trimmed.starts_with("---") {
+        return None;
+    }
+    let after_first = &trimmed[3..];
+    let end = after_first.find("\n---")?;
+    let yaml = &after_first[..end];
+    yaml.lines()
+        .map(str::trim)
+        .find_map(|line| line.strip_prefix("name:").map(|v| v.trim().to_string()))
+}
+
+fn load_playbook_content(knowledge_dir: &Path, playbook_name: &str) -> Option<String> {
+    let dir = knowledge_dir.join("playbooks");
+    let entries = std::fs::read_dir(&dir).ok()?;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.extension().is_some_and(|ext| ext == "md") {
+            continue;
         }
-        Some(name) => format!(
-            "\n\n## Playbook Governance Mode\nActive playbook: `{}`.\nTreat this playbook as binding protocol until its completion criteria are met.",
-            name
-        ),
-        None => String::new(),
-    }
-}
-
-pub fn validate_final_response(
-    active_playbook: Option<&str>,
-    messages: &[Message],
-    user_message: &str,
-    visible_text: &str,
-) -> Option<String> {
-    match active_playbook {
-        Some("openclaw-install-config") => {
-            let ctx = parse_openclaw_context(messages);
-            validate_openclaw_final_response(&ctx, user_message, visible_text)
-        }
-        _ => None,
-    }
-}
-
-pub fn blocked_shell_command_feedback(
-    active_playbook: Option<&str>,
-    messages: &[Message],
-    command: &str,
-) -> Option<String> {
-    match active_playbook {
-        Some("openclaw-install-config") => {
-            let ctx = parse_openclaw_context(messages);
-            let reason = blocked_openclaw_shell_command(ctx.stage, command)?;
-            Some(format!(
-                "COMMAND NOT EXECUTED: blocked by playbook stage policy (playbook=openclaw-install-config, stage={}, reason={}). STOP calling shell_run in this turn. Respond directly to the user now with one ui_* tool call.",
-                ctx.stage.as_str(),
-                reason
-            ))
-        }
-        _ => None,
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum OpenclawStage {
-    InstallCheck,
-    PrimaryProviderCapture,
-    PrimaryProviderVerify,
-    ChannelCapture,
-    ChannelVerify,
-    Done,
-}
-
-impl OpenclawStage {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            OpenclawStage::InstallCheck => "INSTALL_CHECK",
-            OpenclawStage::PrimaryProviderCapture => "PRIMARY_PROVIDER_CAPTURE",
-            OpenclawStage::PrimaryProviderVerify => "PRIMARY_PROVIDER_VERIFY",
-            OpenclawStage::ChannelCapture => "CHANNEL_CAPTURE",
-            OpenclawStage::ChannelVerify => "CHANNEL_VERIFY",
-            OpenclawStage::Done => "DONE",
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct OpenclawContext {
-    pub stage: OpenclawStage,
-    pub provider: Option<String>,
-    pub channel: Option<String>,
-    pub credential_ref: Option<String>,
-    pub stage_attempts: usize,
-}
-
-fn extract_text(content: &MessageContent) -> Option<&str> {
-    match content {
-        MessageContent::Text(t) => Some(t.as_str()),
-        MessageContent::Blocks(_) => None,
-    }
-}
-
-fn parse_labeled_value(haystack: &str, label: &str) -> Option<String> {
-    for line in haystack.lines() {
-        let trimmed = line.trim();
-        if trimmed
-            .to_lowercase()
-            .starts_with(&format!("{}:", label.to_lowercase()))
-        {
-            let v = trimmed.split_once(':')?.1.trim();
-            if !v.is_empty() {
-                return Some(v.to_string());
-            }
+        let Ok(content) = std::fs::read_to_string(&path) else {
+            continue;
+        };
+        let stem_match = path
+            .file_stem()
+            .map(|s| s.to_string_lossy() == playbook_name)
+            .unwrap_or(false);
+        let name_match = extract_playbook_name_from_frontmatter(&content)
+            .map(|n| n == playbook_name)
+            .unwrap_or(false);
+        if stem_match || name_match {
+            return Some(content);
         }
     }
     None
 }
 
-fn infer_provider_from_text(haystack: &str) -> Option<String> {
-    let lower = haystack.to_lowercase();
-    if lower.contains("anthropic") || lower.contains("claude") {
-        return Some("Anthropic".to_string());
-    }
-    if lower.contains("openai") || lower.contains("gpt") {
-        return Some("OpenAI".to_string());
-    }
-    if lower.contains("openrouter") {
-        return Some("OpenRouter".to_string());
-    }
-    if lower.contains("gemini") || lower.contains("google") {
-        return Some("Google Gemini".to_string());
-    }
-    None
+fn extract_fsm_block(markdown: &str) -> Option<String> {
+    let idx = markdown.find("## FSM")?;
+    let after = &markdown[idx..];
+    let fence_start = after.find("```")?;
+    let after_fence = &after[fence_start + 3..];
+    let first_newline = after_fence.find('\n')?;
+    let body_start = first_newline + 1;
+    let rest = &after_fence[body_start..];
+    let end = rest.find("\n```")?;
+    Some(rest[..end].trim().to_string())
 }
 
-fn infer_channel_from_text(haystack: &str) -> Option<String> {
-    let lower = haystack.to_lowercase();
-    if lower.contains("telegram") {
-        return Some("Telegram".to_string());
-    }
-    if lower.contains("discord") {
-        return Some("Discord".to_string());
-    }
-    None
+fn load_fsm_spec(knowledge_dir: &Path, playbook_name: &str) -> Option<FsmSpec> {
+    let content = load_playbook_content(knowledge_dir, playbook_name)?;
+    let fsm_raw = extract_fsm_block(&content)?;
+    serde_json::from_str::<FsmSpec>(&fsm_raw).ok()
 }
 
-pub fn parse_openclaw_context(messages: &[Message]) -> OpenclawContext {
-    let mut install_checked = false;
-    let mut provider_verified = false;
-    let mut channel_verified = false;
-    let mut channel_captured = false;
-    let mut provider: Option<String> = None;
-    let mut channel: Option<String> = None;
-    let mut credential_ref: Option<String> = None;
-    let mut stage_attempts = 0usize;
+fn push_text_event(events: &mut Vec<String>, text: &str) {
+    let lower = text.trim().to_lowercase();
+    if ["go ahead", "yes", "okay", "ok", "continue"].contains(&lower.as_str()) {
+        events.push("user_confirm".to_string());
+    }
+    if lower.contains("skip this optional step") {
+        events.push("user_skip_optional".to_string());
+    }
+    if lower.contains("credentials were submitted via noah secure form") {
+        events.push("secure_form_submitted".to_string());
+    }
+}
 
+fn collect_events(messages: &[Message]) -> Vec<String> {
+    let mut events = Vec::new();
     for message in messages {
-        if let Some(text) = extract_text(&message.content) {
-            let lower = text.to_lowercase();
-            if lower.contains("[situation]") && lower.contains("[plan]") && lower.contains("[action:") {
-                stage_attempts += 1;
-            }
-            if credential_ref.is_none() && lower.contains("credential reference: openclaw-") {
-                credential_ref = parse_labeled_value(text, "Credential reference");
-            }
-            if provider.is_none() {
-                provider = parse_labeled_value(text, "Provider");
-            }
-            if channel.is_none() {
-                channel = parse_labeled_value(text, "Chat channel");
-            }
-            if provider.is_none() {
-                provider = infer_provider_from_text(text);
-            }
-            if channel.is_none() {
-                channel = infer_channel_from_text(text);
-            }
-            if lower.contains("openclaw --version") || lower.contains("openclaw is installed") {
-                install_checked = true;
-            }
-            if lower.contains("provider verified")
-                || lower.contains("provider connection is working")
-                || lower.contains("provider connection verified")
-            {
-                provider_verified = true;
-            }
-            if lower.contains("[credentials_collected]")
-                && channel
-                    .as_deref()
-                    .is_some_and(|c| !c.eq_ignore_ascii_case("none"))
-            {
-                channel_captured = true;
-            }
-            if lower.contains("chat channel:")
-                && channel
-                    .as_deref()
-                    .is_some_and(|c| !c.eq_ignore_ascii_case("none"))
-            {
-                channel_captured = true;
-            }
-            if lower.contains("telegram bot connection verified")
-                || lower.contains("discord connection verified")
-                || lower.contains("channel verification passed")
-            {
-                channel_verified = true;
-            }
+        if let MessageContent::Text(text) = &message.content {
+            push_text_event(&mut events, text);
         }
         if let MessageContent::Blocks(blocks) = &message.content {
-            for b in blocks {
-                if let ContentBlock::ToolUse { name, input, .. } = b {
-                    if name == "shell_run" {
-                        if let Some(cmd) = input.get("command").and_then(|v| v.as_str()) {
-                            let cmd_l = cmd.to_lowercase();
-                            if cmd_l.contains("openclaw --version") {
-                                install_checked = true;
+            for block in blocks {
+                if let ContentBlock::ToolUse { name, input, .. } = block {
+                    if name == "fsm_emit_event" {
+                        if let Some(event) = input.get("event").and_then(|v| v.as_str()) {
+                            let e = event.trim();
+                            if !e.is_empty() {
+                                events.push(e.to_string());
                             }
                         }
                     }
@@ -220,383 +170,168 @@ pub fn parse_openclaw_context(messages: &[Message]) -> OpenclawContext {
             }
         }
     }
-
-    let stage = if !install_checked {
-        OpenclawStage::InstallCheck
-    } else if credential_ref.is_none() {
-        OpenclawStage::PrimaryProviderCapture
-    } else if !provider_verified {
-        OpenclawStage::PrimaryProviderVerify
-    } else if channel
-        .as_deref()
-        .is_some_and(|c| !c.eq_ignore_ascii_case("none"))
-        && !channel_captured
-    {
-        OpenclawStage::ChannelCapture
-    } else if channel
-        .as_deref()
-        .is_some_and(|c| !c.eq_ignore_ascii_case("none"))
-        && !channel_verified
-    {
-        OpenclawStage::ChannelVerify
-    } else {
-        OpenclawStage::Done
-    };
-
-    OpenclawContext {
-        stage,
-        provider,
-        channel,
-        credential_ref,
-        stage_attempts,
-    }
+    events
 }
 
-pub fn openclaw_stage_overlay(ctx: &OpenclawContext) -> String {
+fn compute_state(spec: &FsmSpec, events: &[String]) -> String {
+    let mut state = spec.initial_state.clone();
+    for event in events {
+        if let Some(next) = spec
+            .transitions
+            .iter()
+            .find(|t| t.from == state && t.triggers.iter().any(|tr| tr == event))
+        {
+            state = next.to.clone();
+        }
+    }
+    state
+}
+
+pub fn snapshot_for_playbook(
+    active_playbook: Option<&str>,
+    messages: &[Message],
+    knowledge_dir: &Path,
+) -> Option<FsmSnapshot> {
+    let name = active_playbook?;
+    let spec = load_fsm_spec(knowledge_dir, name)?;
+    let events = collect_events(messages);
+    let state = compute_state(&spec, &events);
+    let terminal = spec.terminal.states.iter().any(|s| s == &state);
+    let state_summary = spec
+        .states
+        .get(&state)
+        .map(|s| s.summary.clone())
+        .unwrap_or_default();
+    let next = spec
+        .transitions
+        .iter()
+        .filter(|t| t.from == state)
+        .map(|t| FsmNextTransition {
+            to: t.to.clone(),
+            goal: t.goal.clone(),
+            acceptance: t.acceptance.clone(),
+            triggers: t.triggers.clone(),
+        })
+        .collect::<Vec<_>>();
+
+    Some(FsmSnapshot {
+        machine: if spec.machine.is_empty() {
+            name.to_string()
+        } else {
+            spec.machine
+        },
+        state,
+        terminal,
+        state_summary,
+        next,
+    })
+}
+
+pub fn governance_overlay(
+    active_playbook: Option<&str>,
+    messages: &[Message],
+    knowledge_dir: &Path,
+) -> String {
+    let Some(name) = active_playbook else {
+        return String::new();
+    };
+    let Some(snapshot) = snapshot_for_playbook(active_playbook, messages, knowledge_dir) else {
+        return format!(
+            "\n\n## Playbook Governance Mode\nActive playbook: `{}`.\nTreat this playbook as binding protocol until its completion criteria are met.",
+            name
+        );
+    };
+
     let mut out = format!(
-        "\n\n## OpenClaw Stage Machine\n\
-Current stage: `{}`.\n\
-Treat this as the skeleton. Keep natural, human guidance as the conversational layer.\n",
-        ctx.stage.as_str()
+        "\n\n## Playbook Governance Mode\nActive playbook: `{}`\nFSM state: `{}`\nState summary: {}\n",
+        snapshot.machine,
+        snapshot.state,
+        if snapshot.state_summary.is_empty() {
+            "(no summary provided)"
+        } else {
+            snapshot.state_summary.as_str()
+        }
     );
-    match ctx.stage {
-        OpenclawStage::InstallCheck => {
-            out.push_str(
-                "- Goal: confirm OpenClaw install and version.\n- Next: move to PRIMARY_PROVIDER_CAPTURE.\n",
-            );
-        }
-        OpenclawStage::PrimaryProviderCapture => {
-            out.push_str(
-                "- Goal: capture primary model provider credentials through Noah secure credential form.\n\
-- UX: suggest two common channels (Telegram, Discord), but explicitly allow user to choose another channel.\n\
-- Do not ask for secrets in plain chat text.\n\
-- Memory/embedding provider is optional at this stage. Do not block setup on memory provider.\n",
-            );
-            if let Some(provider) = &ctx.provider {
-                match provider.to_lowercase().as_str() {
-                    "anthropic" => out.push_str(
-                        "- Explain where to get Anthropic API key in plain language: Anthropic Console (console.anthropic.com -> Account Settings/API Keys).\n\
-- Mention alternative for Anthropic subscription users: `claude setup-token` (if they prefer setup-token auth).\n",
-                    ),
-                    "openai" => out.push_str(
-                        "- Explain where to get OpenAI API key in plain language: OpenAI platform API keys page (platform.openai.com/api-keys).\n",
-                    ),
-                    "openrouter" => out.push_str(
-                        "- Explain where to get OpenRouter key in plain language: OpenRouter dashboard keys page.\n",
-                    ),
-                    _ => {}
-                }
-            } else {
-                out.push_str(
-                    "- If provider is unknown, ask one plain-language provider choice question (OpenAI or Anthropic as common defaults).\n",
-                );
+
+    if snapshot.terminal {
+        out.push_str("Terminal condition reached for FSM.\n");
+    } else if !snapshot.next.is_empty() {
+        out.push_str("Possible next transitions:\n");
+        for t in snapshot.next.iter().take(3) {
+            out.push_str(&format!(
+                "- `{}` -> `{}`: {} | triggers: {}\n",
+                snapshot.state,
+                t.to,
+                if t.goal.is_empty() { "(goal unspecified)" } else { &t.goal },
+                if t.triggers.is_empty() { "(none)".to_string() } else { t.triggers.join(", ") }
+            ));
+            if !t.acceptance.is_empty() {
+                out.push_str(&format!("  acceptance: {}\n", t.acceptance.join(" | ")));
             }
         }
-        OpenclawStage::PrimaryProviderVerify => {
-            out.push_str(
-                "- Goal: verify primary provider works.\n\
-- Use read-only checks first (e.g., doctor/health). Avoid filesystem surgery and avoid `doctor --fix` loops.\n\
-- If credential appears test/dummy/invalid, explain clearly and keep user in controlled retry path.\n\
-- Memory/embedding issues are non-blocking; defer them.\n",
-            );
-            if ctx.credential_ref.is_some() {
-                out.push_str(
-                    "- A secure credential reference already exists. Do not ask user to 'apply stored credentials' generically.\n\
-- Run verification checks directly.\n\
-- If verification fails, provide one explicit reason and ask user to re-save a real key in Noah secure form.\n",
-                );
-            }
-        }
-        OpenclawStage::ChannelCapture => {
-            out.push_str(
-                "- Goal: capture optional chat channel token securely.\n\
-- Keep channel setup optional and skippable.\n\
-- If user picks Telegram/Discord, provide concise token acquisition guidance.\n\
-- Telegram guidance: talk to @BotFather, run /newbot, copy token.\n\
-- Discord guidance: Developer Portal -> create app/bot -> copy bot token.\n\
-- If user picks another channel, adapt guidance instead of refusing.\n",
-            );
-            out.push_str(
-                "- If user feels stuck, allow skipping channel for now and continue to DONE with 'channel pending' note.\n",
-            );
-        }
-        OpenclawStage::ChannelVerify => {
-            out.push_str(
-                "- Goal: verify optional channel integration or mark as pending.\n\
-- Do NOT require manual JSON editing instructions.\n\
-- If channel is not ready after one clear attempt, finish basic setup with [DONE] and mark channel as pending optional next step.\n",
-            );
-        }
-        OpenclawStage::Done => {
-            out.push_str("- Goal reached: required stages complete. [DONE] is allowed.\n");
-        }
     }
-    if let Some(p) = &ctx.provider {
-        out.push_str(&format!("- Provider: {}\n", p));
-    }
-    if let Some(ch) = &ctx.channel {
-        out.push_str(&format!("- Channel: {}\n", ch));
-    }
-    if let Some(cref) = &ctx.credential_ref {
-        out.push_str(&format!("- Credential reference: {}\n", cref));
-    }
+
+    out.push_str("When a milestone is reached, call `fsm_emit_event` before your final ui_* response.");
     out
 }
 
-pub fn blocked_openclaw_shell_command(stage: OpenclawStage, command: &str) -> Option<&'static str> {
-    let lower = command.trim().to_lowercase();
-
-    let hard_blocks = [
-        "openclaw doctor --fix",
-        "mkdir -p ~/.openclaw/agents/main/agent",
-        "auth-profiles.json",
-        "openclaw config set agents.defaults.memorysearch.provider",
-    ];
-    if hard_blocks.iter().any(|p| lower.contains(p)) {
-        return Some("blocked_loop_or_manual_schema_surgery");
-    }
-
-    if lower.contains("auth-profiles.json")
-        || lower.contains("jq 'del(")
-        || lower.contains("~/.openclaw/openclaw.json >")
-        || lower.contains("mv ~/.openclaw/openclaw_temp.json")
-    {
-        return Some("blocked_manual_config_file_surgery");
-    }
-
-    if lower.starts_with("find ~") || lower.contains(" -type f | head") {
-        return Some("blocked_broad_filesystem_scan");
-    }
-
-    if stage == OpenclawStage::PrimaryProviderVerify
-        && (lower.contains("openclaw memory status")
-            || lower.contains("memorysearch.provider")
-            || lower.contains("embedding"))
-    {
-        return Some("memory_provider_is_optional_in_primary_verify");
-    }
-
-    if (stage == OpenclawStage::ChannelCapture || stage == OpenclawStage::ChannelVerify)
-        && lower.contains("openclaw channels add")
-    {
-        return Some("avoid_manual_channel_token_cli_handoff");
-    }
-
-    if (stage == OpenclawStage::PrimaryProviderVerify
-        || stage == OpenclawStage::ChannelCapture
-        || stage == OpenclawStage::ChannelVerify)
-        && lower.starts_with("openclaw ")
-    {
-        let allowed = [
-            "openclaw --version",
-            "openclaw doctor",
-            "openclaw health",
-            "openclaw config show",
-            "openclaw config get",
-            "openclaw config validate",
-            "openclaw config file",
-            "openclaw config --help",
-            "openclaw channels list",
-        ];
-        if !allowed.iter().any(|pat| lower.starts_with(pat)) {
-            return Some("non_readonly_verification_command_blocked");
-        }
-    }
-
-    None
-}
-
-pub fn has_disallowed_openclaw_text(text: &str) -> bool {
-    let lower = text.to_lowercase();
-    if lower.contains("openclaw configure") {
-        return true;
-    }
-    if lower.contains("http://127.0.0.1:18789")
-        || lower.contains("openclaw's local dashboard")
-        || lower.contains("openclaw dashboard")
-    {
-        return true;
-    }
-    if lower.contains("openclaw's secure credential form")
-        && !lower.contains("noah")
-    {
-        return true;
-    }
-    if lower.contains("secure credential form is not available")
-        || lower.contains("secure credential form isn't available")
-    {
-        return true;
-    }
-    if !lower.contains("openclaw config") {
-        return false;
-    }
-
-    let allowed = [
-        "openclaw config show",
-        "openclaw config get",
-        "openclaw config file",
-        "openclaw config validate",
-        "openclaw config --help",
-    ];
-    !allowed.iter().any(|pat| lower.contains(pat))
-}
-
-pub fn missing_openclaw_action_format(text: &str) -> bool {
-    let lower = text.to_lowercase();
-    let legacy_action =
-        lower.contains("[situation]") && lower.contains("[plan]") && lower.contains("[action:");
-    let legacy_done = lower.contains("[done]");
-    let json_spa = lower.contains(r#""kind":"spa""#) || lower.contains(r#""kind": "spa""#);
-    let json_done = lower.contains(r#""kind":"done""#) || lower.contains(r#""kind": "done""#);
-    let json_info = lower.contains(r#""kind":"info""#) || lower.contains(r#""kind": "info""#);
-    let json_question =
-        lower.contains(r#""kind":"user_question""#) || lower.contains(r#""kind": "user_question""#);
-    !(legacy_action || legacy_done || json_spa || json_done || json_info || json_question)
-}
-
-pub fn has_awkward_provider_shorthand(text: &str) -> bool {
-    let lower = text.to_lowercase();
-    (lower.contains("`openai` - for") || lower.contains("openai - for"))
-        || (lower.contains("`anthropic` - for") || lower.contains("anthropic - for"))
-        || (lower.contains("`openrouter` - access") || lower.contains("openrouter - access"))
-}
-
-pub fn has_vague_apply_credentials_loop(text: &str) -> bool {
-    let lower = text.to_lowercase();
-    lower.contains("apply your stored credentials")
-        || lower.contains("apply the credentials now")
-        || lower.contains("confirm when ready")
-}
-
-pub fn has_overly_technical_manual_edit(text: &str) -> bool {
-    let lower = text.to_lowercase();
-    lower.contains("nano ~/.openclaw/openclaw.json")
-        || (lower.contains("edit the configuration file") && lower.contains("json"))
-        || lower.contains("add a \"channels\" section")
-        || lower.contains("auth-profiles.json")
-        || lower.contains("jq 'del(")
-        || lower.contains("openclaw config set")
-        || lower.contains("chmod 600 ~/.openclaw/openclaw.json")
-}
-
-pub fn has_manual_channel_command_handoff(text: &str) -> bool {
-    let lower = text.to_lowercase();
-    (lower.contains("openclaw channels add") || lower.contains("--channel telegram"))
-        && (lower.contains("run this command")
-            || lower.contains("run the command")
-            || lower.contains("in your terminal")
-            || lower.contains("manually"))
-}
-
-fn is_soft_confirmation(user_message: &str) -> bool {
-    let lower = user_message.trim().to_lowercase();
-    lower == "go ahead"
-        || lower == "continue"
-        || lower == "ok"
-        || lower == "okay"
-        || lower == "yes"
-        || lower == "done"
-}
-
-fn asks_where_to_get_key(user_message: &str) -> bool {
-    let lower = user_message.to_lowercase();
-    (lower.contains("where") || lower.contains("find") || lower.contains("get"))
-        && (lower.contains("api key") || lower.contains("credential") || lower.contains("token"))
-}
-
-pub fn missing_provider_source_guidance(
-    user_message: &str,
-    candidate_text: &str,
-    provider: Option<&str>,
-) -> bool {
-    if !asks_where_to_get_key(user_message) {
-        return false;
-    }
-    let resp = candidate_text.to_lowercase();
-    match provider.unwrap_or("").to_lowercase().as_str() {
-        "anthropic" => !(resp.contains("console.anthropic.com") || resp.contains("anthropic console")),
-        "openai" => !(resp.contains("platform.openai.com/api-keys") || resp.contains("openai api keys")),
-        "openrouter" => !(resp.contains("openrouter") && resp.contains("key")),
-        _ => !(
-            resp.contains("console.anthropic.com")
-                || resp.contains("platform.openai.com/api-keys")
-                || resp.contains("api keys")
-        ),
-    }
-}
-
-pub fn validate_openclaw_final_response(
-    ctx: &OpenclawContext,
-    user_message: &str,
+pub fn validate_final_response(
+    active_playbook: Option<&str>,
+    messages: &[Message],
+    _user_message: &str,
     visible_text: &str,
+    knowledge_dir: &Path,
 ) -> Option<String> {
-    if has_disallowed_openclaw_text(visible_text) {
-        return Some(
-            "Policy guard: do not instruct `openclaw configure` or interactive OpenClaw wizard commands in this playbook mode. Provide a compliant guided setup response."
-                .to_string(),
-        );
-    }
-    if missing_openclaw_action_format(visible_text) {
-        return Some(
-            "Policy guard: OpenClaw setup responses must use SPA JSON (`kind: spa`) or `kind: done/info/user_question` until completion. Rewrite in structured JSON format."
-                .to_string(),
-        );
-    }
-    if has_awkward_provider_shorthand(visible_text) {
-        return Some(
-            "Policy guard: provider guidance must use human-readable names (OpenAI, Anthropic, OpenRouter) and plain language, not code-like shorthand list formatting."
-                .to_string(),
-        );
-    }
-    if missing_provider_source_guidance(user_message, visible_text, ctx.provider.as_deref()) {
-        return Some(
-            "Policy guard: user asked where to get API credentials. Provide concrete source guidance (provider console URL and plain steps) before proceeding."
-                .to_string(),
-        );
-    }
-    if ctx.stage == OpenclawStage::PrimaryProviderVerify
-        && ctx.credential_ref.is_some()
-        && has_vague_apply_credentials_loop(visible_text)
-    {
-        return Some(
-            "Policy guard: avoid vague 'apply credentials' loops. Either verify directly now, or ask user to re-save a real key in Noah secure form with a concrete reason."
-                .to_string(),
-        );
-    }
-    if (ctx.stage == OpenclawStage::ChannelCapture || ctx.stage == OpenclawStage::ChannelVerify)
-        && has_overly_technical_manual_edit(visible_text)
-    {
-        return Some(
-            "Policy guard: avoid manual JSON editing guidance. Give a non-technical optional-channel path and allow [DONE] with channel pending if basic setup is working."
-                .to_string(),
-        );
-    }
-    if (ctx.stage == OpenclawStage::ChannelCapture || ctx.stage == OpenclawStage::ChannelVerify)
-        && has_manual_channel_command_handoff(visible_text)
-    {
-        if is_soft_confirmation(user_message) || ctx.stage_attempts >= 2 {
-            return Some(
-                "Policy guard: do not hand off optional channel setup as manual terminal command loops. Finish basic setup with [DONE] and mark channel as optional pending. Offer secure re-capture later if needed."
-                    .to_string(),
-            );
-        }
-        return Some(
-            "Policy guard: avoid manual channel token CLI handoff for non-technical flow. Ask user to re-open Noah secure credential form for channel token, or allow skip and continue basic setup."
-                .to_string(),
-        );
-    }
-    if (ctx.stage == OpenclawStage::ChannelCapture || ctx.stage == OpenclawStage::ChannelVerify)
-        && ctx.stage_attempts >= 3
-        && !visible_text.contains("[DONE]")
-        && !visible_text.to_lowercase().contains(r#""kind":"done""#)
-        && !visible_text.to_lowercase().contains(r#""kind": "done""#)
-    {
-        return Some(
-            "Policy guard: channel setup is optional. End the basic setup with done JSON (`kind: done`) and clearly mark channel setup as optional pending next step."
-                .to_string(),
-        );
+    let snapshot = snapshot_for_playbook(active_playbook, messages, knowledge_dir)?;
+    let lower = visible_text.to_lowercase();
+    let is_done = lower.contains("[done]")
+        || lower.contains(r#"\"kind\":\"done\""#)
+        || lower.contains(r#"\"kind\": \"done\""#);
+    if is_done && !snapshot.terminal {
+        return Some(format!(
+            "Policy guard: `ui_done` is not allowed before terminal state. Current state is `{}`.",
+            snapshot.state
+        ));
     }
     None
+}
+
+pub fn blocked_shell_command_feedback(
+    active_playbook: Option<&str>,
+    messages: &[Message],
+    command: &str,
+    knowledge_dir: &Path,
+) -> Option<String> {
+    let name = active_playbook?;
+    let snapshot = snapshot_for_playbook(active_playbook, messages, knowledge_dir)?;
+    let spec = load_fsm_spec(knowledge_dir, name)?;
+    let blocked = spec
+        .guards
+        .blocked_commands
+        .get(&snapshot.state)
+        .or_else(|| spec.guards.blocked_commands.get("*"))?;
+    let lower = command.to_lowercase();
+    let hit = blocked.iter().find(|pattern| lower.contains(&pattern.to_lowercase()))?;
+    Some(format!(
+        "COMMAND NOT EXECUTED: blocked by FSM guard in state `{}` (pattern: `{}`). Choose another approach and continue with one ui_* response.",
+        snapshot.state, hit
+    ))
+}
+
+pub fn fsm_tool_response(
+    tool_name: &str,
+    active_playbook: Option<&str>,
+    messages: &[Message],
+    _input: &Value,
+    knowledge_dir: &Path,
+) -> Option<String> {
+    match tool_name {
+        "fsm_get_state" | "fsm_emit_event" | "fsm_next" => {
+            let snapshot = snapshot_for_playbook(active_playbook, messages, knowledge_dir)?;
+            Some(json!(snapshot).to_string())
+        }
+        _ => None,
+    }
 }
 
 #[cfg(test)]
@@ -604,33 +339,26 @@ mod tests {
     use super::*;
 
     #[test]
-    fn blocks_manual_channel_cli_handoff_in_channel_stage() {
-        let ctx = OpenclawContext {
-            stage: OpenclawStage::ChannelCapture,
-            provider: Some("Anthropic".to_string()),
-            channel: Some("Telegram".to_string()),
-            credential_ref: Some("openclaw-test-ref-1".to_string()),
-            stage_attempts: 1,
-        };
-        let candidate = "[SITUATION] Telegram is next.\n[PLAN] Run this command in your terminal.\n[ACTION:Apply Telegram Token]\nopenclaw channels add --channel telegram --token YOUR_TELEGRAM_BOT_TOKEN";
-        let feedback = validate_openclaw_final_response(&ctx, "Go ahead", candidate);
-        assert!(feedback.is_some());
-        assert!(
-            feedback
-                .unwrap()
-                .contains("Finish basic setup with [DONE]")
-        );
+    fn parses_fsm_block() {
+        let md = "## FSM\n```json\n{\"version\":1,\"machine\":\"x\",\"initial_state\":\"A\",\"states\":{},\"events\":{},\"transitions\":[],\"terminal\":{\"states\":[\"A\"]},\"guards\":{}}\n```";
+        let raw = extract_fsm_block(md).expect("fsm block");
+        let parsed: FsmSpec = serde_json::from_str(&raw).expect("valid json");
+        assert_eq!(parsed.initial_state, "A");
     }
 
     #[test]
-    fn blocks_openclaw_channels_add_shell_command() {
-        let reason = blocked_openclaw_shell_command(
-            OpenclawStage::ChannelVerify,
-            "openclaw channels add --channel telegram --token XXX",
-        );
-        assert_eq!(
-            reason,
-            Some("avoid_manual_channel_token_cli_handoff")
-        );
+    fn transitions_on_events() {
+        let spec = FsmSpec {
+            initial_state: "A".to_string(),
+            transitions: vec![FsmTransitionSpec {
+                from: "A".to_string(),
+                to: "B".to_string(),
+                triggers: vec!["go".to_string()],
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let state = compute_state(&spec, &["go".to_string()]);
+        assert_eq!(state, "B");
     }
 }

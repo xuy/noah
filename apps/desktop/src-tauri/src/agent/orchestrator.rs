@@ -300,7 +300,11 @@ impl Orchestrator {
             let system = format!(
                 "{}{}",
                 base_system,
-                playbook_runtime::governance_overlay(active_playbook.as_deref(), &messages),
+                playbook_runtime::governance_overlay(
+                    active_playbook.as_deref(),
+                    &messages,
+                    &self.knowledge_dir,
+                ),
             );
 
             let response = self
@@ -419,6 +423,7 @@ impl Orchestrator {
                                 &messages,
                                 user_message,
                                 &payload,
+                                &self.knowledge_dir,
                             ) {
                                 let session = self.sessions.get_mut(session_id).unwrap();
                                 session.messages.push(Message {
@@ -477,6 +482,7 @@ impl Orchestrator {
                     &messages,
                     user_message,
                     &visible_text,
+                    &self.knowledge_dir,
                 ) {
                     for _ in 0..appended_text_count {
                         let _ = all_text_parts.pop();
@@ -590,10 +596,27 @@ impl Orchestrator {
                     active_playbook.as_deref(),
                     &session.messages,
                     command,
+                    &self.knowledge_dir,
                 ) {
                     return Ok(feedback);
                 }
             }
+        }
+
+        if matches!(tool_name, "fsm_get_state" | "fsm_emit_event" | "fsm_next") {
+            if let Some(session) = self.sessions.get(session_id) {
+                let active_playbook = active_playbook_name(&session.messages);
+                if let Some(output) = playbook_runtime::fsm_tool_response(
+                    tool_name,
+                    active_playbook.as_deref(),
+                    &session.messages,
+                    tool_input,
+                    &self.knowledge_dir,
+                ) {
+                    return Ok(output);
+                }
+            }
+            return Ok("{\"error\":\"No active playbook FSM loaded.\"}".to_string());
         }
 
         let tool = self

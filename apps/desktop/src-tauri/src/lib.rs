@@ -6,6 +6,7 @@ mod machine_context;
 mod platform;
 mod playbook_runtime;
 mod playbooks;
+mod fsm_tools;
 mod proactive;
 mod safety;
 mod scanner;
@@ -202,6 +203,7 @@ pub fn run() {
             let mut router = ToolRouter::new();
             platform::register_platform_tools(&mut router, Some(&db_path));
             ui_tools::register_ui_tools(&mut router);
+            fsm_tools::register_fsm_tools(&mut router);
 
             // Register knowledge tools.
             router.register(Box::new(knowledge::WriteKnowledgeTool::new(knowledge_dir.clone())));

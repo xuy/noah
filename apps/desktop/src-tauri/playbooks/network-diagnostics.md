@@ -67,3 +67,73 @@ If all steps pass but the problem persists:
 - Ask for the specific URL/service that fails — it may be a firewall or proxy issue.
 - If on a corporate network, may need IT involvement (802.1X auth, certificate issues).
 - Suggest a speed test (fast.com) to quantify slowness.
+
+## FSM
+```json
+{
+  "version": 1,
+  "machine": "network-diagnostics",
+  "initial_state": "CONNECTIVITY_CHECK",
+  "states": {
+    "CONNECTIVITY_CHECK": {"summary": "Check whether internet connectivity works at all."},
+    "LOCAL_LINK_CHECK": {"summary": "Inspect Wi-Fi association, IP, and gateway reachability."},
+    "DNS_CHECK": {"summary": "Determine DNS health and remediate if needed."},
+    "HTTP_CHECK": {"summary": "Validate application-level HTTP connectivity."},
+    "DONE": {"summary": "Network root cause identified and next action is clear."}
+  },
+  "events": {
+    "internet_reachable": {"source": "llm_or_runtime"},
+    "internet_unreachable": {"source": "llm_or_runtime"},
+    "dns_ok": {"source": "llm_or_runtime"},
+    "dns_failed": {"source": "llm_or_runtime"},
+    "http_ok": {"source": "llm_or_runtime"},
+    "user_confirm": {"source": "user_event"}
+  },
+  "transitions": [
+    {
+      "from": "CONNECTIVITY_CHECK",
+      "to": "DNS_CHECK",
+      "goal": "Base connectivity works; investigate DNS/app-level issues.",
+      "acceptance": ["Ping to public endpoint succeeds."],
+      "triggers": ["internet_reachable"]
+    },
+    {
+      "from": "CONNECTIVITY_CHECK",
+      "to": "LOCAL_LINK_CHECK",
+      "goal": "Connectivity is down; inspect local link/router path.",
+      "acceptance": ["Ping to public endpoint fails."],
+      "triggers": ["internet_unreachable"]
+    },
+    {
+      "from": "LOCAL_LINK_CHECK",
+      "to": "DNS_CHECK",
+      "goal": "Local link is healthy; move to DNS checks.",
+      "acceptance": ["Valid IP/gateway path confirmed."],
+      "triggers": ["internet_reachable", "user_confirm"]
+    },
+    {
+      "from": "DNS_CHECK",
+      "to": "HTTP_CHECK",
+      "goal": "DNS path decided; continue to HTTP verification.",
+      "acceptance": ["DNS passes or remediation attempted."],
+      "triggers": ["dns_ok", "dns_failed"]
+    },
+    {
+      "from": "HTTP_CHECK",
+      "to": "DONE",
+      "goal": "Conclude with verified status and actionable next step.",
+      "acceptance": ["HTTP check performed and user-facing outcome is clear."],
+      "triggers": ["http_ok", "user_confirm"]
+    }
+  ],
+  "terminal": {
+    "states": ["DONE"],
+    "goal": "Diagnosis complete with clear fix or escalation."
+  },
+  "guards": {
+    "blocked_commands": {
+      "*": ["rm -rf", "sudo rm"]
+    }
+  }
+}
+```

@@ -108,3 +108,83 @@ Only return a final setup [DONE] when ALL are true:
 
 Install-only success is not setup success.
 Wizard-only handoff is not setup success.
+
+## FSM
+```json
+{
+  "version": 1,
+  "machine": "openclaw-install-config",
+  "initial_state": "INSTALL_CHECK",
+  "states": {
+    "INSTALL_CHECK": {"summary": "Confirm OpenClaw is installed and runnable."},
+    "INSTALL": {"summary": "Install OpenClaw and verify version output."},
+    "PROVIDER_CAPTURE": {"summary": "Capture provider secret via secure form."},
+    "PROVIDER_VERIFY": {"summary": "Verify provider configuration works."},
+    "CHANNEL_CAPTURE": {"summary": "Optional channel token capture via secure form."},
+    "DONE": {"summary": "Basic setup complete with optional channel status recorded."}
+  },
+  "events": {
+    "install_verified": {"source": "llm_or_runtime"},
+    "install_missing": {"source": "llm_or_runtime"},
+    "provider_captured": {"source": "llm_or_runtime"},
+    "provider_verified": {"source": "llm_or_runtime"},
+    "channel_skipped": {"source": "user_event"},
+    "channel_captured": {"source": "llm_or_runtime"}
+  },
+  "transitions": [
+    {
+      "from": "INSTALL_CHECK",
+      "to": "PROVIDER_CAPTURE",
+      "goal": "OpenClaw install is confirmed.",
+      "acceptance": ["Version check succeeds or user confirms OpenClaw is already installed."],
+      "triggers": ["install_verified"]
+    },
+    {
+      "from": "INSTALL_CHECK",
+      "to": "INSTALL",
+      "goal": "OpenClaw is missing and needs install.",
+      "acceptance": ["Install check fails."],
+      "triggers": ["install_missing"]
+    },
+    {
+      "from": "INSTALL",
+      "to": "PROVIDER_CAPTURE",
+      "goal": "Install completed and verified.",
+      "acceptance": ["Version check succeeds after install."],
+      "triggers": ["install_verified"]
+    },
+    {
+      "from": "PROVIDER_CAPTURE",
+      "to": "PROVIDER_VERIFY",
+      "goal": "Provider credential captured securely.",
+      "acceptance": ["Secure form submission recorded."],
+      "triggers": ["provider_captured", "secure_form_submitted"]
+    },
+    {
+      "from": "PROVIDER_VERIFY",
+      "to": "CHANNEL_CAPTURE",
+      "goal": "Provider is verified and optional channel decision remains.",
+      "acceptance": ["Provider check passes."],
+      "triggers": ["provider_verified"]
+    },
+    {
+      "from": "CHANNEL_CAPTURE",
+      "to": "DONE",
+      "goal": "Basic setup is complete whether channel is configured or skipped.",
+      "acceptance": ["Channel captured or explicitly skipped."],
+      "triggers": ["channel_captured", "channel_skipped", "user_skip_optional"]
+    }
+  ],
+  "terminal": {
+    "states": ["DONE"],
+    "goal": "Install + provider configured; channel optional."
+  },
+  "guards": {
+    "blocked_commands": {
+      "*": ["openclaw configure"],
+      "PROVIDER_VERIFY": ["openclaw doctor --fix", "openclaw channels add"],
+      "CHANNEL_CAPTURE": ["openclaw channels add"]
+    }
+  }
+}
+```

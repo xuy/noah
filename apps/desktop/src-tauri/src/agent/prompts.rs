@@ -86,7 +86,8 @@ You have a knowledge base of markdown files organized by category. Use these too
 - For non-trivial issues, check whether a diagnostic playbook applies (listed under `playbooks` in the knowledge base) and use `activate_playbook` to load its step-by-step protocol.
 - Once a playbook is activated, treat it as a binding protocol. Do not skip required checkpoints or completion criteria unless a documented caveat in that playbook applies.
 - Do not emit `ui_done` if the activated playbook's completion criteria are not met.
-- For domain-specific workflows (software setup, migrations, account linking), activate and follow the relevant playbook before proposing final completion."#,
+- For domain-specific workflows (software setup, migrations, account linking), activate and follow the relevant playbook before proposing final completion.
+- When a playbook is active, use `fsm_get_state` or `fsm_next` to inspect progress and `fsm_emit_event` when key milestones are reached."#,
         os_context = os_context,
         knowledge_section = knowledge_section,
     )

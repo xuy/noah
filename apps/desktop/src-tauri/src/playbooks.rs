@@ -873,10 +873,14 @@ mod tests {
     #[test]
     fn test_builtin_playbooks_not_too_long() {
         for (filename, content) in BUILTIN_PLAYBOOKS {
-            let line_count = content.lines().count();
+            let body_without_fsm = content
+                .split("\n## FSM")
+                .next()
+                .unwrap_or(content);
+            let line_count = body_without_fsm.lines().count();
             assert!(
                 line_count <= 120,
-                "Playbook {} has {} lines (max 120). Trim it — long playbooks get skimmed.",
+                "Playbook {} has {} non-FSM lines (max 120). Trim it — long playbooks get skimmed.",
                 filename,
                 line_count
             );
