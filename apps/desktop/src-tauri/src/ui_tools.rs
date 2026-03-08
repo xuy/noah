@@ -8,6 +8,53 @@ fn action_type_valid(v: &str) -> bool {
     matches!(v, "RUN_STEP" | "OPENCLAW_SECURE_CAPTURE")
 }
 
+fn extract_between<'a>(s: &'a str, start: &str, end: &str) -> Option<&'a str> {
+    let i = s.find(start)?;
+    let rest = &s[i + start.len()..];
+    let j = rest.find(end)?;
+    Some(rest[..j].trim())
+}
+
+fn normalize_action_from_input(input: &Value) -> Result<(String, String)> {
+    if let Some(action) = input.get("action").and_then(|v| v.as_object()) {
+        let label = action
+            .get("label")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| anyhow!("missing action.label"))?;
+        let action_type = action
+            .get("type")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| anyhow!("missing action.type"))?;
+        return Ok((label.to_string(), action_type.to_string()));
+    }
+
+    if let Some(action_raw) = input.get("action").and_then(|v| v.as_str()) {
+        let action_type = extract_between(action_raw, r#"name="type">"#, "<")
+            .or_else(|| extract_between(action_raw, "type>", "<"))
+            .or_else(|| {
+                if action_raw.to_uppercase().contains("OPENCLAW_SECURE_CAPTURE") {
+                    Some("OPENCLAW_SECURE_CAPTURE")
+                } else if action_raw.to_uppercase().contains("RUN_STEP") {
+                    Some("RUN_STEP")
+                } else {
+                    None
+                }
+            })
+            .ok_or_else(|| anyhow!("missing action.type"))?;
+
+        let label = input
+            .get("label")
+            .and_then(|v| v.as_str())
+            .or_else(|| extract_between(action_raw, r#"name="label">"#, "<"))
+            .or_else(|| extract_between(action_raw, "label>", "<"))
+            .ok_or_else(|| anyhow!("missing action.label"))?;
+
+        return Ok((label.to_string(), action_type.to_string()));
+    }
+
+    Err(anyhow!("missing action"))
+}
+
 pub fn ui_payload_from_tool_call(name: &str, input: &Value) -> Result<String> {
     match name {
         "ui_spa" => {
@@ -19,16 +66,8 @@ pub fn ui_payload_from_tool_call(name: &str, input: &Value) -> Result<String> {
                 .get("plan_md")
                 .and_then(|v| v.as_str())
                 .ok_or_else(|| anyhow!("missing plan_md"))?;
-            let action = input.get("action").ok_or_else(|| anyhow!("missing action"))?;
-            let label = action
-                .get("label")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| anyhow!("missing action.label"))?;
-            let action_type = action
-                .get("type")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| anyhow!("missing action.type"))?;
-            if !action_type_valid(action_type) {
+            let (label, action_type) = normalize_action_from_input(input)?;
+            if !action_type_valid(&action_type) {
                 return Err(anyhow!("invalid action.type"));
             }
             Ok(json!({
@@ -239,4 +278,3 @@ pub fn register_ui_tools(router: &mut crate::agent::tool_router::ToolRouter) {
     router.register(Box::new(UiInfoTool));
     router.register(Box::new(UiDoneTool));
 }
-

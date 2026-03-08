@@ -79,6 +79,92 @@ function LinkedText({ text }: { text: string }) {
   );
 }
 
+function InlineMarkdown({ text }: { text: string }) {
+  const parts = text.split(/(\*\*[^*]+\*\*)/g);
+  return (
+    <>
+      {parts.map((part, i) => {
+        const bold = part.match(/^\*\*([^*]+)\*\*$/);
+        if (bold) {
+          return <strong key={i} className="font-semibold">{bold[1]}</strong>;
+        }
+        return <LinkedText key={i} text={part} />;
+      })}
+    </>
+  );
+}
+
+function MarkdownSummary({ text }: { text: string }) {
+  const lines = text.split("\n");
+  const blocks: React.ReactNode[] = [];
+  let i = 0;
+
+  while (i < lines.length) {
+    const line = lines[i].trim();
+    if (!line) {
+      i += 1;
+      continue;
+    }
+    if (line.startsWith("### ") || line.startsWith("## ") || line.startsWith("# ")) {
+      const level = line.startsWith("### ") ? "h3" : line.startsWith("## ") ? "h2" : "h1";
+      const content = line.replace(/^#{1,3}\s+/, "");
+      const cls = level === "h1"
+        ? "text-lg font-semibold text-text-primary"
+        : level === "h2"
+          ? "text-base font-semibold text-text-primary"
+          : "text-sm font-semibold text-text-primary";
+      blocks.push(
+        <div key={`h-${i}`} className={cls}>
+          <InlineMarkdown text={content} />
+        </div>,
+      );
+      i += 1;
+      continue;
+    }
+
+    if (line.startsWith("- ") || line.startsWith("* ") || /^\d+\.\s+/.test(line)) {
+      const items: string[] = [];
+      while (i < lines.length) {
+        const current = lines[i].trim();
+        if (current.startsWith("- ") || current.startsWith("* ") || /^\d+\.\s+/.test(current)) {
+          items.push(current.replace(/^(-|\*|\d+\.)\s+/, ""));
+          i += 1;
+          continue;
+        }
+        break;
+      }
+      blocks.push(
+        <ul key={`ul-${i}`} className="list-disc pl-5 space-y-1">
+          {items.map((item, idx) => (
+            <li key={idx}>
+              <InlineMarkdown text={item} />
+            </li>
+          ))}
+        </ul>,
+      );
+      continue;
+    }
+
+    const paragraph: string[] = [line];
+    i += 1;
+    while (i < lines.length) {
+      const next = lines[i].trim();
+      if (!next || next.startsWith("#") || next.startsWith("- ") || next.startsWith("* ") || /^\d+\.\s+/.test(next)) {
+        break;
+      }
+      paragraph.push(next);
+      i += 1;
+    }
+    blocks.push(
+      <p key={`p-${i}`} className="whitespace-pre-wrap break-words">
+        <InlineMarkdown text={paragraph.join(" ")} />
+      </p>,
+    );
+  }
+
+  return <div className="space-y-2">{blocks}</div>;
+}
+
 // ── Tool Call Display ──
 
 function ToolCallItem({ toolCall }: { toolCall: ToolCall }) {
@@ -598,9 +684,7 @@ function DoneCard({
           <span className="text-accent-green text-lg mt-0.5">{"\u2713"}</span>
           <div className="flex-1">
             <div className="text-base text-text-primary leading-relaxed">
-              <span className="whitespace-pre-wrap break-words">
-                <LinkedText text={summary} />
-              </span>
+              <MarkdownSummary text={summary} />
             </div>
           </div>
         </div>
@@ -663,9 +747,7 @@ function InfoCard({
           <span className="text-accent-blue text-lg mt-0.5">{"\u2139"}</span>
           <div className="flex-1">
             <div className="text-base text-text-primary leading-relaxed">
-              <span className="whitespace-pre-wrap break-words">
-                <LinkedText text={summary} />
-              </span>
+              <MarkdownSummary text={summary} />
             </div>
           </div>
         </div>

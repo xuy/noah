@@ -276,6 +276,24 @@ impl Orchestrator {
         // Accumulate text across all loop iterations so we don't lose text
         // from turns where the LLM returns both text AND tool calls.
         let mut all_text_parts: Vec<String> = Vec::new();
+        let mut ui_protocol_retries = 0usize;
+
+        let mut handle_ui_protocol_error = |reason: String| -> Option<String> {
+            ui_protocol_retries += 1;
+            if ui_protocol_retries >= 3 {
+                return Some(
+                    json!({
+                        "kind": "info",
+                        "summary": format!(
+                            "I hit an internal response-format issue while preparing the UI card ({}). Please click try again; I now have the diagnostics context and should recover on the next turn.",
+                            reason
+                        )
+                    })
+                    .to_string(),
+                );
+            }
+            None
+        };
 
         // Agentic loop: keep calling the LLM until we get a text-only response.
         loop {
@@ -422,6 +440,9 @@ impl Orchestrator {
                             role: "user".to_string(),
                             content: MessageContent::Blocks(blocks),
                         });
+                        if let Some(fallback) = handle_ui_protocol_error("mixed/multiple ui_* calls".to_string()) {
+                            return Ok(fallback);
+                        }
                         continue;
                     }
                     let (tool_use_id, name, input) = ui_calls[0];
@@ -473,6 +494,11 @@ impl Orchestrator {
                                     is_error: Some(true),
                                 }]),
                             });
+                            if let Some(fallback) =
+                                handle_ui_protocol_error(format!("invalid ui_* payload: {}", err))
+                            {
+                                return Ok(fallback);
+                            }
                             continue;
                         }
                     }
