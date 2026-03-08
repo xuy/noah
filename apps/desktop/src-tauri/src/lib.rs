@@ -1,5 +1,6 @@
-mod agent;
+pub mod agent;
 mod commands;
+pub mod debug_runner;
 mod knowledge;
 mod machine_context;
 mod platform;
@@ -7,7 +8,7 @@ mod playbooks;
 mod proactive;
 mod safety;
 mod scanner;
-mod ui_tools;
+pub mod ui_tools;
 
 use std::collections::HashMap;
 use std::path::PathBuf;

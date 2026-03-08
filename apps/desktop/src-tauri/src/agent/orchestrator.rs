@@ -39,7 +39,7 @@ struct DebugEvent {
     detail: Value,
 }
 
-fn emit_debug(app_handle: &tauri::AppHandle, event_type: &str, summary: &str, detail: Value) {
+fn emit_debug<R: tauri::Runtime>(app_handle: &tauri::AppHandle<R>, event_type: &str, summary: &str, detail: Value) {
     use tauri::Emitter;
 
     let event = DebugEvent {
@@ -170,11 +170,11 @@ impl Orchestrator {
     /// Send a user message and run the agentic loop until a text response
     /// is produced. The `app_handle` is used to emit approval-request events
     /// and the `db` connection is used to record changes in the journal.
-    pub async fn send_message(
+    pub async fn send_message<R: tauri::Runtime>(
         &mut self,
         session_id: &str,
         user_message: &str,
-        app_handle: &tauri::AppHandle,
+        app_handle: &tauri::AppHandle<R>,
         db: &tokio::sync::Mutex<rusqlite::Connection>,
     ) -> Result<String> {
         // Verify session exists.
@@ -482,12 +482,12 @@ impl Orchestrator {
     }
 
     /// Execute a single tool call, handling safety tier checks and approvals.
-    async fn execute_tool(
+    async fn execute_tool<R: tauri::Runtime>(
         &self,
         session_id: &str,
         tool_name: &str,
         tool_input: &Value,
-        app_handle: &tauri::AppHandle,
+        app_handle: &tauri::AppHandle<R>,
         db: &tokio::sync::Mutex<rusqlite::Connection>,
     ) -> Result<String> {
         let tool = self
@@ -540,9 +540,9 @@ impl Orchestrator {
     }
 
     /// Emit an approval-request event to the frontend and wait for the response.
-    async fn request_approval(
+    async fn request_approval<R: tauri::Runtime>(
         &self,
-        app_handle: &tauri::AppHandle,
+        app_handle: &tauri::AppHandle<R>,
         tool_name: &str,
         description: &str,
         parameters: &Value,

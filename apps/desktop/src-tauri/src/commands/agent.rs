@@ -205,7 +205,7 @@ fn parse_assistant_ui_json(text: &str) -> Option<AssistantUiPayload> {
     }
 }
 
-pub(crate) fn parse_assistant_ui(text: &str) -> Option<AssistantUiPayload> {
+pub fn parse_assistant_ui(text: &str) -> Option<AssistantUiPayload> {
     if let Some(ui) = parse_assistant_ui_json(text) {
         return Some(ui);
     }
@@ -499,5 +499,142 @@ mod tests {
             }
             _ => panic!("expected gather card"),
         }
+    }
+
+    // ── Real-world database message patterns ──
+
+    #[test]
+    fn parses_real_json_done_with_markdown() {
+        let text = r###"{"kind":"done","summary":"## Wi-Fi Issue Resolved\n\nYour Wi-Fi connection is **rock solid**:\n- **Strong 6GHz**: -52 dBm\n- **High speed**: 1.7 Gbps"}"###;
+        let ui = parse_assistant_ui(text);
+        match ui {
+            Some(AssistantUiPayload::Done(done)) => {
+                assert!(done.summary.contains("Wi-Fi Issue Resolved"));
+                assert!(done.summary.contains("rock solid"));
+            }
+            _ => panic!("expected done ui, got {:?}", ui),
+        }
+    }
+
+    #[test]
+    fn parses_real_json_spa_run_step() {
+        let text = r###"{"action":{"label":"Fix Wi-Fi stability","type":"RUN_STEP"},"kind":"spa","plan":"I'll flush the DNS cache to clear any connection hiccups.","situation":"Your Wi-Fi is actually **connected and stable**."}"###;
+        let ui = parse_assistant_ui(text);
+        match ui {
+            Some(AssistantUiPayload::Spa(card)) => {
+                assert_eq!(card.action.label, "Fix Wi-Fi stability");
+                assert_eq!(card.action.action_type, AssistantActionType::RunStep);
+                assert!(card.situation.contains("connected and stable"));
+            }
+            _ => panic!("expected spa ui, got {:?}", ui),
+        }
+    }
+
+    #[test]
+    fn parses_real_json_open_secure_form_as_run_step() {
+        // Old sessions have OPEN_SECURE_FORM — should gracefully default to RunStep
+        let text = r###"{"action":{"label":"Enter API Keys","type":"OPEN_SECURE_FORM"},"kind":"spa","plan":"Open a secure form for credentials.","situation":"Needs configuration."}"###;
+        let ui = parse_assistant_ui(text);
+        match ui {
+            Some(AssistantUiPayload::Spa(card)) => {
+                assert_eq!(card.action.label, "Enter API Keys");
+                // Unknown types should default to RunStep
+                assert_eq!(card.action.action_type, AssistantActionType::RunStep);
+            }
+            _ => panic!("expected spa ui, got {:?}", ui),
+        }
+    }
+
+    #[test]
+    fn parses_real_json_openclaw_secure_capture_as_run_step() {
+        let text = r###"{"action":{"label":"Configure Provider","type":"OPENCLAW_SECURE_CAPTURE"},"kind":"spa","plan":"I'll guide you through setup.","situation":"Need credentials."}"###;
+        let ui = parse_assistant_ui(text);
+        match ui {
+            Some(AssistantUiPayload::Spa(card)) => {
+                assert_eq!(card.action.label, "Configure Provider");
+                assert_eq!(card.action.action_type, AssistantActionType::RunStep);
+            }
+            _ => panic!("expected spa ui, got {:?}", ui),
+        }
+    }
+
+    #[test]
+    fn parses_real_json_user_question() {
+        let text = r###"{"kind":"user_question","questions":[{"header":"Choose Setup Approach","multiSelect":false,"options":[{"description":"Set up from scratch","label":"Fresh Setup"},{"description":"Import existing config","label":"Import Config"}],"question":"How would you like to proceed?"}]}"###;
+        let ui = parse_assistant_ui(text);
+        match ui {
+            Some(AssistantUiPayload::UserQuestion(q)) => {
+                assert_eq!(q.questions.len(), 1);
+                assert_eq!(q.questions[0].header, "Choose Setup Approach");
+                assert_eq!(q.questions[0].options.len(), 2);
+            }
+            _ => panic!("expected user_question ui, got {:?}", ui),
+        }
+    }
+
+    #[test]
+    fn parses_real_json_info() {
+        let text = r###"{"kind":"info","summary":"Already Set Up!\n\nYour installation is complete and working."}"###;
+        let ui = parse_assistant_ui(text);
+        match ui {
+            Some(AssistantUiPayload::Info(info)) => {
+                assert!(info.summary.contains("Already Set Up"));
+            }
+            _ => panic!("expected info ui, got {:?}", ui),
+        }
+    }
+
+    #[test]
+    fn parses_legacy_info_marker() {
+        let text = "[INFO]\nRunner timeout waiting for assistant response.";
+        let ui = parse_assistant_ui(text);
+        match ui {
+            Some(AssistantUiPayload::Info(info)) => {
+                assert!(info.summary.contains("Runner timeout"));
+            }
+            _ => panic!("expected info ui from legacy marker"),
+        }
+    }
+
+    #[test]
+    fn parses_legacy_action_with_bold_situation() {
+        let text = "[SITUATION]\nYour Mac has high load averages (3.85) caused by the Codex app using 54% CPU.\n\n[PLAN]\nI'll kill the high CPU Codex processes to reduce system load.\n\n[ACTION:Stop Codex]";
+        let ui = parse_assistant_ui(text);
+        match ui {
+            Some(AssistantUiPayload::Spa(card)) => {
+                assert_eq!(card.action.label, "Stop Codex");
+                assert!(card.situation.contains("high load averages"));
+            }
+            _ => panic!("expected spa ui from legacy markers, got {:?}", ui),
+        }
+    }
+
+    #[test]
+    fn parses_legacy_openclaw_action_marker() {
+        // Legacy marker with OPENCLAW_SECURE_CAPTURE as label — should parse as Spa
+        let text = "[SITUATION]\nOpenClaw needs configuration.\n[PLAN]\nCapture credentials.\n[ACTION: OPENCLAW_SECURE_CAPTURE]";
+        let ui = parse_assistant_ui(text);
+        match ui {
+            Some(AssistantUiPayload::Spa(card)) => {
+                assert_eq!(card.action.label, "OPENCLAW_SECURE_CAPTURE");
+                // Legacy markers always default to RunStep
+                assert_eq!(card.action.action_type, AssistantActionType::RunStep);
+            }
+            _ => panic!("expected spa ui from legacy marker, got {:?}", ui),
+        }
+    }
+
+    #[test]
+    fn parses_plain_text_returns_none() {
+        let text = "Hello, how can I help you today?";
+        let ui = parse_assistant_ui(text);
+        assert!(ui.is_none(), "plain text should return None");
+    }
+
+    #[test]
+    fn parses_json_with_unknown_kind_returns_none() {
+        let text = r#"{"kind":"unknown","data":"something"}"#;
+        let ui = parse_assistant_ui(text);
+        assert!(ui.is_none(), "unknown kind should return None");
     }
 }
