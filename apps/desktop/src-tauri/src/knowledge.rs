@@ -219,7 +219,7 @@ pub fn list_knowledge_tree(
                 let title = extract_title(&content, &fname);
                 let fm = extract_frontmatter(&content);
                 let playbook_type = if cat_name == "playbooks" {
-                    fm.playbook_type.or_else(|| Some("user".to_string()))
+                    fm.playbook_type.or_else(|| Some("system".to_string()))
                 } else {
                     None
                 };
@@ -254,7 +254,7 @@ fn scan_subdir(entries: &mut Vec<KnowledgeEntry>, cat_name: &str, dir: &Path, fo
         let title = extract_title(&content, &fname);
         let fm = extract_frontmatter(&content);
         let playbook_type = if cat_name == "playbooks" {
-            fm.playbook_type.or_else(|| Some("user".to_string()))
+            fm.playbook_type.or_else(|| Some("system".to_string()))
         } else {
             None
         };

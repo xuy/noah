@@ -225,7 +225,7 @@ fn parse_frontmatter(content: &str) -> Option<PlaybookMeta> {
         platform: platform.unwrap_or_else(|| "all".to_string()),
         last_reviewed,
         author,
-        playbook_type: playbook_type.unwrap_or_else(|| "user".to_string()),
+        playbook_type: playbook_type.unwrap_or_else(|| "system".to_string()),
     })
 }
 
@@ -539,7 +539,7 @@ mod tests {
         assert_eq!(meta.name, "test-playbook");
         assert_eq!(meta.description, "A test playbook");
         assert_eq!(meta.platform, "all"); // default
-        assert_eq!(meta.playbook_type, "user"); // default when type: absent
+        assert_eq!(meta.playbook_type, "system"); // default when type: absent
     }
 
     #[test]
