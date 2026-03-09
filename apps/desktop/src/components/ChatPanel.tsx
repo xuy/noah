@@ -525,6 +525,7 @@ function UserQuestionCard({
   onAnswer,
   onSecureAnswer,
   onSkip,
+  onSendMessage,
 }: {
   questions: AssistantQuestion[];
   actionTaken?: boolean;
@@ -534,6 +535,7 @@ function UserQuestionCard({
   onAnswer: (answer: string) => void;
   onSecureAnswer?: (secretName: string, value: string) => void;
   onSkip: () => void;
+  onSendMessage?: (text: string) => void;
 }) {
   const [selectedOption, setSelectedOption] = useState<string>("");
   const [textValue, setTextValue] = useState<string>("");
@@ -650,6 +652,16 @@ function UserQuestionCard({
             Skip For Now
           </button>
         </div>
+        {!actionTaken && !isProcessing && onSendMessage && (
+          <div className="px-5 pb-3">
+            <button
+              onClick={() => onSendMessage("")}
+              className="w-full text-sm text-text-muted hover:text-accent-blue transition-colors cursor-pointer"
+            >
+              or type your answer below
+            </button>
+          </div>
+        )}
       </div>
       <div className="text-[10px] mt-1 text-text-muted opacity-0 group-hover:opacity-100 transition-opacity duration-150">
         {formatTime(timestamp)}
@@ -881,8 +893,10 @@ function renderFromUiPayload(
           }
           onSecureAnswer={onSecureAnswer}
           onSkip={() => onEvent("USER_SKIP_OPTIONAL")}
+          onSendMessage={onSendMessage}
         />
       );
+
     case "done":
       return (
         <DoneCard
