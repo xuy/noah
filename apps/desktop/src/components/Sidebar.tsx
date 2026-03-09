@@ -16,8 +16,8 @@ function formatDate(iso: string, t: (key: string, params?: Record<string, string
     minute: "2-digit",
   });
 
-  if (diffDays === 0) return t("sidebar.dateFormat.today", { time });
-  if (diffDays === 1) return t("sidebar.dateFormat.yesterday", { time });
+  if (diffDays === 0) return t("sidebar.today", { time });
+  if (diffDays === 1) return t("sidebar.yesterday", { time });
   if (diffDays < 7)
     return `${d.toLocaleDateString([], { weekday: "short" })}, ${time}`;
   return d.toLocaleDateString([], {

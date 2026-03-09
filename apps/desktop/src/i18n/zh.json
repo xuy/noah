@@ -50,9 +50,7 @@
     "export": "导出",
     "delete": "删除",
     "confirm": "确认",
-    "cancel": "取消"
-  },
-  "sidebar.dateFormat": {
+    "cancel": "取消",
     "today": "今天 {time}",
     "yesterday": "昨天 {time}"
   },

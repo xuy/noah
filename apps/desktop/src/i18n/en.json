@@ -50,9 +50,7 @@
     "export": "Export",
     "delete": "Delete",
     "confirm": "Confirm",
-    "cancel": "Cancel"
-  },
-  "sidebar.dateFormat": {
+    "cancel": "Cancel",
     "today": "Today, {time}",
     "yesterday": "Yesterday, {time}"
   },
