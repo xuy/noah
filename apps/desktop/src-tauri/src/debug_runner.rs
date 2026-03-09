@@ -48,6 +48,36 @@ fn default_app_dir() -> Result<PathBuf> {
     }
 }
 
+/// Load pre-configured secrets from NOAH_SECRETS env var.
+/// Format: JSON object mapping secret_name → value.
+/// Example: NOAH_SECRETS='{"telegram_bot_token":"123:ABC","api_key":"sk-..."}'
+fn load_preset_secrets() -> HashMap<String, String> {
+    match std::env::var("NOAH_SECRETS") {
+        Ok(json_str) => {
+            serde_json::from_str::<HashMap<String, String>>(&json_str).unwrap_or_else(|e| {
+                eprintln!("[debug_runner] Warning: failed to parse NOAH_SECRETS: {}", e);
+                HashMap::new()
+            })
+        }
+        Err(_) => HashMap::new(),
+    }
+}
+
+/// Load pre-configured text answers from NOAH_ANSWERS env var.
+/// Format: JSON object mapping lowercased keyword → answer.
+/// Example: NOAH_ANSWERS='{"telegram":"Telegram","model":"GLM-4-Flash"}'
+fn load_preset_answers() -> HashMap<String, String> {
+    match std::env::var("NOAH_ANSWERS") {
+        Ok(json_str) => {
+            serde_json::from_str::<HashMap<String, String>>(&json_str).unwrap_or_else(|e| {
+                eprintln!("[debug_runner] Warning: failed to parse NOAH_ANSWERS: {}", e);
+                HashMap::new()
+            })
+        }
+        Err(_) => HashMap::new(),
+    }
+}
+
 /// Auto-approves all pending approval requests (for headless testing).
 async fn spawn_auto_approver(pending: PendingApprovals) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
@@ -140,6 +170,9 @@ pub async fn run_prompt_flow(prompt: &str, max_turns: usize) -> Result<PromptRun
     let app_handle = app.handle().clone();
     let approver = spawn_auto_approver(pending_approvals).await;
 
+    let preset_secrets = load_preset_secrets();
+    let preset_answers = load_preset_answers();
+
     let mut turns = Vec::new();
     let mut input = prompt.to_string();
     let mut reached_done = false;
@@ -188,29 +221,47 @@ pub async fn run_prompt_flow(prompt: &str, max_turns: usize) -> Result<PromptRun
                 // Generate a reasonable auto-answer based on question type.
                 let q = &uq.questions[0];
                 if q.secure_input.is_some() {
-                    // For secure inputs, store a dummy secret value via orchestrator.
+                    // For secure inputs, use preset value if available, else dummy.
                     let secret_name = q.secure_input.as_ref().unwrap().secret_name.clone();
-                    orchestrator.store_secret(&session_id, &secret_name, "test-secret-value-12345");
-                    input = format!("[SECRET:{}] stored securely", secret_name);
+                    let value = preset_secrets
+                        .get(&secret_name)
+                        .cloned()
+                        .unwrap_or_else(|| "test-secret-value-12345".to_string());
+                    let is_preset = preset_secrets.contains_key(&secret_name);
+                    orchestrator.store_secret(&session_id, &secret_name, &value);
+                    input = format!(
+                        "[SECRET:{}] stored securely{}",
+                        secret_name,
+                        if is_preset { " (preset)" } else { " (dummy)" }
+                    );
                 } else if q.text_input.is_some() {
-                    // Provide a plausible test answer based on the question context.
+                    // Check preset answers first: match any keyword in header/question.
                     let header = q.header.to_lowercase();
                     let question = q.question.to_lowercase();
-                    let answer = if header.contains("email") || question.contains("email") {
-                        "testuser@example.com".to_string()
-                    } else if header.contains("ssid") || question.contains("ssid") || question.contains("wi-fi") || question.contains("wifi") || question.contains("network name") {
-                        "TestNetwork".to_string()
-                    } else if header.contains("server") || question.contains("server") {
-                        "mail.example.com".to_string()
-                    } else if header.contains("drive") || question.contains("drive") || question.contains("connect") {
-                        "My Backup Drive, 1TB, appears in Finder".to_string()
-                    } else if header.contains("username") || question.contains("username") {
-                        "testuser".to_string()
-                    } else if header.contains("path") || question.contains("path") || question.contains("folder") {
-                        "/Users/test/Documents".to_string()
-                    } else {
-                        "test-input-value".to_string()
-                    };
+                    let combined = format!("{} {}", header, question);
+
+                    let answer = preset_answers
+                        .iter()
+                        .find(|(keyword, _)| combined.contains(keyword.as_str()))
+                        .map(|(_, answer)| answer.clone())
+                        .unwrap_or_else(|| {
+                            // Fall back to heuristic auto-answers.
+                            if header.contains("email") || question.contains("email") {
+                                "testuser@example.com".to_string()
+                            } else if header.contains("ssid") || question.contains("ssid") || question.contains("wi-fi") || question.contains("wifi") || question.contains("network name") {
+                                "TestNetwork".to_string()
+                            } else if header.contains("server") || question.contains("server") {
+                                "mail.example.com".to_string()
+                            } else if header.contains("drive") || question.contains("drive") || question.contains("connect") {
+                                "My Backup Drive, 1TB, appears in Finder".to_string()
+                            } else if header.contains("username") || question.contains("username") {
+                                "testuser".to_string()
+                            } else if header.contains("path") || question.contains("path") || question.contains("folder") {
+                                "/Users/test/Documents".to_string()
+                            } else {
+                                "test-input-value".to_string()
+                            }
+                        });
                     input = answer;
                 } else if let Some(ref opts) = q.options {
                     // Pick the first option.
