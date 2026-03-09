@@ -780,20 +780,6 @@ function InfoCard({
 
 // ── Confirmation Pill (for "Go ahead" user messages) ──
 
-function ConfirmationPill({ timestamp }: { timestamp: number }) {
-  return (
-    <div className="group flex flex-col items-end animate-fade-in">
-      <div className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-bg-user-bubble text-text-user-bubble text-sm font-medium">
-        <span>{"\u2713"}</span>
-        <span>Go ahead</span>
-      </div>
-      <div className="text-[10px] mt-1 text-text-muted opacity-0 group-hover:opacity-100 transition-opacity duration-150">
-        {formatTime(timestamp)}
-      </div>
-    </div>
-  );
-}
-
 // ── Single Message Bubble (fallback for unstructured messages) ──
 
 function MessageBubble({ message }: { message: Message }) {
@@ -845,8 +831,8 @@ function renderFromUiPayload(
   isProcessing: boolean,
   isLatestDone: boolean,
   sessionId: string | null,
-  onConfirm: (messageId: string) => void,
-  onEvent: (eventType: "USER_ANSWER_QUESTION" | "USER_SKIP_OPTIONAL", payload?: string) => void,
+  onConfirm: (messageId: string, actionLabel?: string) => void,
+  onEvent: (eventType: "USER_ANSWER_QUESTION", payload?: string) => void,
   onSecureAnswer?: (secretName: string, value: string) => void,
   onSendMessage?: (text: string) => void,
 ): React.ReactNode {
@@ -865,7 +851,7 @@ function renderFromUiPayload(
           timestamp={message.timestamp}
           progress={progress}
           qrData={ui.qr_data}
-          onDoIt={() => onConfirm(message.id)}
+          onDoIt={() => onConfirm(message.id, ui.action.label)}
           onSendMessage={onSendMessage}
         />
       );
@@ -922,16 +908,11 @@ function MessageDisplay({
   isProcessing: boolean;
   isLatestDone: boolean;
   sessionId: string | null;
-  onConfirm: (messageId: string) => void;
-  onEvent: (eventType: "USER_ANSWER_QUESTION" | "USER_SKIP_OPTIONAL", payload?: string) => void;
+  onConfirm: (messageId: string, actionLabel?: string) => void;
+  onEvent: (eventType: "USER_ANSWER_QUESTION", payload?: string) => void;
   onSecureAnswer?: (secretName: string, value: string) => void;
   onSendMessage?: (text: string) => void;
 }) {
-  // User confirmation pill
-  if (message.role === "user" && message.actionConfirmation) {
-    return <ConfirmationPill timestamp={message.timestamp} />;
-  }
-
   // Non-assistant messages use the regular bubble
   if (message.role !== "assistant") {
     return <MessageBubble message={message} />;
@@ -967,7 +948,7 @@ function MessageDisplay({
             actionTaken={message.actionTaken}
             isProcessing={isProcessing}
             timestamp={message.timestamp}
-            onDoIt={() => onConfirm(message.id)}
+            onDoIt={() => onConfirm(message.id, parsed.actionLabel)}
           />
         );
         break;
@@ -1357,7 +1338,7 @@ export function ChatPanel() {
   };
 
   const handleEvent = useCallback(
-    (eventType: "USER_ANSWER_QUESTION" | "USER_SKIP_OPTIONAL", payload?: string) => {
+    (eventType: "USER_ANSWER_QUESTION", payload?: string) => {
       sendEvent(eventType, payload);
     },
     [sendEvent],

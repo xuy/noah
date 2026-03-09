@@ -6,7 +6,7 @@ import type { UserEventType } from "../lib/tauri-commands";
 
 interface UseAgentReturn {
   sendMessage: (text: string) => Promise<void>;
-  sendConfirmation: (messageId: string) => Promise<void>;
+  sendConfirmation: (messageId: string, actionLabel?: string) => Promise<void>;
   sendEvent: (eventType: UserEventType, payload?: string) => Promise<void>;
   cancelProcessing: () => Promise<void>;
   isProcessing: boolean;
@@ -75,23 +75,24 @@ export function useAgent(): UseAgentReturn {
   );
 
   const sendConfirmation = useCallback(
-    async (messageId: string) => {
+    async (messageId: string, actionLabel?: string) => {
       if (!sessionId) return;
 
       const prevChangeIds = new Set(changes.map((c) => c.id));
 
+      const confirmText = actionLabel || "Go ahead";
       markActionTaken(messageId);
       addMessage({
         role: "user",
-        content: "Go ahead",
-        actionConfirmation: true,
+        content: confirmText,
       });
       setIsProcessing(true);
 
       try {
-        const result = await commands.sendUserEvent(
+        const result = await commands.sendMessageV2(
           sessionId,
-          "USER_CONFIRM",
+          confirmText,
+          true,
         );
         addMessage({
           role: "assistant",
@@ -131,6 +132,18 @@ export function useAgent(): UseAgentReturn {
   const sendEvent = useCallback(
     async (eventType: UserEventType, payload?: string) => {
       if (!sessionId) return;
+
+      // Show the user's answer in the chat — transparency: what user said = what LLM sees
+      if (eventType === "USER_ANSWER_QUESTION" && payload) {
+        try {
+          const parsed = JSON.parse(payload);
+          const answer = parsed.answer || parsed.answers?.toString() || "";
+          if (answer) {
+            addMessage({ role: "user", content: answer });
+          }
+        } catch { /* best-effort */ }
+      }
+
       setIsProcessing(true);
       try {
         const result = await commands.sendUserEvent(

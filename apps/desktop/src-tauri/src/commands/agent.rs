@@ -435,7 +435,7 @@ pub async fn send_user_event(
                     .map(|v| v.to_string())
                     .unwrap_or_else(|| "provided".to_string())
             });
-            (format!("User answer: {}", answer), Some(true))
+            (answer, Some(true))
         }
     };
 
