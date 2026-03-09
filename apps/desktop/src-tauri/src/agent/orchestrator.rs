@@ -62,6 +62,8 @@ pub struct Session {
     /// Ephemeral secret store for secure_input values. Keyed by `secret_name`.
     /// Values never enter LLM context. Cleared when session ends.
     pub secrets: HashMap<String, String>,
+    /// User's preferred locale (e.g. "en", "zh"). Used to hint the LLM response language.
+    pub locale: Option<String>,
 }
 
 pub struct Orchestrator {
@@ -111,6 +113,7 @@ impl Orchestrator {
             created_at: chrono::Utc::now(),
             playbook: None,
             secrets: HashMap::new(),
+            locale: None,
         };
         self.sessions.insert(id.clone(), session);
         id
@@ -128,6 +131,16 @@ impl Orchestrator {
         self.sessions
             .get(session_id)
             .and_then(|s| s.secrets.get(name).cloned())
+    }
+
+    pub fn set_locale(&mut self, session_id: &str, locale: &str) {
+        if let Some(session) = self.sessions.get_mut(session_id) {
+            session.locale = Some(locale.to_string());
+        }
+    }
+
+    pub fn get_locale(&self, session_id: &str) -> Option<String> {
+        self.sessions.get(session_id).and_then(|s| s.locale.clone())
     }
 
     pub fn get_session(&self, session_id: &str) -> Option<&Session> {
@@ -214,7 +227,8 @@ impl Orchestrator {
         }
 
         let knowledge_ctx = knowledge::knowledge_toc(&self.knowledge_dir).unwrap_or_default();
-        let system = prompts::system_prompt_blocks(&self.os_context, &knowledge_ctx);
+        let locale = self.sessions[session_id].locale.clone();
+        let system = prompts::system_prompt_blocks(&self.os_context, &knowledge_ctx, locale.as_deref());
         let tool_defs = self.router.tool_definitions();
 
         // Reset cancellation flag at the start of each user message.

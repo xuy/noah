@@ -1,6 +1,7 @@
 import { useEffect, useCallback } from "react";
 import { useSessionStore } from "../stores/sessionStore";
 import { useChatStore } from "../stores/chatStore";
+import { currentLocale } from "../i18n";
 import * as commands from "../lib/tauri-commands";
 
 // Module-level guard: shared across all useSession() instances
@@ -31,6 +32,8 @@ export function useSession(): UseSessionReturn {
       clearMessages();
       const session = await commands.createSession();
       setSession(session.id);
+      // Sync locale to backend so the LLM system prompt includes a language hint.
+      commands.setLocale(session.id, currentLocale()).catch(() => {});
       addMessage({
         role: "system",
         content:

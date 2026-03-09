@@ -82,7 +82,7 @@ your context. Use `write_secret` to write a collected secret to a config file.
 ///
 /// Layout: [static prompt (cached)] [dynamic context (per-request)]
 /// The static block gets a cache_control breakpoint so Anthropic caches it.
-pub fn system_prompt_blocks(os_context: &str, knowledge_toc: &str) -> Vec<SystemBlock> {
+pub fn system_prompt_blocks(os_context: &str, knowledge_toc: &str, locale: Option<&str>) -> Vec<SystemBlock> {
     let mut blocks = vec![SystemBlock {
         block_type: "text",
         text: STATIC_PROMPT.to_string(),
@@ -96,6 +96,18 @@ pub fn system_prompt_blocks(os_context: &str, knowledge_toc: &str) -> Vec<System
         dynamic.push_str(knowledge_toc);
     }
 
+    if let Some(lang) = locale {
+        let language = match lang {
+            "zh" => "Chinese (中文)",
+            "en" => "English",
+            _ => lang,
+        };
+        dynamic.push_str(&format!(
+            "\n\n## User Language\nThe user's interface is set to {}. Respond in {} unless the user writes in a different language.",
+            language, language
+        ));
+    }
+
     blocks.push(SystemBlock {
         block_type: "text",
         text: dynamic,
@@ -107,7 +119,7 @@ pub fn system_prompt_blocks(os_context: &str, knowledge_toc: &str) -> Vec<System
 
 /// Build system prompt as a single string (for backward compat / tests).
 pub fn system_prompt(os_context: &str, knowledge_toc: &str) -> String {
-    system_prompt_blocks(os_context, knowledge_toc)
+    system_prompt_blocks(os_context, knowledge_toc, None)
         .iter()
         .map(|b| b.text.as_str())
         .collect::<Vec<_>>()

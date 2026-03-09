@@ -168,6 +168,13 @@ pub async fn act_on_proactive_suggestion(
         .map_err(|e| format!("Failed to mark suggestion: {}", e))
 }
 
+#[tauri::command]
+pub async fn set_locale(state: State<'_, AppState>, session_id: String, locale: String) -> Result<(), String> {
+    let mut orch = state.orchestrator.lock().await;
+    orch.set_locale(&session_id, &locale);
+    Ok(())
+}
+
 #[derive(Debug, Serialize)]
 pub struct FeedbackContext {
     pub version: String,

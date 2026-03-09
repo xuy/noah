@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useSessionStore } from "../stores/sessionStore";
 import { useSession } from "../hooks/useSession";
+import { useLocale } from "../i18n";
 import * as commands from "../lib/tauri-commands";
 import type { SessionRecord } from "../lib/tauri-commands";
 
-function formatDate(iso: string): string {
+function formatDate(iso: string, t: (key: string, params?: Record<string, string | number>) => string): string {
   const d = new Date(iso);
   const now = new Date();
   const diffMs = now.getTime() - d.getTime();
@@ -15,8 +16,8 @@ function formatDate(iso: string): string {
     minute: "2-digit",
   });
 
-  if (diffDays === 0) return `Today, ${time}`;
-  if (diffDays === 1) return `Yesterday, ${time}`;
+  if (diffDays === 0) return t("sidebar.dateFormat.today", { time });
+  if (diffDays === 1) return t("sidebar.dateFormat.yesterday", { time });
   if (diffDays < 7)
     return `${d.toLocaleDateString([], { weekday: "short" })}, ${time}`;
   return d.toLocaleDateString([], {
@@ -32,11 +33,13 @@ function OverflowMenu({
   onResolveToggle,
   onExport,
   onDelete,
+  t,
 }: {
   session: SessionRecord;
   onResolveToggle: () => void;
   onExport: () => void;
   onDelete: () => void;
+  t: (key: string) => string;
 }) {
   const [open, setOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -82,7 +85,7 @@ function OverflowMenu({
               }}
               className="w-full px-3 py-1.5 text-left text-xs text-text-secondary hover:bg-bg-tertiary transition-colors cursor-pointer"
             >
-              Mark resolved
+              {t("sidebar.markResolved")}
             </button>
           )}
           <button
@@ -93,7 +96,7 @@ function OverflowMenu({
             }}
             className="w-full px-3 py-1.5 text-left text-xs text-text-secondary hover:bg-bg-tertiary transition-colors cursor-pointer"
           >
-            Export
+            {t("sidebar.export")}
           </button>
           <div className="border-t border-border-primary mt-1 pt-1">
             {confirmDelete ? (
@@ -107,7 +110,7 @@ function OverflowMenu({
                   }}
                   className="text-xs text-accent-red font-medium cursor-pointer hover:underline"
                 >
-                  Confirm
+                  {t("sidebar.confirm")}
                 </button>
                 <button
                   onClick={(e) => {
@@ -116,7 +119,7 @@ function OverflowMenu({
                   }}
                   className="text-xs text-text-muted cursor-pointer hover:underline"
                 >
-                  Cancel
+                  {t("sidebar.cancel")}
                 </button>
               </div>
             ) : (
@@ -127,7 +130,7 @@ function OverflowMenu({
                 }}
                 className="w-full px-3 py-1.5 text-left text-xs text-accent-red hover:bg-bg-tertiary transition-colors cursor-pointer"
               >
-                Delete
+                {t("sidebar.delete")}
               </button>
             )}
           </div>
@@ -144,6 +147,7 @@ function SessionItem({
   onExport,
   onDelete,
   onResolveToggle,
+  t,
 }: {
   session: SessionRecord;
   isActive: boolean;
@@ -151,6 +155,7 @@ function SessionItem({
   onExport: (sessionId: string, title: string) => void;
   onDelete: (sessionId: string) => void;
   onResolveToggle: (sessionId: string, resolved: boolean) => void;
+  t: (key: string, params?: Record<string, string | number>) => string;
 }) {
   return (
     <div
@@ -166,10 +171,10 @@ function SessionItem({
     >
       <div className="flex-1 min-w-0">
         <p className="text-sm leading-snug truncate">
-          {session.title || "Untitled session"}
+          {session.title || t("sidebar.untitledSession")}
         </p>
         <p className="text-[10px] text-text-muted mt-0.5">
-          {formatDate(session.created_at)}
+          {formatDate(session.created_at, t)}
           {session.resolved === true && (
             <span className="text-accent-green ml-1.5">{"\u2713"}</span>
           )}
@@ -184,6 +189,7 @@ function SessionItem({
           onExport(session.id, session.title || "session")
         }
         onDelete={() => onDelete(session.id)}
+        t={t}
       />
     </div>
   );
@@ -283,6 +289,8 @@ export function Sidebar({ session }: SidebarProps) {
     [pastSessions, setPastSessions],
   );
 
+  const { t } = useLocale();
+
   const handleNewChat = useCallback(async () => {
     setActiveView("chat");
     await session.startNewProblem();
@@ -302,7 +310,7 @@ export function Sidebar({ session }: SidebarProps) {
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
             <path d="M7 3V11M3 7H11" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
           </svg>
-          New chat
+          {t("sidebar.newChat")}
         </button>
 
         {/* Knowledge */}
@@ -318,7 +326,7 @@ export function Sidebar({ session }: SidebarProps) {
             <path d="M2 2.5C2 2.5 3.5 1.5 7 1.5C10.5 1.5 12 2.5 12 2.5V11.5C12 11.5 10.5 10.5 7 10.5C3.5 10.5 2 11.5 2 11.5V2.5Z" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round" />
             <path d="M7 1.5V10.5" stroke="currentColor" strokeWidth="1.1" />
           </svg>
-          Knowledge
+          {t("sidebar.knowledge")}
         </button>
 
         {/* Actions */}
@@ -335,7 +343,7 @@ export function Sidebar({ session }: SidebarProps) {
             <rect x="5.75" y="4" width="2.5" height="8.5" rx="0.5" stroke="currentColor" strokeWidth="1.1" />
             <rect x="10.5" y="1.5" width="2.5" height="11" rx="0.5" stroke="currentColor" strokeWidth="1.1" />
           </svg>
-          Actions
+          {t("sidebar.actions")}
         </button>
       </div>
 
@@ -349,7 +357,7 @@ export function Sidebar({ session }: SidebarProps) {
         {pastSessions.length === 0 ? (
           <div className="px-4 py-6 text-center">
             <p className="text-xs text-text-muted">
-              Sessions will appear here as you use the app.
+              {t("sidebar.sessionsEmpty")}
             </p>
           </div>
         ) : (
@@ -363,6 +371,7 @@ export function Sidebar({ session }: SidebarProps) {
                 onExport={handleExport}
                 onDelete={handleDelete}
                 onResolveToggle={handleResolveToggle}
+                t={t}
               />
             ))}
           </div>

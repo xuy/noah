@@ -8,6 +8,7 @@ import { parseResponse } from "../lib/parseResponse";
 import type { AssistantQuestion, AssistantUiPayload } from "../lib/tauri-commands";
 import * as commands from "../lib/tauri-commands";
 import { NoahIcon } from "./NoahIcon";
+import { useLocale } from "../i18n";
 import QRCode from "qrcode";
 
 const showToolCalls = import.meta.env.DEV;
@@ -40,16 +41,16 @@ function normalizeSpaText(input: string): string {
     .trim();
 }
 
-function humanizeActionLabel(label: string, actionType?: string): string {
+function humanizeActionLabel(label: string, actionType: string | undefined, t: (key: string) => string): string {
   const raw = (label || "").trim();
   const type = (actionType || "").trim();
 
   const mapByType: Record<string, string> = {
-    RUN_STEP: "Continue",
-    WAIT_FOR_USER: "I've done this",
+    RUN_STEP: t("chat.continue"),
+    WAIT_FOR_USER: t("chat.iveDoneThis"),
   };
 
-  if (!raw) return mapByType[type] || "Continue";
+  if (!raw) return mapByType[type] || t("chat.continue");
 
   const looksEnum = /^[A-Z0-9_]+$/.test(raw);
   if (looksEnum) {
@@ -67,11 +68,12 @@ function humanizeActionLabel(label: string, actionType?: string): string {
 // ── Progress Bar (playbook step indicator) ──
 
 function ProgressBar({ step, total, label }: { step: number; total: number; label: string }) {
+  const { t } = useLocale();
   const pct = Math.min(100, Math.round((step / total) * 100));
   return (
     <div className="mb-3">
       <div className="flex items-center justify-between text-xs text-text-muted mb-1.5">
-        <span className="font-medium text-text-secondary">Step {step} of {total}</span>
+        <span className="font-medium text-text-secondary">{t("chat.stepOf", { step, total })}</span>
         <span>{label}</span>
       </div>
       <div className="w-full h-1.5 rounded-full bg-bg-tertiary overflow-hidden">
@@ -275,55 +277,57 @@ function ToolCallItem({ toolCall }: { toolCall: ToolCall }) {
 
 // ── Actions Block (inline per-message) ──
 
-const CHANGE_TOOLS: Record<string, string> = {
-  mac_flush_dns: "Flushed DNS",
-  mac_kill_process: "Stopped a process",
-  mac_clear_caches: "Cleared caches",
-  mac_clear_app_cache: "Cleared app cache",
-  mac_restart_cups: "Restarted printing",
-  mac_cancel_print_jobs: "Cancelled print jobs",
-  mac_move_file: "Moved a file",
-  win_flush_dns: "Flushed DNS",
-  win_kill_process: "Stopped a process",
-  win_clear_caches: "Cleared caches",
-  win_clear_app_cache: "Cleared app cache",
-  win_restart_spooler: "Restarted printing",
-  win_cancel_print_jobs: "Cancelled print jobs",
-  win_move_file: "Moved a file",
-  win_restart_service: "Restarted a service",
-  write_knowledge: "Saved a note",
+const CHANGE_TOOL_KEYS: Record<string, string> = {
+  mac_flush_dns: "changes.mac_flush_dns",
+  mac_kill_process: "changes.mac_kill_process",
+  mac_clear_caches: "changes.mac_clear_caches",
+  mac_clear_app_cache: "changes.mac_clear_app_cache",
+  mac_restart_cups: "changes.mac_restart_cups",
+  mac_cancel_print_jobs: "changes.mac_cancel_print_jobs",
+  mac_move_file: "changes.mac_move_file",
+  win_flush_dns: "changes.win_flush_dns",
+  win_kill_process: "changes.win_kill_process",
+  win_clear_caches: "changes.win_clear_caches",
+  win_clear_app_cache: "changes.win_clear_app_cache",
+  win_restart_spooler: "changes.win_restart_spooler",
+  win_cancel_print_jobs: "changes.win_cancel_print_jobs",
+  win_move_file: "changes.win_move_file",
+  win_restart_service: "changes.win_restart_service",
+  write_knowledge: "changes.write_knowledge",
 };
 
-const SHELL_CHANGE_PATTERNS: [RegExp, string][] = [
-  [/\bfind\b.*-exec\s+(mv|cp)\b/, "Organized files"],
-  [/\bmkdir\b/, "Created folders"],
-  [/\b(cp|rsync)\b/, "Copied files"],
-  [/\bmv\b/, "Moved files"],
-  [/\b(chmod|chown|icacls)\b/, "Changed permissions"],
-  [/\brm\s/, "Cleaned up files"],
-  [/\bnetworksetup\s+-setairportnetwork\b/, "Connected to WiFi"],
-  [/\b(killall|taskkill)\s+(\S+)/, "Stopped $2"],
-  [/\bpkill\b/, "Stopped a process"],
-  [/\bopen\s+-a\s+(\S+)/, "Opened $1"],
-  [/\b(launchctl|systemctl)\b.*\b(start|stop|restart)\b/, "Managed services"],
-  [/\bdefaults\s+write\b/, "Changed preferences"],
-  [/\b(brew|apt|yum|choco|winget|scoop)\s+install\b/, "Installed software"],
-  [/\b(brew|apt|yum|choco|winget|scoop)\s+upgrade\b/, "Updated software"],
-  [/\b(npm|yarn|pnpm)\s+cache\s+clean\b/, "Cleared caches"],
-  [/\bdscacheutil\s+-flushcache\b/, "Cleared caches"],
-  [/\bsoftwareupdate\s+-(i|d)\b/, "Installed updates"],
-  [/\blpr\s/, "Printed a file"],
-  [/\bopen\s+.*systempreferences/, "Opened Settings"],
-  [/\b(open|start)\s/, "Opened a file"],
-  [/\b(sfc|DISM|chkdsk)\b/i, "Ran repair tool"],
+// Shell change patterns: regex → i18n key. Some have dynamic captures (Stopped $2, Opened $1)
+// which can't be translated with captures, so we use the generic i18n key for those.
+const SHELL_CHANGE_PATTERN_KEYS: [RegExp, string][] = [
+  [/\bfind\b.*-exec\s+(mv|cp)\b/, "shellChanges.organized"],
+  [/\bmkdir\b/, "shellChanges.createdFolders"],
+  [/\b(cp|rsync)\b/, "shellChanges.copiedFiles"],
+  [/\bmv\b/, "shellChanges.movedFiles"],
+  [/\b(chmod|chown|icacls)\b/, "shellChanges.changedPermissions"],
+  [/\brm\s/, "shellChanges.cleanedUp"],
+  [/\bnetworksetup\s+-setairportnetwork\b/, "shellChanges.connectedWifi"],
+  [/\b(killall|taskkill)\s+(\S+)/, "shellChanges.stoppedProcess"],
+  [/\bpkill\b/, "shellChanges.stoppedProcess"],
+  [/\bopen\s+-a\s+(\S+)/, "shellChanges.openedFile"],
+  [/\b(launchctl|systemctl)\b.*\b(start|stop|restart)\b/, "shellChanges.managedServices"],
+  [/\bdefaults\s+write\b/, "shellChanges.changedPreferences"],
+  [/\b(brew|apt|yum|choco|winget|scoop)\s+install\b/, "shellChanges.installedSoftware"],
+  [/\b(brew|apt|yum|choco|winget|scoop)\s+upgrade\b/, "shellChanges.updatedSoftware"],
+  [/\b(npm|yarn|pnpm)\s+cache\s+clean\b/, "shellChanges.clearedCaches"],
+  [/\bdscacheutil\s+-flushcache\b/, "shellChanges.clearedCaches"],
+  [/\bsoftwareupdate\s+-(i|d)\b/, "shellChanges.installedUpdates"],
+  [/\blpr\s/, "shellChanges.printedFile"],
+  [/\bopen\s+.*systempreferences/, "shellChanges.openedSettings"],
+  [/\b(open|start)\s/, "shellChanges.openedFile"],
+  [/\b(sfc|DISM|chkdsk)\b/i, "shellChanges.ranRepairTool"],
 ];
 
-function shellChangeLabel(description: string): string | null {
+function shellChangeLabel(description: string, t: (key: string) => string): string | null {
   if (!description.startsWith("Executed shell command:")) return null;
   const cmd = description.slice("Executed shell command:".length).trim();
-  for (const [pattern, label] of SHELL_CHANGE_PATTERNS) {
+  for (const [pattern, key] of SHELL_CHANGE_PATTERN_KEYS) {
     const m = cmd.match(pattern);
-    if (m) return label.replace(/\$(\d+)/g, (_, i) => m[+i] || "");
+    if (m) return t(key);
   }
   return null;
 }
@@ -331,19 +335,21 @@ function shellChangeLabel(description: string): string | null {
 function changeLabel(c: {
   tool_name: string;
   description: string;
-}): string | null {
-  if (c.tool_name === "shell_run") return shellChangeLabel(c.description);
-  return CHANGE_TOOLS[c.tool_name] || null;
+}, t: (key: string) => string): string | null {
+  if (c.tool_name === "shell_run") return shellChangeLabel(c.description, t);
+  const key = CHANGE_TOOL_KEYS[c.tool_name];
+  return key ? t(key) : null;
 }
 
 function dedupeChanges(
   actions: { tool_name: string; description: string }[],
+  t: (key: string, params?: Record<string, string | number>) => string,
 ): { changes: string[]; diagnosticCount: number } {
   const seen = new Set<string>();
   const changes: string[] = [];
   let diagnosticCount = 0;
   for (const a of actions) {
-    const lbl = changeLabel(a);
+    const lbl = changeLabel(a, t);
     if (lbl === null) {
       diagnosticCount++;
     } else if (!seen.has(lbl)) {
@@ -355,18 +361,19 @@ function dedupeChanges(
 }
 
 function ChangesBlock({ changeIds }: { changeIds: string[] }) {
+  const { t } = useLocale();
   const [expanded, setExpanded] = useState(false);
   const allChanges = useSessionStore((s) => s.changes);
   const matched = allChanges.filter((c) => changeIds.includes(c.id));
 
   if (matched.length === 0) return null;
 
-  const { changes, diagnosticCount } = dedupeChanges(matched);
+  const { changes, diagnosticCount } = dedupeChanges(matched, t);
 
   if (changes.length === 0) {
     return (
       <div className="mt-2 rounded-xl border border-border-primary/50 bg-bg-primary/50 px-4 py-2 text-sm text-text-muted">
-        Ran {diagnosticCount} diagnostic check{diagnosticCount !== 1 ? "s" : ""}
+        {t("chat.diagnosticChecks", { count: diagnosticCount, s: diagnosticCount !== 1 ? "s" : "" })}
       </div>
     );
   }
@@ -381,7 +388,7 @@ function ChangesBlock({ changeIds }: { changeIds: string[] }) {
           <path d="M8.5 1.5L12.5 5.5L5 13H1V9L8.5 1.5Z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
         </svg>
         <span className="text-accent-purple font-medium">
-          {changes.length} action{changes.length !== 1 ? "s" : ""} taken
+          {t("chat.actionsTaken", { count: changes.length, s: changes.length !== 1 ? "s" : "" })}
         </span>
         <span className="text-text-muted ml-auto">
           {expanded ? "\u25B4" : "\u25BE"}
@@ -396,7 +403,7 @@ function ChangesBlock({ changeIds }: { changeIds: string[] }) {
           ))}
           {diagnosticCount > 0 && (
             <div className="text-text-muted pt-0.5">
-              + {diagnosticCount} diagnostic check{diagnosticCount !== 1 ? "s" : ""}
+              {t("chat.plusDiagnostics", { count: diagnosticCount, s: diagnosticCount !== 1 ? "s" : "" })}
             </div>
           )}
         </div>
@@ -432,9 +439,10 @@ function ActionCard({
   onDoIt: () => void;
   onSendMessage?: (text: string) => void;
 }) {
+  const { t } = useLocale();
   const prettySituation = normalizeSpaText(situation);
   const prettyPlan = plan ? normalizeSpaText(plan) : null;
-  const prettyActionLabel = humanizeActionLabel(actionLabel, actionType);
+  const prettyActionLabel = humanizeActionLabel(actionLabel, actionType, t);
   const isWaitForUser = actionType === "WAIT_FOR_USER";
 
   return (
@@ -448,7 +456,7 @@ function ActionCard({
         <div className={`px-5 ${prettyPlan ? "pb-2" : "pb-3"}`}>
           {!isWaitForUser && (
             <div className="text-sm font-semibold text-accent-blue mb-1.5 tracking-wide">
-              Situation
+              {t("chat.situation")}
             </div>
           )}
           <div className={`rounded-lg px-3.5 py-3 text-base leading-relaxed ${
@@ -467,7 +475,7 @@ function ActionCard({
         {prettyPlan && (
           <div className="px-5 pb-3">
             <div className="text-sm font-semibold text-accent-purple mb-1.5 tracking-wide">
-              Plan
+              {t("chat.plan")}
             </div>
             <div className="rounded-lg border border-accent-purple/20 bg-accent-purple/5 px-3.5 py-3 text-base text-text-secondary leading-relaxed">
               <div className="whitespace-pre-wrap break-words">
@@ -495,14 +503,14 @@ function ActionCard({
               }
             `}
           >
-            {actionTaken ? "Sent" : prettyActionLabel}
+            {actionTaken ? t("chat.sent") : prettyActionLabel}
           </button>
           {!actionTaken && !isProcessing && onSendMessage && (
             <button
-              onClick={() => onSendMessage("Show me the detailed instructions")}
+              onClick={() => onSendMessage(t("chat.showInstructions"))}
               className="w-full mt-2 text-sm text-text-muted hover:text-accent-blue transition-colors cursor-pointer"
             >
-              Show me the instructions
+              {t("chat.showInstructions")}
             </button>
           )}
         </div>
@@ -535,6 +543,7 @@ function UserQuestionCard({
   onSecureAnswer?: (secretName: string, value: string) => void;
   onSendMessage?: (text: string) => void;
 }) {
+  const { t } = useLocale();
   const [selectedOption, setSelectedOption] = useState<string>("");
   const [textValue, setTextValue] = useState<string>("");
   const [secureValue, setSecureValue] = useState<string>("");
@@ -640,14 +649,14 @@ function UserQuestionCard({
             disabled={actionTaken || isProcessing || !canSubmit}
             className="w-full py-2 rounded-lg text-sm font-medium transition-all cursor-pointer bg-accent-blue text-white hover:bg-accent-blue/80 disabled:opacity-60"
           >
-            {actionTaken ? "Sent" : "Submit"}
+            {actionTaken ? t("chat.sent") : t("chat.submit")}
           </button>
           {!actionTaken && !isProcessing && onSendMessage && (
             <button
               onClick={() => onSendMessage("")}
               className="w-full text-sm text-text-muted hover:text-accent-blue transition-colors cursor-pointer"
             >
-              or type your answer below
+              {t("chat.typeAnswerBelow")}
             </button>
           )}
         </div>
@@ -672,6 +681,7 @@ function DoneCard({
   isLatestDone: boolean;
   sessionId: string | null;
 }) {
+  const { t } = useLocale();
   const [resolved, setResolved] = useState<boolean | null>(null);
   const [loaded, setLoaded] = useState(false);
 
@@ -715,30 +725,30 @@ function DoneCard({
       <div className="flex items-center gap-3 mt-1.5 min-h-[24px]">
         {isLatestDone && loaded && resolved === null && (
           <div className="flex items-center gap-2">
-            <span className="text-xs text-text-muted">Fixed?</span>
+            <span className="text-xs text-text-muted">{t("chat.fixed")}</span>
             <button
               onClick={() => handleResolve(true)}
               className="px-2.5 py-1 rounded-lg text-xs font-medium text-accent-blue bg-accent-blue/10 hover:bg-accent-blue/20 transition-colors cursor-pointer"
             >
-              Yes
+              {t("chat.yes")}
             </button>
             <button
               onClick={() => handleResolve(false)}
               className="px-2.5 py-1 rounded-lg text-xs text-text-muted hover:bg-bg-tertiary transition-colors cursor-pointer"
             >
-              Not quite
+              {t("chat.notQuite")}
             </button>
           </div>
         )}
         {resolved === true && (
           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
             <span className="text-accent-blue text-xs">{"\u2713"}</span>
-            <span className="text-xs text-text-muted">Resolved</span>
+            <span className="text-xs text-text-muted">{t("chat.resolved")}</span>
           </div>
         )}
         {resolved === false && (
           <span className="text-xs text-text-muted opacity-0 group-hover:opacity-100 transition-opacity duration-150">
-            Still working on it
+            {t("chat.stillWorking")}
           </span>
         )}
 
@@ -1003,64 +1013,32 @@ function MessageDisplay({
 
 // ── Humanize tool names for the thinking indicator ──
 
-const TOOL_HUMAN_NAMES: Record<string, string> = {
-  mac_network_info: "Checking network",
-  mac_ping: "Testing connectivity",
-  mac_dns_check: "Checking DNS",
-  mac_http_check: "Testing web access",
-  mac_flush_dns: "Flushing DNS cache",
-  mac_system_info: "Checking system",
-  mac_system_summary: "Running diagnostics",
-  mac_process_list: "Listing processes",
-  mac_disk_usage: "Checking disk space",
-  mac_printer_list: "Checking printers",
-  mac_print_queue: "Checking print queue",
-  mac_app_list: "Listing applications",
-  mac_app_logs: "Reading app logs",
-  mac_read_file: "Reading file",
-  mac_read_log: "Reading logs",
-  shell_run: "Running command",
-  mac_kill_process: "Stopping process",
-  mac_clear_caches: "Clearing caches",
-  mac_clear_app_cache: "Clearing app cache",
-  mac_restart_cups: "Restarting print service",
-  mac_cancel_print_jobs: "Cancelling print jobs",
-  mac_move_file: "Moving file",
-  win_network_info: "Checking network",
-  win_ping: "Testing connectivity",
-  win_dns_check: "Checking DNS",
-  win_http_check: "Testing web access",
-  win_flush_dns: "Flushing DNS cache",
-  win_system_info: "Checking system",
-  win_system_summary: "Running diagnostics",
-  win_process_list: "Listing processes",
-  win_disk_usage: "Checking disk space",
-  win_printer_list: "Checking printers",
-  win_print_queue: "Checking print queue",
-  win_app_list: "Listing applications",
-  win_app_logs: "Reading app logs",
-  win_app_data_ls: "Browsing app data",
-  win_read_file: "Reading file",
-  win_read_log: "Reading logs",
-  win_kill_process: "Stopping process",
-  win_clear_caches: "Clearing caches",
-  win_clear_app_cache: "Clearing app cache",
-  win_restart_spooler: "Restarting print service",
-  win_cancel_print_jobs: "Cancelling print jobs",
-  win_move_file: "Moving file",
-  win_startup_programs: "Checking startup programs",
-  win_service_list: "Listing services",
-  win_restart_service: "Restarting service",
-  write_knowledge: "Saving knowledge",
-  search_knowledge: "Searching knowledge",
-  read_knowledge: "Reading knowledge",
-  list_knowledge: "Listing knowledge",
-};
+// Tool names are looked up via t("tools.<name>") at render time.
+const TOOL_NAMES_WITH_I18N = new Set([
+  "mac_network_info", "mac_ping", "mac_dns_check", "mac_http_check",
+  "mac_flush_dns", "mac_system_info", "mac_system_summary", "mac_process_list",
+  "mac_disk_usage", "mac_printer_list", "mac_print_queue", "mac_app_list",
+  "mac_app_logs", "mac_read_file", "mac_read_log", "shell_run",
+  "mac_kill_process", "mac_clear_caches", "mac_clear_app_cache",
+  "mac_restart_cups", "mac_cancel_print_jobs", "mac_move_file",
+  "win_network_info", "win_ping", "win_dns_check", "win_http_check",
+  "win_flush_dns", "win_system_info", "win_system_summary", "win_process_list",
+  "win_disk_usage", "win_printer_list", "win_print_queue", "win_app_list",
+  "win_app_logs", "win_app_data_ls", "win_read_file", "win_read_log",
+  "win_kill_process", "win_clear_caches", "win_clear_app_cache",
+  "win_restart_spooler", "win_cancel_print_jobs", "win_move_file",
+  "win_startup_programs", "win_service_list", "win_restart_service",
+  "write_knowledge", "search_knowledge", "read_knowledge", "list_knowledge",
+]);
 
-function humanizeToolCall(summary: string): string {
+function humanizeToolCall(summary: string, t: (key: string) => string): string {
   const match = summary.match(/Calling (\w+)/);
-  if (!match) return "Working...";
-  return TOOL_HUMAN_NAMES[match[1]] || "Working...";
+  if (!match) return t("chat.working");
+  const toolName = match[1];
+  if (TOOL_NAMES_WITH_I18N.has(toolName)) {
+    return t(`tools.${toolName}`);
+  }
+  return t("chat.working");
 }
 
 // ── Thinking Indicator with live status ──
@@ -1077,7 +1055,7 @@ interface ActivityEntry {
   type: "command" | "result" | "thinking" | "error";
 }
 
-function formatActivityEntry(evt: DebugLogPayload): ActivityEntry | null {
+function formatActivityEntry(evt: DebugLogPayload, t: (key: string) => string): ActivityEntry | null {
   const time = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
   switch (evt.event_type) {
     case "tool_call": {
@@ -1099,7 +1077,7 @@ function formatActivityEntry(evt: DebugLogPayload): ActivityEntry | null {
       return { time, text: display, type: "result" };
     }
     case "llm_request":
-      return { time, text: "Thinking...", type: "thinking" };
+      return { time, text: t("chat.thinking"), type: "thinking" };
     case "error":
       return { time, text: evt.summary, type: "error" };
     default:
@@ -1108,7 +1086,7 @@ function formatActivityEntry(evt: DebugLogPayload): ActivityEntry | null {
 }
 
 /** Persistent activity log — survives across processing cycles in playbook mode. */
-function useActivityLog() {
+function useActivityLog(t: (key: string) => string) {
   const [activity, setActivity] = useState<ActivityEntry[]>([]);
   const [isPlaybook, setIsPlaybook] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
@@ -1120,25 +1098,25 @@ function useActivityLog() {
     const unlisten = listen<DebugLogPayload>("debug-log", (e) => {
       const evt = e.payload;
       if (evt.event_type === "tool_call") {
-        setStatus(humanizeToolCall(evt.summary));
+        setStatus(humanizeToolCall(evt.summary, t));
         startRef.current = Date.now();
         elapsedRef.current = 0;
         setElapsed(0);
       } else if (evt.event_type === "llm_request") {
-        setStatus("Thinking...");
+        setStatus(t("chat.thinking"));
         startRef.current = Date.now();
         elapsedRef.current = 0;
         setElapsed(0);
       } else if (evt.event_type === "playbook_activated") {
         setIsPlaybook(true);
       }
-      const entry = formatActivityEntry(evt);
+      const entry = formatActivityEntry(evt, t);
       if (entry) {
         setActivity(prev => [...prev.slice(-50), entry]);
       }
     });
     return () => { unlisten.then((fn) => fn()); };
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -1172,7 +1150,7 @@ function ThinkingDots({ status, elapsed }: { status: string | null; elapsed: num
   );
 }
 
-function ActivityLog({ activity, defaultExpanded }: { activity: ActivityEntry[]; defaultExpanded: boolean }) {
+function ActivityLog({ activity, defaultExpanded, t }: { activity: ActivityEntry[]; defaultExpanded: boolean; t: (key: string) => string }) {
   const [expanded, setExpanded] = useState(defaultExpanded);
   const logRef = useRef<HTMLDivElement>(null);
 
@@ -1197,7 +1175,7 @@ function ActivityLog({ activity, defaultExpanded }: { activity: ActivityEntry[];
           onClick={() => setExpanded(!expanded)}
           className="text-xs text-text-muted hover:text-text-secondary cursor-pointer"
         >
-          {expanded ? "Hide details" : "Show details"}
+          {expanded ? t("chat.hideDetails") : t("chat.showDetails")}
         </button>
       </div>
       {expanded && (
@@ -1224,11 +1202,11 @@ function ActivityLog({ activity, defaultExpanded }: { activity: ActivityEntry[];
 
 // ── Onboarding Suggestion Cards ──
 
-const SUGGESTIONS = [
-  { icon: "\uD83C\uDF10", label: "My internet is slow", description: "Diagnose network issues" },
-  { icon: "\uD83D\uDC22", label: "My computer feels sluggish", description: "Check performance" },
-  { icon: "\uD83D\uDCA5", label: "A program keeps crashing", description: "Find the cause" },
-  { icon: "\uD83D\uDDA8\uFE0F", label: "Set up my printer", description: "Fix printing problems" },
+const SUGGESTION_KEYS = [
+  { icon: "\uD83C\uDF10", labelKey: "suggestions.internetSlow", descKey: "suggestions.internetSlowDesc" },
+  { icon: "\uD83D\uDC22", labelKey: "suggestions.sluggish", descKey: "suggestions.sluggishDesc" },
+  { icon: "\uD83D\uDCA5", labelKey: "suggestions.crashing", descKey: "suggestions.crashingDesc" },
+  { icon: "\uD83D\uDDA8\uFE0F", labelKey: "suggestions.printer", descKey: "suggestions.printerDesc" },
 ];
 
 function SuggestionCards({
@@ -1238,6 +1216,7 @@ function SuggestionCards({
   onSelect: (text: string) => void;
   disabled: boolean;
 }) {
+  const { t } = useLocale();
   const [contextual, setContextual] = useState<
     { icon: string; label: string; description: string }[]
   >([]);
@@ -1247,14 +1226,19 @@ function SuggestionCards({
       setContextual(
         entries.slice(0, 2).map((e) => ({
           icon: "\uD83D\uDD04",
-          label: `Check on: ${e.title}`,
-          description: "Follow up on a previous issue",
+          label: t("chat.checkOn", { title: e.title }),
+          description: t("chat.followUp"),
         })),
       );
     }).catch(() => {});
-  }, []);
+  }, [t]);
 
-  const allSuggestions = [...contextual, ...SUGGESTIONS].slice(0, 4);
+  const suggestions = SUGGESTION_KEYS.map((s) => ({
+    icon: s.icon,
+    label: t(s.labelKey),
+    description: t(s.descKey),
+  }));
+  const allSuggestions = [...contextual, ...suggestions].slice(0, 4);
 
   return (
     <div className="flex flex-col items-center text-text-muted">
@@ -1283,16 +1267,17 @@ function SuggestionCards({
 }
 
 function WelcomeHero({ hasContextual }: { hasContextual: boolean }) {
+  const { t } = useLocale();
   return (
     <div className="flex flex-col items-center text-text-muted">
       <NoahIcon className="w-14 h-14 rounded-2xl mb-4" alt="Noah" />
       <p className="text-2xl font-semibold text-text-primary mb-1">
-        Hey, I'm Noah
+        {t("welcome.greeting")}
       </p>
       <p className="text-base text-text-secondary">
         {hasContextual
-          ? "What's going on? Or check in on something I know about."
-          : "Your computer helper. What's going on?"}
+          ? t("welcome.subtitleContextual")
+          : t("welcome.subtitleDefault")}
       </p>
     </div>
   );
@@ -1306,10 +1291,11 @@ export function ChatPanel() {
   const { sendMessage, sendConfirmation, sendEvent, cancelProcessing, isProcessing } =
     useAgent();
 
+  const { t } = useLocale();
   const [input, setInput] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const activityLog = useActivityLog();
+  const activityLog = useActivityLog(t);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -1371,7 +1357,7 @@ export function ChatPanel() {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Tell Noah what you need help with..."
+          placeholder={t("chat.placeholder")}
           rows={1}
           disabled={isProcessing}
           className="flex-1 bg-transparent text-base text-text-primary placeholder-text-muted px-4 py-3 resize-none outline-none min-h-[44px] max-h-[300px]"
@@ -1457,7 +1443,7 @@ export function ChatPanel() {
               })()}
               {isProcessing && <ThinkingDots status={activityLog.status} elapsed={activityLog.elapsed} />}
               {activityLog.activity.length > 0 && (
-                <ActivityLog activity={activityLog.activity} defaultExpanded={activityLog.isPlaybook} />
+                <ActivityLog activity={activityLog.activity} defaultExpanded={activityLog.isPlaybook} t={t} />
               )}
             </div>
             <div className="sticky bottom-0 pt-6 pb-4 bg-gradient-to-t from-bg-primary from-90% to-transparent">

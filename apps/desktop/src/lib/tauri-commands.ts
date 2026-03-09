@@ -353,6 +353,10 @@ export async function recordActionConfirmation(
   await invoke<void>("record_action_confirmation", { sessionId, message });
 }
 
+export async function setLocale(sessionId: string, locale: string): Promise<void> {
+  return invoke("set_locale", { sessionId, locale });
+}
+
 export async function storeSecret(
   sessionId: string,
   secretName: string,
