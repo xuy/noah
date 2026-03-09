@@ -464,13 +464,23 @@ pub fn session_needs_title(conn: &Connection, id: &str) -> Result<bool> {
     Ok(title.is_none())
 }
 
-/// Set the session title (typically from the first user message).
+/// Set the session title (only if currently NULL — for auto-titling from first message).
 pub fn update_session_title(conn: &Connection, id: &str, title: &str) -> Result<()> {
     conn.execute(
         "UPDATE sessions SET title = ?1 WHERE id = ?2 AND title IS NULL",
         rusqlite::params![title, id],
     )
     .context("Failed to update session title")?;
+    Ok(())
+}
+
+/// Rename a session (unconditional — overwrites any existing title).
+pub fn rename_session_title(conn: &Connection, id: &str, title: &str) -> Result<()> {
+    conn.execute(
+        "UPDATE sessions SET title = ?1 WHERE id = ?2",
+        rusqlite::params![title, id],
+    )
+    .context("Failed to rename session")?;
     Ok(())
 }
 

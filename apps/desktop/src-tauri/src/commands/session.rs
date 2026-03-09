@@ -153,7 +153,7 @@ pub async fn rename_session(
     title: String,
 ) -> Result<(), String> {
     let conn = state.db.lock().await;
-    journal::update_session_title(&conn, &session_id, &title)
+    journal::rename_session_title(&conn, &session_id, &title)
         .map_err(|e| format!("Failed to rename session: {}", e))
 }
 
