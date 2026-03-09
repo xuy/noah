@@ -524,7 +524,6 @@ function UserQuestionCard({
   progress,
   onAnswer,
   onSecureAnswer,
-  onSkip,
   onSendMessage,
 }: {
   questions: AssistantQuestion[];
@@ -534,7 +533,6 @@ function UserQuestionCard({
   progress?: { step: number; total: number; label: string };
   onAnswer: (answer: string) => void;
   onSecureAnswer?: (secretName: string, value: string) => void;
-  onSkip: () => void;
   onSendMessage?: (text: string) => void;
 }) {
   const [selectedOption, setSelectedOption] = useState<string>("");
@@ -636,32 +634,23 @@ function UserQuestionCard({
             />
           )}
         </div>
-        <div className="flex gap-2.5 px-5 pb-4">
+        <div className="px-5 pb-4 space-y-2">
           <button
             onClick={handleSubmit}
             disabled={actionTaken || isProcessing || !canSubmit}
-            className="flex-1 py-2 rounded-lg text-sm font-medium transition-all cursor-pointer bg-accent-blue text-white hover:bg-accent-blue/80 disabled:opacity-60"
+            className="w-full py-2 rounded-lg text-sm font-medium transition-all cursor-pointer bg-accent-blue text-white hover:bg-accent-blue/80 disabled:opacity-60"
           >
             {actionTaken ? "Sent" : "Submit"}
           </button>
-          <button
-            onClick={onSkip}
-            disabled={actionTaken || isProcessing}
-            className="flex-1 py-2 rounded-lg text-sm border border-border-primary text-text-secondary hover:bg-bg-tertiary cursor-pointer disabled:opacity-60"
-          >
-            Skip For Now
-          </button>
-        </div>
-        {!actionTaken && !isProcessing && onSendMessage && (
-          <div className="px-5 pb-3">
+          {!actionTaken && !isProcessing && onSendMessage && (
             <button
               onClick={() => onSendMessage("")}
               className="w-full text-sm text-text-muted hover:text-accent-blue transition-colors cursor-pointer"
             >
               or type your answer below
             </button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
       <div className="text-[10px] mt-1 text-text-muted opacity-0 group-hover:opacity-100 transition-opacity duration-150">
         {formatTime(timestamp)}
@@ -892,7 +881,6 @@ function renderFromUiPayload(
             onEvent("USER_ANSWER_QUESTION", JSON.stringify({ answer }))
           }
           onSecureAnswer={onSecureAnswer}
-          onSkip={() => onEvent("USER_SKIP_OPTIONAL")}
           onSendMessage={onSendMessage}
         />
       );
@@ -993,7 +981,7 @@ function MessageDisplay({
             onAnswer={(answer) =>
               onEvent("USER_ANSWER_QUESTION", JSON.stringify({ answer }))
             }
-            onSkip={() => onEvent("USER_SKIP_OPTIONAL")}
+            onSendMessage={onSendMessage}
           />
         );
         break;
