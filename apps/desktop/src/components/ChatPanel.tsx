@@ -479,7 +479,7 @@ function ActionCard({
             </div>
             <div className="rounded-lg border border-accent-purple/20 bg-accent-purple/5 px-3.5 py-3 text-base text-text-secondary leading-relaxed">
               <div className="whitespace-pre-wrap break-words">
-                <LinkedText text={prettyPlan} />
+                <MarkdownSummary text={prettyPlan} />
               </div>
             </div>
           </div>
