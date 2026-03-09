@@ -10,6 +10,8 @@ type ActiveView = "chat" | "knowledge" | "diagnostics";
 interface SessionState {
   sessionId: string | null;
   isActive: boolean;
+  /** Session ID currently being processed by the LLM (null if idle). */
+  processingSessionId: string | null;
   changes: ChangeEntry[];
   pendingApproval: ApprovalRequest | null;
   changeLogOpen: boolean;
@@ -22,6 +24,7 @@ interface SessionState {
 
   setSession: (id: string) => void;
   endSession: () => void;
+  setProcessingSession: (id: string | null) => void;
   addChange: (change: ChangeEntry) => void;
   markChangeUndone: (changeId: string) => void;
   setChanges: (changes: ChangeEntry[]) => void;
@@ -38,6 +41,8 @@ interface SessionState {
   setSidebarOpen: (open: boolean) => void;
   setActiveView: (view: ActiveView) => void;
   setPastSessions: (sessions: SessionRecord[]) => void;
+  /** Add a session to the top of pastSessions (optimistic insert). */
+  prependSession: (session: SessionRecord) => void;
 }
 
 // Helper: close all side panels.
@@ -51,6 +56,7 @@ const allPanelsClosed = {
 export const useSessionStore = create<SessionState>((set) => ({
   sessionId: null,
   isActive: false,
+  processingSessionId: null,
   changes: [],
   pendingApproval: null,
   changeLogOpen: false,
@@ -74,6 +80,8 @@ export const useSessionStore = create<SessionState>((set) => ({
       isActive: false,
       pendingApproval: null,
     }),
+
+  setProcessingSession: (id) => set({ processingSessionId: id }),
 
   addChange: (change) =>
     set((state) => ({
@@ -136,4 +144,9 @@ export const useSessionStore = create<SessionState>((set) => ({
   setActiveView: (view) => set({ activeView: view }),
 
   setPastSessions: (sessions) => set({ pastSessions: sessions }),
+
+  prependSession: (session) =>
+    set((state) => ({
+      pastSessions: [session, ...state.pastSessions.filter((s) => s.id !== session.id)],
+    })),
 }));

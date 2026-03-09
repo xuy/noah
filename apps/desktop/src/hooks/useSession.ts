@@ -22,6 +22,7 @@ export function useSession(): UseSessionReturn {
     isActive,
     setSession,
     endSession: endSessionState,
+    prependSession,
   } = useSessionStore();
   const addMessage = useChatStore((s) => s.addMessage);
   const clearMessages = useChatStore((s) => s.clearMessages);
@@ -32,6 +33,16 @@ export function useSession(): UseSessionReturn {
       clearMessages();
       const session = await commands.createSession();
       setSession(session.id);
+      // Immediately add to sidebar so the user sees a placeholder entry.
+      prependSession({
+        id: session.id,
+        created_at: session.created_at,
+        ended_at: null,
+        title: null,
+        message_count: 0,
+        change_count: 0,
+        resolved: null,
+      });
       // Sync locale to backend so the LLM system prompt includes a language hint.
       commands.setLocale(session.id, currentLocale()).catch(() => {});
       addMessage({
@@ -46,7 +57,7 @@ export function useSession(): UseSessionReturn {
         content: `Failed to start session: ${err instanceof Error ? err.message : String(err)}`,
       });
     }
-  }, [setSession, addMessage, clearMessages]);
+  }, [setSession, prependSession, addMessage, clearMessages]);
 
   const startNewProblem = useCallback(async () => {
     if (sessionId) {

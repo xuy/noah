@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useCallback } from "react";
 import { useChatStore } from "../stores/chatStore";
 import { useSessionStore } from "../stores/sessionStore";
 import * as commands from "../lib/tauri-commands";
@@ -19,13 +19,17 @@ function cleanError(err: unknown): string {
 }
 
 export function useAgent(): UseAgentReturn {
-  const [isProcessing, setIsProcessing] = useState(false);
   const addMessage = useChatStore((s) => s.addMessage);
   const updateMessage = useChatStore((s) => s.updateMessage);
   const markActionTaken = useChatStore((s) => s.markActionTaken);
   const sessionId = useSessionStore((s) => s.sessionId);
+  const processingSessionId = useSessionStore((s) => s.processingSessionId);
+  const setProcessingSession = useSessionStore((s) => s.setProcessingSession);
   const setChanges = useSessionStore((s) => s.setChanges);
   const changes = useSessionStore((s) => s.changes);
+
+  // Only show processing indicator when the current session matches the processing one.
+  const isProcessing = processingSessionId !== null && processingSessionId === sessionId;
 
   const sendMessage = useCallback(
     async (text: string) => {
@@ -35,7 +39,7 @@ export function useAgent(): UseAgentReturn {
       const prevChangeIds = new Set(changes.map((c) => c.id));
 
       addMessage({ role: "user", content: trimmed });
-      setIsProcessing(true);
+      setProcessingSession(sessionId);
 
       try {
         const result = await commands.sendMessageV2(sessionId, trimmed);
@@ -68,10 +72,10 @@ export function useAgent(): UseAgentReturn {
           content: cleanError(err),
         });
       } finally {
-        setIsProcessing(false);
+        setProcessingSession(null);
       }
     },
-    [sessionId, addMessage, updateMessage, setChanges, changes],
+    [sessionId, addMessage, updateMessage, setProcessingSession, setChanges, changes],
   );
 
   const sendConfirmation = useCallback(
@@ -86,7 +90,7 @@ export function useAgent(): UseAgentReturn {
         role: "user",
         content: confirmText,
       });
-      setIsProcessing(true);
+      setProcessingSession(sessionId);
 
       try {
         const result = await commands.sendMessageV2(
@@ -123,10 +127,10 @@ export function useAgent(): UseAgentReturn {
           content: cleanError(err),
         });
       } finally {
-        setIsProcessing(false);
+        setProcessingSession(null);
       }
     },
-    [sessionId, addMessage, updateMessage, markActionTaken, setChanges, changes],
+    [sessionId, addMessage, updateMessage, markActionTaken, setProcessingSession, setChanges, changes],
   );
 
   const sendEvent = useCallback(
@@ -144,7 +148,7 @@ export function useAgent(): UseAgentReturn {
         } catch { /* best-effort */ }
       }
 
-      setIsProcessing(true);
+      setProcessingSession(sessionId);
       try {
         const result = await commands.sendUserEvent(
           sessionId,
@@ -163,10 +167,10 @@ export function useAgent(): UseAgentReturn {
           content: cleanError(err),
         });
       } finally {
-        setIsProcessing(false);
+        setProcessingSession(null);
       }
     },
-    [sessionId, addMessage],
+    [sessionId, addMessage, setProcessingSession],
   );
 
   const cancelProcessing = useCallback(async () => {
