@@ -244,6 +244,9 @@ pub fn run() {
             let scanner_trigger = scanner_mgr.trigger_handle();
             let scanner_pause = scanner_mgr.pause_handle();
 
+            // Clone app_dir before moving into AppState (needed for background refresh).
+            let ctx_dir = app_dir.clone();
+
             // Manage shared state.
             app.manage(AppState {
                 orchestrator: Mutex::new(orchestrator),
@@ -254,6 +257,14 @@ pub fn run() {
                 cancelled,
                 scanner_trigger,
                 scanner_pause,
+            });
+
+            // Refresh machine context in background (avoids blocking main thread
+            // with slow PowerShell/WMI commands on Windows).
+            tauri::async_runtime::spawn(async move {
+                tokio::task::spawn_blocking(move || {
+                    machine_context::MachineContext::refresh_if_stale(&ctx_dir);
+                }).await.ok();
             });
 
             // Spawn the proactive health monitor in the background.

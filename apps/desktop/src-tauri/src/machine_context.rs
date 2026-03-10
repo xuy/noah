@@ -212,16 +212,31 @@ impl MachineContext {
         }
     }
 
-    /// Primary entry point: load cached if fresh, otherwise gather + save.
+    /// Primary entry point: load cached if available, otherwise gather + save.
+    ///
+    /// Always returns immediately if a cache file exists (even if stale) to avoid
+    /// blocking the main thread. On Windows, `gather()` runs PowerShell/WMI commands
+    /// that can take 10-30 seconds, freezing the UI if run during `setup()`.
+    ///
+    /// Use `refresh_if_stale()` in the background after startup to update the cache.
     pub fn load_or_gather(app_dir: &Path) -> Self {
         if let Some(cached) = Self::load(app_dir) {
-            if !cached.is_stale() {
-                return cached;
-            }
+            return cached;
         }
         let ctx = Self::gather();
         ctx.save(app_dir);
         ctx
+    }
+
+    /// Refresh the cache in the background if stale. Call from an async context.
+    pub fn refresh_if_stale(app_dir: &Path) {
+        if let Some(cached) = Self::load(app_dir) {
+            if !cached.is_stale() {
+                return;
+            }
+        }
+        let ctx = Self::gather();
+        ctx.save(app_dir);
     }
 
     /// Format for the system prompt. Omits fields that are "Unknown" or empty.
