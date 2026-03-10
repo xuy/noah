@@ -87,6 +87,7 @@ apps/desktop/
     src/
       agent/              # Orchestrator, LLM client, tool router, prompts
       artifacts.rs        # Knowledge persistence (save/query facts across sessions)
+      platform/linux/     # Linux tool implementations
       platform/macos/     # macOS tool implementations
       platform/windows/   # Windows tool implementations
       safety/             # Journal (change logging + undo), safety tiers
