@@ -117,7 +117,9 @@ async function collectArtifacts() {
     ["nsis", ".exe"],
     ["nsis", ".exe.sig"],
     ["deb", ".deb"],
+    ["rpm", ".rpm"],
     ["appimage", ".AppImage"],
+    ["appimage", ".AppImage.sig"],
   ];
 
   const artifacts = [];
@@ -242,6 +244,10 @@ async function main() {
     if (hasSigning && hasNotarization) {
       console.log("==> macOS signing + notarization enabled");
     }
+  }
+
+  if (process.platform === "linux") {
+    process.env.NO_STRIP = 'true';
   }
 
   console.log("==> Running tauri build...");
