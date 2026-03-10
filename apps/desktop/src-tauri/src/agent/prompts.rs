@@ -79,11 +79,37 @@ your context. Use `write_secret` to write a collected secret to a config file.
 - Never call modifying tools until user confirms the plan.
 - Don't run interactive terminal wizards through `shell_run`; tell user the command instead."#;
 
+/// Additional instructions injected only in "learn" mode sessions.
+const LEARN_MODE_PROMPT: &str = r#"
+
+## Learning from URLs and Text
+
+The user has started a knowledge-creation session. They will provide a URL or text for you to learn from.
+
+1. If given a URL, use `web_fetch` to retrieve the content.
+2. Analyze whether the content is:
+   - **Procedural** (step-by-step tutorial, setup guide, install instructions)
+     → Compile into a playbook using `write_knowledge` with category "playbooks"
+   - **Informational** (reference docs, config details, facts about their system)
+     → Save as knowledge using `write_knowledge` in the appropriate category
+3. For playbooks, follow these compilation rules:
+   - Add YAML frontmatter: name, description, platform, last_reviewed, author, type: user
+   - Convert CLI commands to `shell_run` invocations
+   - Convert browser/GUI steps to WAIT_FOR_USER with concrete instructions
+   - Convert credential entry to `secure_input` (secret_name: descriptive_name)
+   - Add `## Step N: Label` headers for progress tracking
+   - Add verification steps after major actions
+   - Add `## Tools referenced` section
+   - End with a `## Done` step summarizing what was accomplished
+   - Keep under 120 lines
+4. Show the user what you understood and get confirmation before saving.
+5. After saving, inform the user they can activate their playbook anytime."#;
+
 /// Build system prompt blocks optimized for prompt caching.
 ///
 /// Layout: [static prompt (cached)] [dynamic context (per-request)]
 /// The static block gets a cache_control breakpoint so Anthropic caches it.
-pub fn system_prompt_blocks(os_context: &str, knowledge_toc: &str, locale: Option<&str>) -> Vec<SystemBlock> {
+pub fn system_prompt_blocks(os_context: &str, knowledge_toc: &str, locale: Option<&str>, mode: &str) -> Vec<SystemBlock> {
     let mut blocks = vec![SystemBlock {
         block_type: "text",
         text: STATIC_PROMPT.to_string(),
@@ -95,6 +121,10 @@ pub fn system_prompt_blocks(os_context: &str, knowledge_toc: &str, locale: Optio
     if !knowledge_toc.is_empty() {
         dynamic.push_str("\n\n");
         dynamic.push_str(knowledge_toc);
+    }
+
+    if mode == "learn" {
+        dynamic.push_str(LEARN_MODE_PROMPT);
     }
 
     if let Some(lang) = locale {
@@ -120,7 +150,7 @@ pub fn system_prompt_blocks(os_context: &str, knowledge_toc: &str, locale: Optio
 
 /// Build system prompt as a single string (for backward compat / tests).
 pub fn system_prompt(os_context: &str, knowledge_toc: &str) -> String {
-    system_prompt_blocks(os_context, knowledge_toc, None)
+    system_prompt_blocks(os_context, knowledge_toc, None, "default")
         .iter()
         .map(|b| b.text.as_str())
         .collect::<Vec<_>>()

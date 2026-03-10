@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useSessionStore } from "../stores/sessionStore";
 import { useSession } from "../hooks/useSession";
+import type { SessionMode } from "../hooks/useSession";
 import { useLocale } from "../i18n";
 import * as commands from "../lib/tauri-commands";
 import type { SessionRecord } from "../lib/tauri-commands";
@@ -228,7 +229,7 @@ function SessionItem({
 
 interface SidebarProps {
   session: {
-    startNewProblem: () => Promise<void>;
+    startNewProblem: (mode?: SessionMode) => Promise<void>;
   };
 }
 

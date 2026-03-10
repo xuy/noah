@@ -1,17 +1,19 @@
 import { useEffect, useCallback } from "react";
 import { useSessionStore } from "../stores/sessionStore";
 import { useChatStore } from "../stores/chatStore";
-import { currentLocale } from "../i18n";
+import { currentLocale, t as i18nT } from "../i18n";
 import * as commands from "../lib/tauri-commands";
 
 // Module-level guard: shared across all useSession() instances
 let creating = false;
 
+export type SessionMode = "default" | "learn";
+
 interface UseSessionReturn {
   sessionId: string | null;
   isActive: boolean;
   /** End the current problem and start a fresh session. */
-  startNewProblem: () => Promise<void>;
+  startNewProblem: (mode?: SessionMode) => Promise<void>;
   /** Switch to an existing problem/session (loads its messages). */
   switchToProblem: (sessionId: string) => Promise<void>;
 }
@@ -28,7 +30,7 @@ export function useSession(): UseSessionReturn {
   const clearMessages = useChatStore((s) => s.clearMessages);
   const setMessages = useChatStore((s) => s.setMessages);
 
-  const createSession = useCallback(async () => {
+  const createSession = useCallback(async (mode: SessionMode = "default") => {
     try {
       clearMessages();
       const session = await commands.createSession();
@@ -45,11 +47,15 @@ export function useSession(): UseSessionReturn {
       });
       // Sync locale to backend so the LLM system prompt includes a language hint.
       commands.setLocale(session.id, currentLocale()).catch(() => {});
-      addMessage({
-        role: "system",
-        content:
-          "Hey! I'm Noah, your computer helper. Just tell me what's going on and I'll take care of it.",
-      });
+      // Set session mode so backend can tailor the system prompt.
+      if (mode === "learn") {
+        commands.setSessionMode(session.id, "learn").catch(() => {});
+      }
+
+      const greeting = mode === "learn"
+        ? `${i18nT("welcome.learnGreeting")} ${i18nT("welcome.learnSubtitle")}`
+        : "Hey! I'm Noah, your computer helper. Just tell me what's going on and I'll take care of it.";
+      addMessage({ role: "system", content: greeting });
     } catch (err) {
       console.error("Failed to create session:", err);
       addMessage({
@@ -59,7 +65,7 @@ export function useSession(): UseSessionReturn {
     }
   }, [setSession, prependSession, addMessage, clearMessages]);
 
-  const startNewProblem = useCallback(async () => {
+  const startNewProblem = useCallback(async (mode?: SessionMode) => {
     if (sessionId) {
       try {
         await commands.endSession(sessionId);
@@ -68,7 +74,7 @@ export function useSession(): UseSessionReturn {
         console.error("Failed to end session:", err);
       }
     }
-    await createSession();
+    await createSession(mode ?? "default");
   }, [sessionId, endSessionState, createSession]);
 
   const setChanges = useSessionStore((s) => s.setChanges);

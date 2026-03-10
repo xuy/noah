@@ -28,7 +28,9 @@
   "welcome": {
     "greeting": "Hey, I'm Noah",
     "subtitleContextual": "What's going on? Or check in on something I know about.",
-    "subtitleDefault": "Your computer helper. What's going on?"
+    "subtitleDefault": "Your computer helper. What's going on?",
+    "learnGreeting": "What would you like me to learn?",
+    "learnSubtitle": "Paste a URL, some text, or describe what you'd like me to remember."
   },
   "suggestions": {
     "internetSlow": "My internet is slow",
@@ -236,6 +238,7 @@
     "win_startup_programs": "Checking startup programs",
     "win_service_list": "Listing services",
     "win_restart_service": "Restarting service",
+    "web_fetch": "Fetching web page",
     "write_knowledge": "Saving knowledge",
     "search_knowledge": "Searching knowledge",
     "read_knowledge": "Reading knowledge",

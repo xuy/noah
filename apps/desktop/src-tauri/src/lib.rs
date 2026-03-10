@@ -9,6 +9,7 @@ mod proactive;
 mod safety;
 mod scanner;
 pub mod ui_tools;
+mod web_fetch;
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -209,6 +210,9 @@ pub fn run() {
             // Register UI tools.
             ui_tools::register_ui_tools(&mut router);
 
+            // Register web_fetch tool.
+            router.register(Box::new(web_fetch::WebFetchTool));
+
             // Seed bundled playbooks into knowledge/playbooks/ and register activate_playbook.
             // Playbooks ship as Tauri bundled resources (plain files, not compiled in).
             let bundled_playbooks = app
@@ -328,6 +332,7 @@ pub fn run() {
             commands::settings::dismiss_proactive_suggestion,
             commands::settings::act_on_proactive_suggestion,
             commands::settings::set_locale,
+            commands::settings::set_session_mode,
             commands::knowledge::list_knowledge,
             commands::knowledge::read_knowledge_file,
             commands::knowledge::delete_knowledge_file,

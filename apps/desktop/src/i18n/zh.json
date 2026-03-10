@@ -28,7 +28,9 @@
   "welcome": {
     "greeting": "你好，我是 Noah",
     "subtitleContextual": "有什么问题？或者看看我已知道的。",
-    "subtitleDefault": "你的电脑助手。有什么问题？"
+    "subtitleDefault": "你的电脑助手。有什么问题？",
+    "learnGreeting": "你想让我学习什么？",
+    "learnSubtitle": "粘贴一个网址、一段文字，或者描述你想让我记住的内容。"
   },
   "suggestions": {
     "internetSlow": "我的网速很慢",
@@ -236,6 +238,7 @@
     "win_startup_programs": "检查启动程序",
     "win_service_list": "列出服务",
     "win_restart_service": "重启服务",
+    "web_fetch": "获取网页内容",
     "write_knowledge": "保存知识",
     "search_knowledge": "搜索知识",
     "read_knowledge": "读取知识",

@@ -112,7 +112,10 @@ function MainApp() {
         <div className="flex flex-col flex-1 min-w-0 origin-top-left" style={{ zoom }}>
           <SessionSummary />
           {activeView === "knowledge" ? (
-            <KnowledgeView />
+            <KnowledgeView onNewKnowledge={async () => {
+              useSessionStore.getState().setActiveView("chat");
+              await session.startNewProblem("learn");
+            }} />
           ) : activeView === "diagnostics" ? (
             <DiagnosticsView />
           ) : (

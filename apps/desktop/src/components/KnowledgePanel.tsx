@@ -185,7 +185,7 @@ function KnowledgeCard({
   );
 }
 
-export function KnowledgeView() {
+export function KnowledgeView({ onNewKnowledge }: { onNewKnowledge?: () => void } = {}) {
   const { t } = useLocale();
   const activeView = useSessionStore((s) => s.activeView);
   const [entries, setEntries] = useState<KnowledgeEntry[]>([]);
@@ -309,7 +309,10 @@ export function KnowledgeView() {
                 <h1 className="text-2xl font-semibold text-text-primary">{t("knowledgePanel.title")}</h1>
                 <p className="text-sm text-text-muted mt-1">{t("knowledgePanel.fileCount", { count: entries.length })}</p>
               </div>
-              <button className="px-4 py-2 rounded-lg border border-border-primary text-sm text-text-primary hover:bg-bg-tertiary/40 transition-colors">
+              <button
+                onClick={() => onNewKnowledge?.()}
+                className="px-4 py-2 rounded-lg border border-border-primary text-sm text-text-primary hover:bg-bg-tertiary/40 transition-colors cursor-pointer"
+              >
                 {t("knowledgePanel.newKnowledge")}
               </button>
             </div>

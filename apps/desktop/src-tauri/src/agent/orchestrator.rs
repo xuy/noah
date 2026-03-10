@@ -64,6 +64,8 @@ pub struct Session {
     pub secrets: HashMap<String, String>,
     /// User's preferred locale (e.g. "en", "zh"). Used to hint the LLM response language.
     pub locale: Option<String>,
+    /// Session mode: "default" for normal chat, "learn" for knowledge-creation flow.
+    pub mode: String,
 }
 
 pub struct Orchestrator {
@@ -114,6 +116,7 @@ impl Orchestrator {
             playbook: None,
             secrets: HashMap::new(),
             locale: None,
+            mode: "default".to_string(),
         };
         self.sessions.insert(id.clone(), session);
         id
@@ -141,6 +144,12 @@ impl Orchestrator {
 
     pub fn get_locale(&self, session_id: &str) -> Option<String> {
         self.sessions.get(session_id).and_then(|s| s.locale.clone())
+    }
+
+    pub fn set_mode(&mut self, session_id: &str, mode: &str) {
+        if let Some(session) = self.sessions.get_mut(session_id) {
+            session.mode = mode.to_string();
+        }
     }
 
     pub fn get_session(&self, session_id: &str) -> Option<&Session> {
@@ -228,7 +237,8 @@ impl Orchestrator {
 
         let knowledge_ctx = knowledge::knowledge_toc(&self.knowledge_dir).unwrap_or_default();
         let locale = self.sessions[session_id].locale.clone();
-        let system = prompts::system_prompt_blocks(&self.os_context, &knowledge_ctx, locale.as_deref());
+        let mode = self.sessions[session_id].mode.clone();
+        let system = prompts::system_prompt_blocks(&self.os_context, &knowledge_ctx, locale.as_deref(), &mode);
         let tool_defs = self.router.tool_definitions();
 
         // Reset cancellation flag at the start of each user message.
