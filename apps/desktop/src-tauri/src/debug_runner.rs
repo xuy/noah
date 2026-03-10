@@ -135,6 +135,8 @@ pub async fn run_prompt_flow(prompt: &str, max_turns: usize) -> Result<PromptRun
         knowledge_dir.clone(),
     )));
 
+    router.register(Box::new(crate::web_fetch::WebFetchTool));
+
     // In debug/CLI mode, read bundled playbooks from the source tree.
     let bundled_playbooks = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("playbooks");
     let playbook_registry = playbooks::PlaybookRegistry::init(&knowledge_dir, &bundled_playbooks)?;
@@ -152,15 +154,27 @@ pub async fn run_prompt_flow(prompt: &str, max_turns: usize) -> Result<PromptRun
 
     let pending_approvals: PendingApprovals =
         Arc::new(Mutex::new(HashMap::<String, tokio::sync::oneshot::Sender<bool>>::new()));
+    // Allow overriding the OS context for testing (e.g. emulate Linux on macOS).
+    let os_context = match std::env::var("NOAH_PLATFORM") {
+        Ok(plat) => format!("Platform: {}\nHostname: test-machine", plat),
+        Err(_) => MachineContext::load_or_gather(&app_dir).to_prompt_string(),
+    };
     let mut orchestrator = Orchestrator::new(
         llm,
         router,
-        MachineContext::load_or_gather(&app_dir).to_prompt_string(),
+        os_context,
         pending_approvals.clone(),
         db_arc.clone(),
         knowledge_dir,
     );
     let session_id = orchestrator.create_session();
+
+    // Support NOAH_MODE=learn to enable knowledge-creation system prompt.
+    if let Ok(mode) = std::env::var("NOAH_MODE") {
+        if mode == "learn" {
+            orchestrator.set_mode(&session_id, "learn");
+        }
+    }
     {
         let conn = db_arc.lock().await;
         journal::create_session_record(&conn, &session_id, &chrono::Utc::now().to_rfc3339())?;
