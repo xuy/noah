@@ -23,6 +23,24 @@ pub async fn set_api_key(state: State<'_, AppState>, api_key: String) -> Result<
     Ok(())
 }
 
+#[tauri::command]
+pub async fn get_anthropic_base_url(state: State<'_, AppState>) -> Result<String, String> {
+    Ok(crate::get_anthropic_base_url(&state.app_dir).unwrap_or_default())
+}
+
+#[tauri::command]
+pub async fn set_anthropic_base_url(
+    state: State<'_, AppState>,
+    base_url: String,
+) -> Result<(), String> {
+    let trimmed = base_url.trim();
+    if !trimmed.is_empty() && !(trimmed.starts_with("https://") || trimmed.starts_with("http://")) {
+        return Err("Base URL must start with http:// or https://".to_string());
+    }
+
+    crate::save_anthropic_base_url(&state.app_dir, trimmed)
+}
+
 #[derive(Debug, Deserialize)]
 struct RedeemResponse {
     token: Option<String>,
