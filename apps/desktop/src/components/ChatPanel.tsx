@@ -1360,7 +1360,7 @@ export function ChatPanel() {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder={t("chat.placeholder")}
+          placeholder={sessionMode === "learn" ? t("chat.learnPlaceholder") : t("chat.placeholder")}
           rows={1}
           disabled={isProcessing}
           className="flex-1 bg-transparent text-base text-text-primary placeholder-text-muted px-4 py-3 resize-none outline-none min-h-[44px] max-h-[300px]"

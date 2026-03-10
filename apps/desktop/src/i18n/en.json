@@ -1,6 +1,7 @@
 {
   "chat": {
     "placeholder": "Tell Noah what you need help with...",
+    "learnPlaceholder": "Paste a URL or text here...",
     "situation": "Situation",
     "plan": "Plan",
     "sent": "Sent",

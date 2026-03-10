@@ -1,6 +1,7 @@
 {
   "chat": {
     "placeholder": "告诉 Noah 你需要什么帮助...",
+    "learnPlaceholder": "在这里粘贴网址或文字...",
     "situation": "情况",
     "plan": "方案",
     "sent": "已发送",
