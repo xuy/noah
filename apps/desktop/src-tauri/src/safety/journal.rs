@@ -1001,6 +1001,46 @@ mod tests {
         assert!(!obj.contains_key("toolName"));
         assert!(!obj.contains_key("undoTool"));
     }
+
+    #[test]
+    fn test_get_session_returns_existing_session() {
+        let conn = test_db();
+        create_session_record(&conn, "s1", "2026-01-01T00:00:00Z").unwrap();
+        update_session_message_count(&conn, "s1", 5).unwrap();
+
+        let session = get_session(&conn, "s1").unwrap();
+        assert!(session.is_some());
+        let session = session.unwrap();
+        assert_eq!(session.id, "s1");
+        assert_eq!(session.created_at, "2026-01-01T00:00:00Z");
+        assert_eq!(session.message_count, 5);
+        assert_eq!(session.change_count, 0);
+    }
+
+    #[test]
+    fn test_get_session_returns_none_for_nonexistent() {
+        let conn = test_db();
+        let session = get_session(&conn, "nonexistent").unwrap();
+        assert!(session.is_none());
+    }
+
+    #[test]
+    fn test_get_session_includes_change_count() {
+        let conn = test_db();
+        create_session_record(&conn, "s1", "2026-01-01T00:00:00Z").unwrap();
+        update_session_message_count(&conn, "s1", 3).unwrap();
+
+        let change = ChangeRecord {
+            description: "test change".to_string(),
+            undo_tool: "test_tool".to_string(),
+            undo_input: serde_json::json!({}),
+        };
+        record_change(&conn, "s1", "tool", &change).unwrap();
+        record_change(&conn, "s1", "tool", &change).unwrap();
+
+        let session = get_session(&conn, "s1").unwrap().unwrap();
+        assert_eq!(session.change_count, 2);
+    }
 }
 
 // ── Telemetry & Settings ─────────────────────────────────────────────────
