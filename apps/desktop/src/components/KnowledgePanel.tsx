@@ -301,6 +301,12 @@ export function KnowledgeView({ onNewKnowledge }: { onNewKnowledge?: () => void 
             <p className="text-sm text-text-muted text-center max-w-xs">
               {t("knowledgePanel.noKnowledgeDesc")}
             </p>
+            <button
+              onClick={() => onNewKnowledge?.()}
+              className="mt-4 px-4 py-2 rounded-lg border border-border-primary text-sm text-text-primary hover:bg-bg-tertiary/40 transition-colors cursor-pointer"
+            >
+              {t("knowledgePanel.newKnowledge")}
+            </button>
           </div>
         ) : (
           <div className="max-w-6xl w-full mx-auto py-4 px-6">

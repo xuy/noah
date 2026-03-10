@@ -48,8 +48,9 @@ export function useSession(): UseSessionReturn {
       // Sync locale to backend so the LLM system prompt includes a language hint.
       commands.setLocale(session.id, currentLocale()).catch(() => {});
       // Set session mode so backend can tailor the system prompt.
+      // Awaited to avoid race with the user's first message.
       if (mode === "learn") {
-        commands.setSessionMode(session.id, "learn").catch(() => {});
+        await commands.setSessionMode(session.id, "learn");
       }
 
       const greeting = mode === "learn"

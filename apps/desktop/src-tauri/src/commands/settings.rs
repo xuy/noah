@@ -177,6 +177,10 @@ pub async fn set_locale(state: State<'_, AppState>, session_id: String, locale: 
 
 #[tauri::command]
 pub async fn set_session_mode(state: State<'_, AppState>, session_id: String, mode: String) -> Result<(), String> {
+    match mode.as_str() {
+        "default" | "learn" => {}
+        _ => return Err(format!("Invalid session mode: {}", mode)),
+    }
     let mut orch = state.orchestrator.lock().await;
     orch.set_mode(&session_id, &mode);
     Ok(())

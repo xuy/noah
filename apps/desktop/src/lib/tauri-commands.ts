@@ -363,7 +363,7 @@ export async function setLocale(sessionId: string, locale: string): Promise<void
   return invoke("set_locale", { sessionId, locale });
 }
 
-export async function setSessionMode(sessionId: string, mode: string): Promise<void> {
+export async function setSessionMode(sessionId: string, mode: "default" | "learn"): Promise<void> {
   return invoke("set_session_mode", { sessionId, mode });
 }
 
