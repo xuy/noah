@@ -2,6 +2,7 @@
 
 import { existsSync } from "node:fs";
 import { readdir, readFile, writeFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { spawn } from "node:child_process";
@@ -190,13 +191,22 @@ async function generateLatestJson(version, tag, artifacts) {
   const signature = (await readFile(sigFile, "utf8")).trim();
   const url = `https://github.com/${REPO}/releases/download/${tag}/${updaterFile}`;
 
-  // Try to load existing latest.json to merge platforms from multiple builds
+  // Download existing latest.json from GitHub release to merge platforms from multiple builds
   const latestPath = path.join(ROOT, "latest.json");
   let existing = { version, pub_date: new Date().toISOString(), platforms: {} };
-  if (existsSync(latestPath)) {
-    try {
-      existing = JSON.parse(await readFile(latestPath, "utf8"));
-    } catch { /* start fresh */ }
+  try {
+    const tmpLatest = path.join(tmpdir(), `noah-latest-${Date.now()}.json`);
+    await runCommand("gh", ["release", "download", tag, "--pattern", "latest.json", "-D", path.dirname(tmpLatest), "-O", tmpLatest]);
+    if (existsSync(tmpLatest)) {
+      const prev = JSON.parse(await readFile(tmpLatest, "utf8"));
+      if (prev.platforms) {
+        existing.platforms = prev.platforms;
+      }
+      await rm(tmpLatest);
+      console.log("    Merged platforms from existing latest.json in release");
+    }
+  } catch {
+    console.log("    No existing latest.json in release — starting fresh");
   }
 
   existing.version = version;

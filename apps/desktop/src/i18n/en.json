@@ -157,7 +157,9 @@
     "updateNow": "Update now",
     "downloading": "Downloading...",
     "restarting": "Restarting...",
-    "updateFailed": "Update failed"
+    "updateFailed": "Update failed",
+    "retry": "Retry",
+    "errorDetail": "Error: {error}"
   },
   "knowledgePanel": {
     "title": "Knowledge",
