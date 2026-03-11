@@ -195,14 +195,15 @@ async function generateLatestJson(version, tag, artifacts) {
   const latestPath = path.join(ROOT, "latest.json");
   let existing = { version, pub_date: new Date().toISOString(), platforms: {} };
   try {
-    const tmpLatest = path.join(tmpdir(), `noah-latest-${Date.now()}.json`);
-    await runCommand("gh", ["release", "download", tag, "--pattern", "latest.json", "-D", path.dirname(tmpLatest), "-O", tmpLatest]);
+    const tmpDir = path.join(tmpdir(), `noah-release-${Date.now()}`);
+    await runCommand("gh", ["release", "download", tag, "--pattern", "latest.json", "-D", tmpDir]);
+    const tmpLatest = path.join(tmpDir, "latest.json");
     if (existsSync(tmpLatest)) {
       const prev = JSON.parse(await readFile(tmpLatest, "utf8"));
       if (prev.platforms) {
         existing.platforms = prev.platforms;
       }
-      await rm(tmpLatest);
+      await rm(tmpDir, { recursive: true });
       console.log("    Merged platforms from existing latest.json in release");
     }
   } catch {
