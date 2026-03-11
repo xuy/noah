@@ -19,10 +19,12 @@
 #   NOAH_MODE=learn         — enable knowledge-creation system prompt
 #   NOAH_SECRETS='{"k":"v"}'  — pre-configure secrets (JSON)
 #   NOAH_ANSWERS='{"k":"v"}'  — pre-configure text answers (JSON)
+#   NOAH_CONTAINER          — override distrobox container name (default: noah-build)
+#   NO_DISTROBOX=1          — skip distrobox and run natively
 
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "$0")" && pwd)"
+ROOT="$(cd "$(dirname "$0")" && pwd -P)"
 MODE="${1:-dev}"
 shift 2>/dev/null || true  # consume mode arg, remaining args pass through
 
@@ -30,22 +32,26 @@ OS="$(uname -s)"
 
 # ── Platform detection ──────────────────────────────────────────────
 
+# Configuration
+CONTAINER="${NOAH_CONTAINER:-noah-build}"
+
+# On Linux, by default we try to use distrobox for builds.
+# Set NO_DISTROBOX=1 to run directly on the host (requires pnpm/rust installed).
+USE_DISTROBOX="${NO_DISTROBOX:+false}"
+USE_DISTROBOX="${USE_DISTROBOX:-true}"
+
 detect_linux_container() {
-    # On immutable Linux (Aurora/Silverblue), builds run in distrobox.
-    # rust-dev (Fedora)    → dev, build, check, test
-    # noah-build (Ubuntu)  → appimage (glibc 2.35 baseline)
     local container="$1"
+    if [[ "$USE_DISTROBOX" != "true" ]]; then
+        return 1
+    fi
     if ! command -v distrobox &>/dev/null; then
-        echo "ERROR: distrobox not found. Install it or run directly on a mutable distro." >&2
-        exit 1
+        return 1
     fi
-    local boxes
-    boxes="$(distrobox list 2>/dev/null || true)"
-    if ! echo "$boxes" | grep -qw "$container"; then
-        echo "ERROR: distrobox '$container' not found." >&2
-        echo "  Create it with: distrobox create --name $container --image <image>" >&2
-        exit 1
+    if ! distrobox list 2>/dev/null | awk -F'|' 'NR>1 {print $2}' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | grep -qx "$container"; then
+        return 1
     fi
+    return 0
 }
 
 # Forward Noah env vars into distrobox
@@ -90,13 +96,18 @@ cmd_dev() {
             exec pnpm tauri dev --config "{\"build\":{\"devUrl\":\"http://localhost:$port\"}}"
             ;;
         Linux)
-            detect_linux_container "rust-dev"
-            local env_args
-            env_args=$(distrobox_env_args)
-            echo "Launching Noah in dev mode (hot-reload)..."
-            # shellcheck disable=SC2086
-            distrobox enter rust-dev $env_args -- \
-                bash -c "cd '$ROOT/apps/desktop' && pnpm tauri dev"
+            if detect_linux_container "$CONTAINER"; then
+                local env_args
+                env_args=$(distrobox_env_args)
+                echo "Launching Noah in dev mode (hot-reload) via distrobox [$CONTAINER]..."
+                # shellcheck disable=SC2086
+                exec distrobox enter "$CONTAINER" $env_args -- \
+                    bash -c "cd '$ROOT/apps/desktop' && pnpm tauri dev"
+            else
+                echo "Launching Noah in dev mode (hot-reload) natively..."
+                cd "$ROOT/apps/desktop"
+                exec pnpm tauri dev
+            fi
             ;;
         *)
             echo "ERROR: dev mode not supported on $OS from this script." >&2
@@ -110,15 +121,20 @@ cmd_build() {
     case "$OS" in
         Darwin)
             cd "$ROOT/apps/desktop"
-            pnpm tauri build --bundles none "$@"
-            echo "Binary: $ROOT/target/release/noah-desktop"
+            pnpm tauri build --no-bundle "$@"
+            echo "Binary: $ROOT/target/release/itman-desktop"
             ;;
         Linux)
-            detect_linux_container "rust-dev"
-            echo "Building Noah release binary..."
-            distrobox enter rust-dev -- \
-                bash -c "cd '$ROOT/apps/desktop' && pnpm tauri build --bundles none $* 2>&1"
-            echo "Binary: $ROOT/target/release/noah-desktop"
+            if detect_linux_container "$CONTAINER"; then
+                echo "Building Noah release binary via distrobox [$CONTAINER]..."
+                distrobox enter "$CONTAINER" -- \
+                    bash -c "cd '$ROOT/apps/desktop' && pnpm tauri build --no-bundle $* 2>&1"
+            else
+                echo "Building Noah release binary natively..."
+                cd "$ROOT/apps/desktop"
+                pnpm tauri build --no-bundle "$@"
+            fi
+            echo "Binary: $ROOT/target/release/itman-desktop"
             ;;
         *)
             echo "ERROR: Use build-windows.ps1 on Windows." >&2
@@ -132,12 +148,18 @@ cmd_appimage() {
         echo "ERROR: appimage is Linux-only." >&2
         exit 1
     fi
-    detect_linux_container "noah-build"
-    echo "Building AppImage (Ubuntu 22.04 / glibc 2.35 baseline)..."
-    distrobox enter noah-build -- \
-        bash -c "source ~/.cargo/env && cd '$ROOT/apps/desktop' && \
-                 rm -rf '$ROOT/target/release/bundle/appimage' && \
-                 NO_STRIP=true pnpm tauri build --bundles appimage 2>&1"
+    if detect_linux_container "$CONTAINER"; then
+        echo "Building AppImage via distrobox [$CONTAINER]..."
+        distrobox enter "$CONTAINER" -- \
+            bash -c "source ~/.cargo/env 2>/dev/null || true; cd '$ROOT/apps/desktop' && \
+                     rm -rf '$ROOT/target/release/bundle/appimage' && \
+                     NO_STRIP=true pnpm tauri build --bundles appimage 2>&1"
+    else
+        echo "WARNING: Building AppImage natively. This may result in glibc compatibility issues."
+        cd "$ROOT/apps/desktop"
+        rm -rf "$ROOT/target/release/bundle/appimage"
+        NO_STRIP=true pnpm tauri build --bundles appimage
+    fi
     local appimage
     appimage=$(find "$ROOT/target/release/bundle/appimage" -name "*.AppImage" 2>/dev/null | head -1)
     if [[ -n "$appimage" ]]; then
@@ -156,15 +178,18 @@ cmd_check() {
     echo "── Cargo check ──"
     case "$OS" in
         Darwin)
-            (cd "$ROOT" && cargo check -p noah-desktop "$@")
+            (cd "$ROOT" && cargo check -p itman-desktop "$@")
             ;;
         Linux)
-            detect_linux_container "rust-dev"
-            distrobox enter rust-dev -- \
-                bash -c "cd '$ROOT' && cargo check -p noah-desktop $*"
+            if detect_linux_container "$CONTAINER"; then
+                distrobox enter "$CONTAINER" -- \
+                    bash -c "cd '$ROOT' && cargo check -p itman-desktop $*"
+            else
+                (cd "$ROOT" && cargo check -p itman-desktop "$@")
+            fi
             ;;
         *)
-            (cd "$ROOT" && cargo check -p noah-desktop "$@")
+            (cd "$ROOT" && cargo check -p itman-desktop "$@")
             ;;
     esac
 
@@ -176,28 +201,31 @@ cmd_test() {
     pnpm test "$@"
 }
 
-cmd_release() {
-    cd "$ROOT"
-    node scripts/release.mjs "$@"
-}
-
 cmd_run() {
     case "$OS" in
         Darwin)
-            exec "$ROOT/target/release/noah-desktop"
+            exec "$ROOT/target/release/itman-desktop"
             ;;
         Linux)
-            detect_linux_container "rust-dev"
-            local env_args
-            env_args=$(distrobox_env_args)
-            # shellcheck disable=SC2086
-            distrobox enter rust-dev $env_args -- \
-                "$ROOT/target/release/noah-desktop"
+            if detect_linux_container "$CONTAINER"; then
+                local env_args
+                env_args=$(distrobox_env_args)
+                # shellcheck disable=SC2086
+                exec distrobox enter "$CONTAINER" $env_args -- \
+                    "$ROOT/target/release/itman-desktop"
+            else
+                exec "$ROOT/target/release/itman-desktop"
+            fi
             ;;
         *)
-            exec "$ROOT/target/release/noah-desktop.exe"
+            exec "$ROOT/target/release/itman-desktop.exe"
             ;;
     esac
+}
+
+cmd_release() {
+    cd "$ROOT"
+    node scripts/release.mjs "$@"
 }
 
 # ── Dispatch ────────────────────────────────────────────────────────
