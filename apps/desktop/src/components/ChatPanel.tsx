@@ -425,7 +425,6 @@ function ActionCard({
   progress,
   qrData,
   onDoIt,
-  onSendMessage,
 }: {
   situation: string;
   plan?: string;
@@ -437,7 +436,6 @@ function ActionCard({
   progress?: { step: number; total: number; label: string };
   qrData?: string;
   onDoIt: () => void;
-  onSendMessage?: (text: string) => void;
 }) {
   const { t } = useLocale();
   const prettySituation = normalizeSpaText(situation);
@@ -505,14 +503,6 @@ function ActionCard({
           >
             {actionTaken ? t("chat.sent") : prettyActionLabel}
           </button>
-          {!actionTaken && !isProcessing && onSendMessage && (
-            <button
-              onClick={() => onSendMessage(t("chat.showInstructions"))}
-              className="w-full mt-2 text-sm text-text-muted hover:text-accent-blue transition-colors cursor-pointer"
-            >
-              {t("chat.showInstructions")}
-            </button>
-          )}
         </div>
       </div>
       <div className="text-[10px] mt-1 text-text-muted opacity-0 group-hover:opacity-100 transition-opacity duration-150">
@@ -862,7 +852,6 @@ function renderFromUiPayload(
           progress={progress}
           qrData={ui.qr_data}
           onDoIt={() => onConfirm(message.id, ui.action.label)}
-          onSendMessage={onSendMessage}
         />
       );
     case "user_question":
@@ -1195,7 +1184,7 @@ function ActivityLog({ activity, defaultExpanded, t }: { activity: ActivityEntry
           <svg width="10" height="10" viewBox="0 0 10 10" fill="none" className={`transition-transform ${expanded ? "rotate-90" : ""}`}>
             <path d="M3 1L7 5L3 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
-          {expanded ? t("chat.hideDetails") : t("chat.showDetails")}
+          {expanded ? t("chat.hideUnderTheHood") : t("chat.underTheHood")}
         </button>
         {!expanded && (
           <span className="text-[10px] text-text-muted/50">{activity.length} events</span>
@@ -1206,11 +1195,10 @@ function ActivityLog({ activity, defaultExpanded, t }: { activity: ActivityEntry
           ref={logRef}
           className="mt-2 max-h-72 overflow-y-auto rounded-lg border border-border-primary/30 bg-[#1a1a2e] dark:bg-[#0d0d1a] p-3 font-mono text-xs leading-relaxed shadow-inner"
         >
-          {activity.map((entry, i) => (
+          {activity.filter((e) => e.type !== "thinking").map((entry, i) => (
             <div key={i} className={`${
               entry.type === "command" ? "text-[#64b5f6]"
               : entry.type === "error" ? "text-[#ef5350]"
-              : entry.type === "thinking" ? "text-[#888] italic"
               : "text-[#aaa]"
             } ${entry.type === "result" ? "pl-4 whitespace-pre-wrap" : ""}`}>
               <span className="text-[#555] mr-2 select-none">{entry.time}</span>
@@ -1472,7 +1460,7 @@ export function ChatPanel() {
                 <ActivityLog activity={activityLog.activity} defaultExpanded={activityLog.isPlaybook} t={t} />
               )}
             </div>
-            <div className="sticky bottom-0 pt-6 pb-4 bg-gradient-to-t from-bg-primary from-90% to-transparent">
+            <div className="sticky bottom-0 pt-4 pb-3 bg-bg-primary border-t border-border-primary/30">
               {inputCard}
             </div>
             <div ref={messagesEndRef} />
