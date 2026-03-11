@@ -209,6 +209,14 @@ export async function setApiKey(apiKey: string): Promise<void> {
   await invoke<void>("set_api_key", { apiKey });
 }
 
+export async function getAnthropicBaseUrl(): Promise<string> {
+  return await invoke<string>("get_anthropic_base_url");
+}
+
+export async function setAnthropicBaseUrl(baseUrl: string): Promise<void> {
+  await invoke<void>("set_anthropic_base_url", { baseUrl });
+}
+
 export async function redeemInviteCode(
   proxyUrl: string,
   inviteCode: string,

@@ -13,6 +13,10 @@ export function SettingsPanel() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [anthropicBaseUrl, setAnthropicBaseUrl] = useState("");
+  const [baseUrlSaving, setBaseUrlSaving] = useState(false);
+  const [baseUrlSaved, setBaseUrlSaved] = useState(false);
+  const [baseUrlError, setBaseUrlError] = useState<string | null>(null);
   const [version, setVersion] = useState("");
   const [authMode, setAuthMode] = useState<"api_key" | "proxy">("api_key");
 
@@ -20,9 +24,12 @@ export function SettingsPanel() {
     if (settingsOpen) {
       commands.getAppVersion().then(setVersion).catch(() => {});
       commands.getAuthMode().then(setAuthMode).catch(() => {});
+      commands.getAnthropicBaseUrl().then(setAnthropicBaseUrl).catch(() => {});
       setApiKey("");
       setSaved(false);
       setError(null);
+      setBaseUrlSaved(false);
+      setBaseUrlError(null);
     }
   }, [settingsOpen]);
 
@@ -110,6 +117,38 @@ export function SettingsPanel() {
       setSaving(false);
     }
   }, [apiKey]);
+
+  const handleSaveBaseUrl = useCallback(async () => {
+    const trimmed = anthropicBaseUrl.trim();
+
+    if (trimmed) {
+      let parsed: URL;
+      try {
+        parsed = new URL(trimmed);
+      } catch {
+        setBaseUrlError(t("settings.errorBaseUrlInvalid"));
+        return;
+      }
+      if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+        setBaseUrlError(t("settings.errorBaseUrlInvalid"));
+        return;
+      }
+    }
+
+    setBaseUrlSaving(true);
+    setBaseUrlError(null);
+    try {
+      await commands.setAnthropicBaseUrl(trimmed);
+      setBaseUrlSaved(true);
+      setTimeout(() => setBaseUrlSaved(false), 2000);
+    } catch (err) {
+      setBaseUrlError(
+        `Failed to save: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    } finally {
+      setBaseUrlSaving(false);
+    }
+  }, [anthropicBaseUrl, t]);
 
   if (!settingsOpen) return null;
 
@@ -214,6 +253,43 @@ export function SettingsPanel() {
                 </button>
               </>
             )}
+          </section>
+
+          {/* Anthropic Base URL */}
+          <section>
+            <h3 className="text-xs font-semibold text-text-primary uppercase tracking-wider mb-2">
+              {t("settings.apiBaseUrl")}
+            </h3>
+            <p className="text-[11px] text-text-muted mb-2">
+              {t("settings.apiBaseUrlPrompt")}
+            </p>
+            <input
+              type="text"
+              value={anthropicBaseUrl}
+              onChange={(e) => setAnthropicBaseUrl(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleSaveBaseUrl();
+              }}
+              placeholder="https://api.anthropic.com"
+              className="w-full px-3 py-2 rounded-lg bg-bg-input border border-border-primary text-xs text-text-primary placeholder-text-muted outline-none focus:border-border-focus transition-colors"
+            />
+            <p className="text-[10px] text-text-muted mt-1">
+              {t("settings.apiBaseUrlHint")}
+            </p>
+            {baseUrlError && (
+              <p className="text-[11px] text-accent-red mt-1">{baseUrlError}</p>
+            )}
+            <button
+              onClick={handleSaveBaseUrl}
+              disabled={baseUrlSaving}
+              className="mt-2 w-full py-1.5 rounded-lg bg-accent-green text-white text-xs font-medium hover:bg-accent-green/80 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {baseUrlSaving
+                ? t("settings.saving")
+                : baseUrlSaved
+                  ? t("settings.saved")
+                  : t("settings.updateBaseUrl")}
+            </button>
           </section>
 
           {/* Proactive Suggestions */}

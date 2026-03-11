@@ -89,6 +89,13 @@ describe("0.6: Settings IPC contract", () => {
     expect(args).toHaveProperty("apiKey");
     expect(args).not.toHaveProperty("api_key");
   });
+
+  it("set_anthropic_base_url uses camelCase key", () => {
+    // Rust: set_anthropic_base_url(base_url: String) -> { baseUrl }
+    const args = { baseUrl: "https://api.anthropic.com" };
+    expect(args).toHaveProperty("baseUrl");
+    expect(args).not.toHaveProperty("base_url");
+  });
 });
 
 // ── 0.8: Cancel processing IPC contract ──

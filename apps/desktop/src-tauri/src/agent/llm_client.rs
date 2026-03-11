@@ -7,17 +7,37 @@ const MODEL: &str = "claude-sonnet-4-20250514";
 const TITLE_MODEL: &str = "claude-haiku-4-5-20251001";
 const API_VERSION: &str = "2023-06-01";
 const MAX_TOKENS: u32 = 4096;
+
+fn normalize_messages_url(base_url: &str) -> String {
+    let trimmed = base_url.trim_end_matches('/');
+    if trimmed.ends_with("/v1/messages") {
+        trimmed.to_string()
+    } else if trimmed.ends_with("/v1") {
+        format!("{}/messages", trimmed)
+    } else {
+        format!("{}/v1/messages", trimmed)
+    }
+}
+
 /// HTTP request timeout — higher for local LLMs which are slower.
 fn request_timeout_secs() -> u64 {
     std::env::var("NOAH_TIMEOUT")
         .ok()
         .and_then(|s| s.parse().ok())
-        .unwrap_or(if env_api_url().is_some() { 300 } else { 90 })
+        .unwrap_or(if env_noah_api_url().is_some() { 300 } else { 90 })
 }
 
 /// Override API URL via NOAH_API_URL env var (e.g. "http://127.0.0.1:8082").
-fn env_api_url() -> Option<String> {
+fn env_noah_api_url() -> Option<String> {
     std::env::var("NOAH_API_URL").ok().filter(|s| !s.is_empty())
+}
+
+/// Override Anthropic base URL while still using x-api-key auth.
+fn env_anthropic_base_url() -> Option<String> {
+    std::env::var("ANTHROPIC_BASE_URL")
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
 }
 
 /// Override model via NOAH_MODEL env var (e.g. "local").
@@ -225,7 +245,7 @@ impl LlmClient {
 
     pub fn has_auth(&self) -> bool {
         // Local server override needs no auth.
-        if env_api_url().is_some() {
+        if env_noah_api_url().is_some() {
             return true;
         }
         match &self.auth {
@@ -243,12 +263,18 @@ impl LlmClient {
 
     /// Get the API URL based on auth mode (env override takes priority).
     fn api_url(&self) -> String {
-        if let Some(url) = env_api_url() {
-            return format!("{}/v1/messages", url.trim_end_matches('/'));
+        if let Some(url) = env_noah_api_url() {
+            return normalize_messages_url(&url);
         }
         match &self.auth {
-            AuthMode::ApiKey(_) => ANTHROPIC_API_URL.to_string(),
-            AuthMode::Proxy { base_url, .. } => format!("{}/v1/messages", base_url.trim_end_matches('/')),
+            AuthMode::ApiKey(_) => {
+                if let Some(url) = env_anthropic_base_url() {
+                    normalize_messages_url(&url)
+                } else {
+                    ANTHROPIC_API_URL.to_string()
+                }
+            }
+            AuthMode::Proxy { base_url, .. } => normalize_messages_url(base_url),
         }
     }
 
@@ -674,5 +700,29 @@ mod tests {
             assert!(!msg.contains("Anthropic API error"),
                 "Status {} should not show raw error: {}", status, msg);
         }
+    }
+
+    #[test]
+    fn test_normalize_messages_url_from_host() {
+        assert_eq!(
+            normalize_messages_url("https://api.anthropic.com"),
+            "https://api.anthropic.com/v1/messages",
+        );
+    }
+
+    #[test]
+    fn test_normalize_messages_url_from_v1() {
+        assert_eq!(
+            normalize_messages_url("https://example.com/v1"),
+            "https://example.com/v1/messages",
+        );
+    }
+
+    #[test]
+    fn test_normalize_messages_url_already_messages() {
+        assert_eq!(
+            normalize_messages_url("https://example.com/v1/messages"),
+            "https://example.com/v1/messages",
+        );
     }
 }

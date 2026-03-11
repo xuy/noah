@@ -24,6 +24,9 @@ use agent::orchestrator::{Orchestrator, PendingApprovals};
 use agent::tool_router::ToolRouter;
 use safety::journal;
 
+const ANTHROPIC_BASE_URL_ENV: &str = "ANTHROPIC_BASE_URL";
+const ANTHROPIC_BASE_URL_FILE: &str = "anthropic_base_url.txt";
+
 /// Shared application state managed by Tauri.
 pub struct AppState {
     pub orchestrator: Mutex<Orchestrator>,
@@ -42,6 +45,9 @@ pub struct AppState {
 }
 
 /// Load auth: proxy.json first, then api_key.txt, then env var.
+///
+/// ANTHROPIC_BASE_URL is loaded separately via `load_persisted_anthropic_base_url`
+/// and read dynamically by the LLM client from process env.
 fn load_auth(app_dir: &std::path::Path) -> AuthMode {
     // Check for proxy config first
     let proxy_path = app_dir.join("proxy.json");
@@ -74,6 +80,42 @@ fn load_auth(app_dir: &std::path::Path) -> AuthMode {
     AuthMode::ApiKey(std::env::var("ANTHROPIC_API_KEY").unwrap_or_default())
 }
 
+/// Load persisted ANTHROPIC_BASE_URL from app data directory.
+pub fn load_persisted_anthropic_base_url(app_dir: &std::path::Path) -> Option<String> {
+    let base_url_path = app_dir.join(ANTHROPIC_BASE_URL_FILE);
+    std::fs::read_to_string(&base_url_path)
+        .ok()
+        .map(|contents| contents.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+/// Get effective ANTHROPIC_BASE_URL (env first, then persisted file).
+pub fn get_anthropic_base_url(app_dir: &std::path::Path) -> Option<String> {
+    std::env::var(ANTHROPIC_BASE_URL_ENV)
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .or_else(|| load_persisted_anthropic_base_url(app_dir))
+}
+
+/// Save ANTHROPIC_BASE_URL and update process env.
+///
+/// Passing an empty string clears both persisted value and env var.
+pub fn save_anthropic_base_url(app_dir: &std::path::Path, base_url: &str) -> Result<(), String> {
+    let trimmed = base_url.trim();
+    let base_url_path = app_dir.join(ANTHROPIC_BASE_URL_FILE);
+    if trimmed.is_empty() {
+        let _ = std::fs::remove_file(&base_url_path);
+        std::env::remove_var(ANTHROPIC_BASE_URL_ENV);
+        return Ok(());
+    }
+
+    std::fs::write(&base_url_path, trimmed)
+        .map_err(|e| format!("Failed to save ANTHROPIC_BASE_URL: {}", e))?;
+    std::env::set_var(ANTHROPIC_BASE_URL_ENV, trimmed);
+    Ok(())
+}
+
 /// Save API key to config file (and remove proxy.json if present).
 pub fn save_api_key(app_dir: &std::path::Path, key: &str) -> Result<(), String> {
     let key_path = app_dir.join("api_key.txt");
@@ -100,6 +142,8 @@ pub fn save_proxy_config(app_dir: &std::path::Path, base_url: &str, token: &str)
 pub fn clear_auth_files(app_dir: &std::path::Path) {
     let _ = std::fs::remove_file(app_dir.join("api_key.txt"));
     let _ = std::fs::remove_file(app_dir.join("proxy.json"));
+    let _ = std::fs::remove_file(app_dir.join(ANTHROPIC_BASE_URL_FILE));
+    std::env::remove_var(ANTHROPIC_BASE_URL_ENV);
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -224,6 +268,11 @@ pub fn run() {
                 .expect("Failed to initialise playbooks");
             router.register(Box::new(playbooks::ActivatePlaybookTool::new(playbook_registry)));
 
+            // Load persisted ANTHROPIC_BASE_URL into process env.
+            if let Some(base_url) = load_persisted_anthropic_base_url(&app_dir) {
+                std::env::set_var(ANTHROPIC_BASE_URL_ENV, base_url);
+            }
+
             // Load auth: proxy config, API key file, or env var.
             let auth = load_auth(&app_dir);
             let llm = LlmClient::with_auth(auth);
@@ -319,6 +368,8 @@ pub fn run() {
             commands::safety::undo_change,
             commands::settings::has_api_key,
             commands::settings::set_api_key,
+            commands::settings::get_anthropic_base_url,
+            commands::settings::set_anthropic_base_url,
             commands::settings::redeem_invite_code,
             commands::settings::get_auth_mode,
             commands::settings::clear_auth,
