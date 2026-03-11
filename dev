@@ -5,8 +5,8 @@
 #   ./dev              — run in dev mode (hot-reload)
 #   ./dev build        — release build (binary only)
 #   ./dev appimage     — build cross-distro AppImage (Linux only)
-#   ./dev check        — cargo check (fast compile test)
-#   ./dev test         — run frontend tests
+#   ./dev check        — run all CI checks (tsc + vitest + cargo check)
+#   ./dev test         — run frontend tests only
 #   ./dev release      — build + upload via scripts/release.mjs
 #
 # Environment variables (all optional):
@@ -147,10 +147,16 @@ cmd_appimage() {
 }
 
 cmd_check() {
+    echo "── TypeScript ──"
+    (cd "$ROOT/apps/desktop" && npx tsc --noEmit)
+
+    echo "── Frontend tests ──"
+    (cd "$ROOT/apps/desktop" && npx vitest run)
+
+    echo "── Cargo check ──"
     case "$OS" in
         Darwin)
-            cd "$ROOT"
-            cargo check -p itman-desktop "$@"
+            (cd "$ROOT" && cargo check -p itman-desktop "$@")
             ;;
         Linux)
             detect_linux_container "rust-dev"
@@ -158,10 +164,11 @@ cmd_check() {
                 bash -c "cd '$ROOT' && cargo check -p itman-desktop $*"
             ;;
         *)
-            cd "$ROOT"
-            cargo check -p itman-desktop "$@"
+            (cd "$ROOT" && cargo check -p itman-desktop "$@")
             ;;
     esac
+
+    echo "── All checks passed ──"
 }
 
 cmd_test() {

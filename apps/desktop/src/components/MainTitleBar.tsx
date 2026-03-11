@@ -1,8 +1,7 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { MouseEvent } from "react";
 import { useSessionStore } from "../stores/sessionStore";
-
-export const isMac = navigator.platform.startsWith("Mac");
+import { isMac } from "../lib/platform";
 
 /** Sidebar toggle icon (shared between title bar and inline button). */
 export function SidebarToggleIcon() {

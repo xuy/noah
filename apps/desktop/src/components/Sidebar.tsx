@@ -5,7 +5,8 @@ import type { SessionMode } from "../hooks/useSession";
 import { useLocale } from "../i18n";
 import * as commands from "../lib/tauri-commands";
 import type { SessionRecord } from "../lib/tauri-commands";
-import { isMac, SidebarToggleIcon, SettingsGearIcon } from "./MainTitleBar";
+import { isMac } from "../lib/platform";
+import { SidebarToggleIcon, SettingsGearIcon } from "./MainTitleBar";
 
 // Map app locale to BCP 47 tag for Intl date/time formatting.
 const localeBcp47: Record<string, string> = { zh: "zh-CN", en: "en-US" };
