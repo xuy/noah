@@ -152,7 +152,7 @@
     "defaultReason": "Noah 需要你的确认才能继续。",
     "deny": "不用了",
     "approve": "继续",
-    "approveAll": "好的，不用再问我了"
+    "approveAll": "全部批准"
   },
   "update": {
     "available": "Noah v{version} 可用。",

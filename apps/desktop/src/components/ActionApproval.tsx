@@ -119,25 +119,23 @@ export function ActionApproval() {
           </p>
         </div>
 
-        {/* Actions */}
-        <div className="px-6 py-4 border-t border-border-primary">
-          <div className="flex items-center justify-end gap-3">
-            <button
-              onClick={handleDeny}
-              className="px-5 py-2 rounded-lg text-sm text-text-secondary bg-bg-tertiary hover:bg-bg-tertiary/80 transition-colors cursor-pointer"
-            >
-              {t("approval.deny")}
-            </button>
-            <button
-              onClick={() => handleApprove()}
-              className="px-5 py-2 rounded-lg text-sm text-white bg-accent-green hover:bg-accent-green/80 transition-colors cursor-pointer"
-            >
-              {t("approval.approve")}
-            </button>
-          </div>
+        {/* Actions — three buttons */}
+        <div className="px-6 py-4 flex items-center justify-end gap-2 border-t border-border-primary">
+          <button
+            onClick={handleDeny}
+            className="px-4 py-2 rounded-lg text-sm text-text-secondary bg-bg-tertiary hover:bg-bg-tertiary/80 transition-colors cursor-pointer"
+          >
+            {t("approval.deny")}
+          </button>
+          <button
+            onClick={() => handleApprove()}
+            className="px-4 py-2 rounded-lg text-sm text-white bg-accent-green hover:bg-accent-green/80 transition-colors cursor-pointer"
+          >
+            {t("approval.approve")}
+          </button>
           <button
             onClick={() => handleApprove(true)}
-            className="w-full mt-2 text-xs text-text-muted hover:text-accent-green transition-colors cursor-pointer text-center"
+            className="px-4 py-2 rounded-lg text-sm text-accent-green border border-accent-green/40 hover:bg-accent-green/10 transition-colors cursor-pointer"
           >
             {t("approval.approveAll")}
           </button>

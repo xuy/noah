@@ -152,7 +152,7 @@
     "defaultReason": "Noah needs your OK to continue.",
     "deny": "No thanks",
     "approve": "Go ahead",
-    "approveAll": "Yes, and don't ask me again"
+    "approveAll": "Approve all"
   },
   "update": {
     "available": "Noah v{version} is available.",
