@@ -47,6 +47,9 @@ function App() {
   useEffect(() => {
     commands.hasApiKey().then((has) => {
       setNeedsSetup(!has);
+    }).catch(() => {
+      setNeedsSetup(true);
+    }).finally(() => {
       dismissSplash();
     });
   }, []);

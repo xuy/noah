@@ -1,3 +1,4 @@
+use std::collections::VecDeque;
 use std::process::Command;
 use std::time::{Duration, Instant};
 
@@ -110,7 +111,7 @@ fn categorize_path(path: &str) -> &'static str {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct DiskScanState {
     /// Queue of directories still to scan (breadth-first).
-    queue: Vec<String>,
+    queue: VecDeque<String>,
     /// Total top-level dirs we started with (for progress calculation).
     total_top_level: usize,
     /// How many top-level dirs we've finished.
@@ -122,7 +123,7 @@ struct DiskScanState {
 impl Default for DiskScanState {
     fn default() -> Self {
         Self {
-            queue: Vec::new(),
+            queue: VecDeque::new(),
             total_top_level: 0,
             completed_top_level: 0,
             generation: 0,
@@ -315,7 +316,7 @@ impl Scanner for DiskScanner {
                 break;
             }
 
-            let dir = state.queue.remove(0);
+            let dir = state.queue.pop_front().unwrap();
             eprintln!("[disk_scanner] scanning {}", dir);
 
             match Self::du_children(&dir) {
@@ -348,7 +349,7 @@ impl Scanner for DiskScanner {
                     let threshold_kb = 1_048_576;
                     for (path, size) in &children {
                         if *size > threshold_kb && !is_macos_private(path, &home) {
-                            state.queue.push(path.clone());
+                            state.queue.push_back(path.clone());
                         }
                     }
                 }
@@ -369,7 +370,7 @@ impl Scanner for DiskScanner {
 
         let detail = if done {
             "Scan complete".to_string()
-        } else if let Some(next) = state.queue.first() {
+        } else if let Some(next) = state.queue.front() {
             // Shorten path for display.
             let short = next.replace(&Self::home_dir(), "~");
             format!("Scanning {} ({} dirs remaining)", short, state.queue.len())

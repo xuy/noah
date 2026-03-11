@@ -1028,6 +1028,11 @@ const TOOL_NAMES_WITH_I18N = new Set([
   "win_kill_process", "win_clear_caches", "win_clear_app_cache",
   "win_restart_spooler", "win_cancel_print_jobs", "win_move_file",
   "win_startup_programs", "win_service_list", "win_restart_service",
+  "linux_network_info", "linux_ping", "linux_dns_check", "linux_http_check",
+  "linux_flush_dns", "linux_system_info", "linux_system_summary",
+  "linux_process_list", "linux_disk_usage", "linux_read_file", "linux_read_log",
+  "linux_kill_process",
+  "web_fetch", "activate_playbook",
   "write_knowledge", "search_knowledge", "read_knowledge", "list_knowledge",
 ]);
 
@@ -1119,11 +1124,12 @@ function useActivityLog(t: (key: string) => string) {
   }, [t]);
 
   useEffect(() => {
+    if (!status) return;
     const timer = setInterval(() => {
       setElapsed(Math.floor((Date.now() - startRef.current) / 1000));
     }, 1000);
     return () => clearInterval(timer);
-  }, []);
+  }, [status]);
 
   const clear = useCallback(() => { setActivity([]); setIsPlaybook(false); setStatus(null); }, []);
 

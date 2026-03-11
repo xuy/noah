@@ -11,11 +11,17 @@ pub async fn trigger_scan(
 ) -> Result<String, String> {
     {
         // Unpause if paused.
-        let mut paused = state.scanner_pause.lock().unwrap();
+        let mut paused = state
+            .scanner_pause
+            .lock()
+            .map_err(|e| format!("Lock poisoned: {}", e))?;
         paused.remove(&scan_type);
     }
     {
-        let mut trigger = state.scanner_trigger.lock().unwrap();
+        let mut trigger = state
+            .scanner_trigger
+            .lock()
+            .map_err(|e| format!("Lock poisoned: {}", e))?;
         *trigger = Some(scan_type.clone());
     }
     Ok(format!("Scan triggered for {}", scan_type))
@@ -27,7 +33,10 @@ pub async fn pause_scan(
     state: State<'_, AppState>,
     scan_type: String,
 ) -> Result<(), String> {
-    let mut paused = state.scanner_pause.lock().unwrap();
+    let mut paused = state
+        .scanner_pause
+        .lock()
+        .map_err(|e| format!("Lock poisoned: {}", e))?;
     paused.insert(scan_type);
     Ok(())
 }
@@ -38,7 +47,10 @@ pub async fn resume_scan(
     state: State<'_, AppState>,
     scan_type: String,
 ) -> Result<(), String> {
-    let mut paused = state.scanner_pause.lock().unwrap();
+    let mut paused = state
+        .scanner_pause
+        .lock()
+        .map_err(|e| format!("Lock poisoned: {}", e))?;
     paused.remove(&scan_type);
     Ok(())
 }
