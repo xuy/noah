@@ -103,7 +103,8 @@ pub fn init_db(path: &str) -> Result<Connection> {
             ended_at      TEXT,
             title         TEXT,
             message_count INTEGER NOT NULL DEFAULT 0,
-            compressed_summary TEXT
+            compressed_summary TEXT,
+            resolved      INTEGER
         );
 
         CREATE TABLE IF NOT EXISTS messages (
@@ -349,6 +350,29 @@ fn apply_migrations(conn: &Connection, current: i32) -> Result<()> {
                 .context("Migration 8 failed")?;
         }
         set_schema_version(conn, 8)?;
+    }
+
+    // ── Post-migration column checks ──
+    // Guard against schema drift (e.g. DB replaced by an older backup).
+    // These are idempotent: ALTER TABLE ADD COLUMN fails if the column
+    // already exists, so we check first.
+    for (col, alter_sql) in [
+        (
+            "compressed_summary",
+            "ALTER TABLE sessions ADD COLUMN compressed_summary TEXT;",
+        ),
+        (
+            "resolved",
+            "ALTER TABLE sessions ADD COLUMN resolved INTEGER;",
+        ),
+    ] {
+        let has_col = conn
+            .prepare(&format!("SELECT {} FROM sessions LIMIT 0", col))
+            .is_ok();
+        if !has_col {
+            conn.execute_batch(alter_sql)
+                .with_context(|| format!("Failed to add missing column '{}' to sessions", col))?;
+        }
     }
 
     Ok(())
