@@ -12,6 +12,7 @@ import { useLocale } from "../i18n";
 import QRCode from "qrcode";
 
 const showToolCalls = import.meta.env.DEV;
+const STOPPING_RESET_DELAY_MS = 3000;
 
 function QrCodeImage({ data }: { data: string }) {
   const [src, setSrc] = useState<string | null>(null);
@@ -1309,6 +1310,7 @@ export function ChatPanel() {
   const [isStopping, setIsStopping] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const stoppingResetTimeoutRef = useRef<number | null>(null);
   const activityLog = useActivityLog(t);
 
   useEffect(() => {
@@ -1326,8 +1328,18 @@ export function ChatPanel() {
   useEffect(() => {
     if (!isProcessing) {
       setIsStopping(false);
+      if (stoppingResetTimeoutRef.current !== null) {
+        window.clearTimeout(stoppingResetTimeoutRef.current);
+        stoppingResetTimeoutRef.current = null;
+      }
     }
   }, [isProcessing]);
+
+  useEffect(() => () => {
+    if (stoppingResetTimeoutRef.current !== null) {
+      window.clearTimeout(stoppingResetTimeoutRef.current);
+    }
+  }, []);
 
   const handleSubmit = useCallback(async () => {
     const text = input.trim();
@@ -1353,7 +1365,20 @@ export function ChatPanel() {
   const handleCancelProcessing = useCallback(async () => {
     if (isStopping) return;
     setIsStopping(true);
-    await cancelProcessing();
+    stoppingResetTimeoutRef.current = window.setTimeout(() => {
+      setIsStopping(false);
+      stoppingResetTimeoutRef.current = null;
+    }, STOPPING_RESET_DELAY_MS);
+
+    try {
+      await cancelProcessing();
+    } catch {
+      if (stoppingResetTimeoutRef.current !== null) {
+        window.clearTimeout(stoppingResetTimeoutRef.current);
+        stoppingResetTimeoutRef.current = null;
+      }
+      setIsStopping(false);
+    }
   }, [cancelProcessing, isStopping]);
 
   const handleSecureAnswer = useCallback(

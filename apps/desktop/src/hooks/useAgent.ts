@@ -171,6 +171,7 @@ export function useAgent(): UseAgentReturn {
       await commands.cancelProcessing();
     } catch (err) {
       console.error("Failed to cancel:", err);
+      throw err;
     }
   }, []);
 

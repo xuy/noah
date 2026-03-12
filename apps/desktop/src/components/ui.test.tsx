@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, cleanup } from "@testing-library/react";
+import { render, screen, cleanup, fireEvent, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 // jsdom doesn't implement scrollIntoView — stub it for ChatPanel's useEffect
@@ -80,7 +80,10 @@ const SESSION_WITH_CHANGES: SessionRecord = {
 };
 
 
-afterEach(() => cleanup());
+afterEach(() => {
+  vi.useRealTimers();
+  cleanup();
+});
 
 beforeEach(() => {
   startDraggingMock.mockClear();
@@ -313,6 +316,37 @@ describe("ChangesBlock", () => {
     await user.click(screen.getByTitle("Stop processing"));
     await screen.findByText("Noah is stopping...");
     expect(mockAgent.cancelProcessing).toHaveBeenCalledTimes(1);
+  });
+
+  it("re-enables stop after a stalled cancel so the user can retry", async () => {
+    vi.useFakeTimers();
+    mockAgent.isProcessing = true;
+    mockAgent.cancelProcessing.mockImplementation(() => new Promise<void>(() => {}));
+    useChatStore.setState({
+      messages: [
+        {
+          id: "msg1",
+          role: "assistant",
+          content: "Still working.",
+          timestamp: Date.now(),
+        },
+      ],
+    });
+    render(<ChatPanel />);
+
+    const stopButton = screen.getByTitle("Stop processing");
+    fireEvent.click(stopButton);
+    expect(screen.getByText("Noah is stopping...")).toBeTruthy();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3000);
+    });
+
+    expect(screen.queryByText("Noah is stopping...")).toBeNull();
+    expect(stopButton.hasAttribute("disabled")).toBe(false);
+
+    fireEvent.click(stopButton);
+    expect(mockAgent.cancelProcessing).toHaveBeenCalledTimes(2);
   });
 });
 
