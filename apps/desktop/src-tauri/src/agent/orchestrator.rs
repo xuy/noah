@@ -95,6 +95,7 @@ const CONTEXT_SOFT_THRESHOLD_TOKENS: usize = ESTIMATED_MAX_CONTEXT_TOKENS * 4 / 
 const CONTEXT_HARD_THRESHOLD_TOKENS: usize = ESTIMATED_MAX_CONTEXT_TOKENS * 9 / 10;
 const RECENT_MESSAGES_TO_KEEP: usize = 6;
 const MAX_SUMMARY_INPUT_CHARS: usize = 48_000;
+const FALLBACK_SUMMARY_EXCERPT_CHARS: usize = 1_600;
 
 impl Orchestrator {
     pub fn new(
@@ -741,10 +742,17 @@ impl Orchestrator {
             return Ok(());
         }
 
-        let updated_summary = self
+        let updated_summary = match self
             .llm
             .generate_context_summary(existing_summary.as_deref(), &summary_input)
-            .await?;
+            .await
+        {
+            Ok(summary) => summary,
+            Err(err) => {
+                eprintln!("[warn] Context summary generation failed: {}", err);
+                fallback_context_summary(existing_summary.as_deref(), &summary_input)
+            }
+        };
 
         let session = self.sessions.get_mut(session_id).unwrap();
         session.compressed_summary = Some(updated_summary);
@@ -973,14 +981,47 @@ fn summarized_transcript(messages: &[Message], max_chars: usize) -> String {
     sections.join("\n\n")
 }
 
+fn fallback_context_summary(existing_summary: Option<&str>, messages_text: &str) -> String {
+    let mut sections = Vec::new();
+
+    if let Some(existing) = existing_summary
+        .map(str::trim)
+        .filter(|summary| !summary.is_empty())
+    {
+        sections.push(existing.to_string());
+    }
+
+    sections.push(
+        "## Pending / watch-outs\n- Older session history was trimmed after automatic compression failed. Use the most recent verbatim turns for exact details."
+            .to_string(),
+    );
+
+    let excerpt_chars: Vec<char> = messages_text.chars().collect();
+    let start = excerpt_chars
+        .len()
+        .saturating_sub(FALLBACK_SUMMARY_EXCERPT_CHARS);
+    let excerpt = excerpt_chars[start..].iter().collect::<String>();
+    if !excerpt.trim().is_empty() {
+        sections.push(format!(
+            "## Recent older context excerpt\n{}",
+            excerpt.trim()
+        ));
+    }
+
+    sections.join("\n\n")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::agent::llm_client::LlmClient;
+    use crate::agent::llm_client::{AuthMode, LlmClient};
     use crate::agent::tool_router::ToolRouter;
 
     fn test_orchestrator() -> Orchestrator {
-        let llm = LlmClient::new(String::new());
+        test_orchestrator_with_llm(LlmClient::new(String::new()))
+    }
+
+    fn test_orchestrator_with_llm(llm: LlmClient) -> Orchestrator {
         let router = ToolRouter::new();
         let conn = crate::safety::journal::init_db(":memory:").expect("Failed to init test DB");
         Orchestrator::new(
@@ -1144,5 +1185,46 @@ mod tests {
         }];
 
         assert!(estimate_messages_tokens(&long) > estimate_messages_tokens(&short));
+    }
+
+    #[test]
+    fn test_fallback_context_summary_keeps_existing_and_excerpt() {
+        let summary = fallback_context_summary(
+            Some("## Current state\nDNS issue isolated"),
+            "User: collected router logs\nAssistant: asked for modem reboot",
+        );
+
+        assert!(summary.contains("DNS issue isolated"));
+        assert!(summary.contains("Older session history was trimmed"));
+        assert!(summary.contains("collected router logs"));
+    }
+
+    #[tokio::test]
+    async fn test_force_compression_falls_back_when_summary_request_fails() {
+        let llm = LlmClient::with_auth(AuthMode::Proxy {
+            base_url: "http://127.0.0.1:9".to_string(),
+            token: "test-token".to_string(),
+        });
+        let mut orch = test_orchestrator_with_llm(llm);
+        let id = orch.create_session();
+        let session = orch.sessions.get_mut(&id).unwrap();
+        for idx in 0..8 {
+            session.messages.push(Message {
+                role: if idx % 2 == 0 { "user" } else { "assistant" }.to_string(),
+                content: MessageContent::Text(format!("message-{idx}: {}", "x".repeat(40_000))),
+            });
+        }
+
+        let result = orch.compress_session_context_if_needed(&id, true).await;
+        assert!(result.is_ok());
+
+        let session = orch.sessions.get(&id).unwrap();
+        assert!(session.compressed_summary.is_some());
+        assert!(session.messages.len() <= 4);
+        assert!(session
+            .compressed_summary
+            .as_deref()
+            .unwrap_or_default()
+            .contains("Older session history was trimmed"));
     }
 }

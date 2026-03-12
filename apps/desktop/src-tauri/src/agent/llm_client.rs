@@ -35,6 +35,10 @@ fn effective_model_or(default: &str) -> String {
         .unwrap_or_else(|| default.to_string())
 }
 
+fn context_summary_model() -> String {
+    TITLE_MODEL.to_string()
+}
+
 // ── Diagnostic analysis result ─────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -413,7 +417,7 @@ impl LlmClient {
         }
 
         let body = ApiRequest {
-            model: effective_model_or(TITLE_MODEL),
+            model: context_summary_model(),
             max_tokens: 500,
             system: system_text(&prompt),
             messages: vec![Message {
@@ -835,5 +839,10 @@ mod tests {
             reqwest::StatusCode::BAD_REQUEST,
             "invalid request body"
         ));
+    }
+
+    #[test]
+    fn test_context_summary_model_uses_haiku() {
+        assert_eq!(context_summary_model(), TITLE_MODEL);
     }
 }
