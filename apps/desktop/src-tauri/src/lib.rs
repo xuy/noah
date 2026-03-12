@@ -259,6 +259,7 @@ pub fn run() {
                 sse_tx,
                 app_dir: app_dir.clone(),
                 app_handle: Some(app.handle().clone()),
+                port: std::sync::atomic::AtomicU16::new(0),
             });
 
             let mobile_state_for_server = mobile_state.clone();
@@ -268,6 +269,7 @@ pub fn run() {
                     0
                 })
             });
+            mobile_state.port.store(mobile_server_port, std::sync::atomic::Ordering::Relaxed);
 
             app.manage(AppState {
                 orchestrator: orchestrator_arc,

@@ -66,7 +66,7 @@ export async function redeemInviteCode(code: string): Promise<AuthState> {
   const res = await fetch(`${PROXY_URL}/auth/redeem`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ code }),
+    body: JSON.stringify({ invite_code: code }),
   });
 
   if (!res.ok) {
@@ -74,15 +74,21 @@ export async function redeemInviteCode(code: string): Promise<AuthState> {
     if (res.status === 404) {
       throw new Error("Invalid invite code. Please check and try again.");
     }
-    if (res.status === 410) {
+    if (res.status === 409) {
       throw new Error("This invite code has already been used.");
     }
     throw new Error(`Redeem failed (${res.status}): ${body.slice(0, 200)}`);
   }
 
-  const data = (await res.json()) as { token: string; user: AuthUser };
-  await saveAuth(data.token, data.user);
-  return { token: data.token, user: data.user };
+  const data = (await res.json()) as { token: string; user?: AuthUser };
+  const user = data.user ?? {
+    email: "",
+    name: null,
+    subscription_tier: "trial",
+    expires_at: null,
+  };
+  await saveAuth(data.token, user);
+  return { token: data.token, user };
 }
 
 export async function getProxyHeaders(): Promise<Record<string, string>> {

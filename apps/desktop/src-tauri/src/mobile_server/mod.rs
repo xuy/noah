@@ -50,6 +50,7 @@ pub struct MobileServerState {
     pub sse_tx: broadcast::Sender<SseEvent>,
     pub app_dir: PathBuf,
     pub app_handle: Option<tauri::AppHandle>,
+    pub port: std::sync::atomic::AtomicU16,
 }
 
 // ── Server setup ──
@@ -62,6 +63,7 @@ pub fn build_router(state: Arc<MobileServerState>) -> Router {
 
     Router::new()
         .route("/pair", post(handlers::pair))
+        .route("/generate-qr", get(handlers::generate_qr))
         .route("/status", get(handlers::status))
         .route("/triage", post(handlers::triage))
         .route("/approve/{id}", post(handlers::approve))
@@ -78,9 +80,9 @@ async fn auth_middleware(
     request: axum::extract::Request,
     next: Next,
 ) -> impl IntoResponse {
-    // Skip auth for /pair
+    // Skip auth for /pair and /generate-qr
     let path = request.uri().path();
-    if path == "/pair" {
+    if path == "/pair" || path == "/generate-qr" {
         return next.run(request).await;
     }
 

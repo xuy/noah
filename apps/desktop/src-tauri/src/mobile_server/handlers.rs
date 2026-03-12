@@ -12,6 +12,21 @@ use crate::safety::journal;
 
 use super::{MobileServerState, PairedDevice, SseEvent};
 
+// ── GET /generate-qr ──
+
+pub async fn generate_qr(
+    AxumState(state): AxumState<Arc<MobileServerState>>,
+) -> impl IntoResponse {
+    let port = state.port.load(std::sync::atomic::Ordering::Relaxed);
+    match super::generate_pairing_data(&state, port).await {
+        Ok(data) => (StatusCode::OK, Json(json!(data))),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": format!("{}", e)})),
+        ),
+    }
+}
+
 // ── POST /pair ──
 
 #[derive(Deserialize)]
