@@ -155,6 +155,15 @@ function MarkdownSummary({ text }: { text: string }) {
   const lines = text.replace(/\\n/g, "\n").split("\n");
   const blocks: React.ReactNode[] = [];
   let i = 0;
+  const tableSeparator = /^\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?$/;
+
+  const splitTableRow = (row: string): string[] =>
+    row
+      .trim()
+      .replace(/^\|/, "")
+      .replace(/\|$/, "")
+      .split("|")
+      .map((cell) => cell.trim());
 
   while (i < lines.length) {
     const line = lines[i].trim();
@@ -176,6 +185,63 @@ function MarkdownSummary({ text }: { text: string }) {
         </div>,
       );
       i += 1;
+      continue;
+    }
+
+    if (
+      line.includes("|") &&
+      i + 1 < lines.length &&
+      tableSeparator.test(lines[i + 1].trim())
+    ) {
+      const headers = splitTableRow(lines[i]);
+      i += 2;
+      const rows: string[][] = [];
+      while (i < lines.length) {
+        const current = lines[i].trim();
+        if (!current || !current.includes("|") || tableSeparator.test(current)) break;
+        rows.push(splitTableRow(current));
+        i += 1;
+      }
+
+      const columnCount = headers.length;
+      const normalizedRows = rows.map((row) => {
+        if (row.length === columnCount) return row;
+        if (row.length > columnCount) return row.slice(0, columnCount);
+        return [...row, ...Array.from({ length: columnCount - row.length }, () => "")];
+      });
+
+      blocks.push(
+        <div key={`table-${i}`} className="overflow-x-auto">
+          <table className="min-w-full border-collapse text-sm">
+            <thead>
+              <tr>
+                {headers.map((header, idx) => (
+                  <th
+                    key={idx}
+                    className="border border-border-primary px-2 py-1 text-left font-semibold text-text-primary bg-bg-tertiary/40"
+                  >
+                    <InlineMarkdown text={header} />
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {normalizedRows.map((row, rowIdx) => (
+                <tr key={rowIdx}>
+                  {row.map((cell, cellIdx) => (
+                    <td
+                      key={cellIdx}
+                      className="border border-border-primary px-2 py-1 text-text-secondary align-top"
+                    >
+                      <InlineMarkdown text={cell} />
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>,
+      );
       continue;
     }
 

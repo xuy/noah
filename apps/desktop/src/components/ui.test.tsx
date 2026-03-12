@@ -144,6 +144,28 @@ describe("MainTitleBar", () => {
 // ── ChangesBlock (tested through ChatPanel) ──────────────────────────────────
 
 describe("ChangesBlock", () => {
+  it("renders markdown tables in DONE cards", async () => {
+    useChatStore.setState({
+      messages: [
+        {
+          id: "msg1",
+          role: "assistant",
+          content: `[DONE]
+| Check | Status |
+| --- | --- |
+| DNS | Fixed |`,
+          timestamp: Date.now(),
+        },
+      ],
+    });
+    render(<ChatPanel />);
+    await screen.findByRole("table");
+    screen.getByText("Check");
+    screen.getByText("Status");
+    screen.getByText("DNS");
+    screen.getByText("Fixed");
+  });
+
   it("shows change count for mutating actions", async () => {
     useSessionStore.setState({ changes: [CHANGE] });
     useChatStore.setState({
