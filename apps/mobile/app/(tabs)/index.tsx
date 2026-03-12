@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import {
   View,
   Text,
@@ -15,17 +15,31 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { colors } from "../../constants/theme";
 import { analyzePhoto } from "../../lib/claude-api";
 import { saveAnalysis } from "../../lib/history-db";
+import {
+  loadPairing,
+  submitTriage,
+  type PairingInfo,
+} from "../../lib/desktop-client";
 
 export default function CameraTab() {
   const [permission, requestPermission] = useCameraPermissions();
   const [photo, setPhoto] = useState<string | null>(null);
   const [analysisResult, setAnalysisResult] = useState<string | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [sentToDesktop, setSentToDesktop] = useState(false);
+  const [pairing, setPairing] = useState<PairingInfo | null>(null);
   const cameraRef = useRef<CameraView>(null);
+
+  // Load pairing on mount and when tab gains focus
+  useEffect(() => {
+    loadPairing().then(setPairing);
+  }, []);
 
   async function handleAnalyze(uri: string) {
     setAnalyzing(true);
     setAnalysisResult(null);
+    setSentToDesktop(false);
     try {
       const result = await analyzePhoto(uri);
       setAnalysisResult(result.analysis);
@@ -35,6 +49,24 @@ export default function CameraTab() {
       Alert.alert("Analysis Error", msg);
     } finally {
       setAnalyzing(false);
+    }
+  }
+
+  async function handleSendToDesktop() {
+    if (!pairing || !analysisResult) return;
+    setSending(true);
+    try {
+      const result = await submitTriage(pairing, analysisResult);
+      setSentToDesktop(true);
+      Alert.alert(
+        "Sent to Desktop",
+        `Noah Desktop is now working on this issue. Session: ${result.session_id.slice(0, 8)}...`,
+      );
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to send.";
+      Alert.alert("Send Failed", msg);
+    } finally {
+      setSending(false);
     }
   }
 
@@ -111,6 +143,7 @@ export default function CameraTab() {
               onPress={() => {
                 setPhoto(null);
                 setAnalysisResult(null);
+                setSentToDesktop(false);
               }}
             >
               <Text style={styles.secondaryButtonText}>
@@ -127,6 +160,29 @@ export default function CameraTab() {
               </TouchableOpacity>
             )}
           </View>
+
+          {/* Send to Desktop button — only when paired and analysis done */}
+          {analysisResult && pairing && !sentToDesktop && (
+            <TouchableOpacity
+              style={styles.desktopButton}
+              onPress={handleSendToDesktop}
+              disabled={sending}
+            >
+              {sending ? (
+                <ActivityIndicator color={colors.bgPrimary} size="small" />
+              ) : (
+                <Text style={styles.desktopButtonText}>Send to Desktop for Fix</Text>
+              )}
+            </TouchableOpacity>
+          )}
+
+          {sentToDesktop && (
+            <View style={styles.sentBadge}>
+              <Text style={styles.sentBadgeText}>
+                Sent to Noah Desktop — check your computer
+              </Text>
+            </View>
+          )}
         </ScrollView>
       </SafeAreaView>
     );
@@ -154,6 +210,12 @@ export default function CameraTab() {
         <SafeAreaView style={styles.cameraOverlay}>
           <View style={styles.cameraHeader}>
             <Text style={styles.cameraHeaderText}>Noah</Text>
+            {pairing && (
+              <View style={styles.pairedIndicator}>
+                <View style={styles.pairedDot} />
+                <Text style={styles.pairedText}>Desktop</Text>
+              </View>
+            )}
           </View>
           <View style={styles.captureRow}>
             <TouchableOpacity
@@ -250,6 +312,26 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 4,
   },
+  pairedIndicator: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 6,
+    gap: 4,
+  },
+  pairedDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.statusActive,
+  },
+  pairedText: {
+    color: colors.statusActive,
+    fontSize: 11,
+    fontWeight: "600",
+    textShadowColor: "rgba(0,0,0,0.5)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
+  },
   captureRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -330,5 +412,32 @@ const styles = StyleSheet.create({
     fontSize: 15,
     textAlign: "center",
     marginTop: 8,
+  },
+  desktopButton: {
+    backgroundColor: colors.accentPurple,
+    marginHorizontal: 16,
+    paddingVertical: 16,
+    borderRadius: 12,
+    alignItems: "center",
+  },
+  desktopButtonText: {
+    color: colors.textInverse,
+    fontSize: 16,
+    fontWeight: "700",
+  },
+  sentBadge: {
+    backgroundColor: colors.bgSecondary,
+    marginHorizontal: 16,
+    marginTop: 12,
+    padding: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.statusActive,
+    alignItems: "center",
+  },
+  sentBadgeText: {
+    color: colors.statusActive,
+    fontSize: 14,
+    fontWeight: "600",
   },
 });

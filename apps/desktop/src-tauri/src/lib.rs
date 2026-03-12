@@ -12,6 +12,7 @@ pub use noah_core::web_fetch;
 
 // Desktop-only modules (Tauri-dependent).
 mod commands;
+pub mod mobile_server;
 pub mod tauri_events;
 mod platform;
 mod proactive;
@@ -23,7 +24,7 @@ use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use tauri::Manager;
 use tauri::menu::{MenuBuilder, SubmenuBuilder, PredefinedMenuItem};
-use tokio::sync::{oneshot, Mutex};
+use tokio::sync::{broadcast, oneshot, Mutex};
 
 use agent::llm_client::LlmClient;
 use agent::orchestrator::{Orchestrator, PendingApprovals};
@@ -32,7 +33,7 @@ use safety::journal;
 
 /// Shared application state managed by Tauri.
 pub struct AppState {
-    pub orchestrator: Mutex<Orchestrator>,
+    pub orchestrator: Arc<Mutex<Orchestrator>>,
     pub pending_approvals: PendingApprovals,
     pub db: Arc<Mutex<rusqlite::Connection>>,
     /// Path to the app data directory (for saving config).
@@ -45,6 +46,10 @@ pub struct AppState {
     pub scanner_trigger: Arc<std::sync::Mutex<Option<String>>>,
     /// Scanner pause handle — add scan_type strings to pause specific scanners.
     pub scanner_pause: Arc<std::sync::Mutex<std::collections::HashSet<String>>>,
+    /// Mobile server state — shared with the embedded axum server.
+    pub mobile_server: Arc<mobile_server::MobileServerState>,
+    /// Port the mobile server is listening on.
+    pub mobile_server_port: u16,
 }
 
 /// Migrate user data from the old `com.itman.app` directory to the new location.
@@ -220,6 +225,7 @@ pub fn run() {
             let orchestrator =
                 Orchestrator::new(llm, router, os_context, pending_approvals.clone(), db_arc.clone(), knowledge_dir.clone());
             let cancelled = orchestrator.cancelled_flag();
+            let orchestrator_arc = Arc::new(Mutex::new(orchestrator));
 
             let mut scanner_mgr = scanner::ScannerManager::new(db_arc.clone(), Some(app.handle().clone()));
             #[cfg(target_os = "macos")]
@@ -229,8 +235,42 @@ pub fn run() {
 
             let ctx_dir = app_dir.clone();
 
+            // Set up mobile server
+            let (sse_tx, _) = broadcast::channel::<mobile_server::SseEvent>(64);
+
+            // Restore pairing from DB if previously paired
+            let restored_pairing = {
+                let conn = db_arc.blocking_lock();
+                journal::get_setting(&conn, "paired_device")
+                    .ok()
+                    .flatten()
+                    .and_then(|s| serde_json::from_str::<mobile_server::PairedDevice>(&s).ok())
+            };
+
+            let mobile_state = Arc::new(mobile_server::MobileServerState {
+                orchestrator: orchestrator_arc.clone(),
+                db: db_arc.clone(),
+                pending_approvals: pending_approvals.clone(),
+                pairing: Mutex::new(mobile_server::PairingState {
+                    pending_token: None,
+                    paired_device: restored_pairing,
+                    failed_attempts: 0,
+                }),
+                sse_tx,
+                app_dir: app_dir.clone(),
+                app_handle: Some(app.handle().clone()),
+            });
+
+            let mobile_state_for_server = mobile_state.clone();
+            let mobile_server_port = tauri::async_runtime::block_on(async {
+                mobile_server::start_server(mobile_state_for_server).await.unwrap_or_else(|e| {
+                    eprintln!("[mobile-server] Failed to start: {}", e);
+                    0
+                })
+            });
+
             app.manage(AppState {
-                orchestrator: Mutex::new(orchestrator),
+                orchestrator: orchestrator_arc,
                 pending_approvals,
                 db: db_arc.clone(),
                 app_dir,
@@ -238,6 +278,8 @@ pub fn run() {
                 cancelled,
                 scanner_trigger,
                 scanner_pause,
+                mobile_server: mobile_state,
+                mobile_server_port,
             });
 
             tauri::async_runtime::spawn(async move {
@@ -309,6 +351,9 @@ pub fn run() {
             commands::scanner::pause_scan,
             commands::scanner::resume_scan,
             commands::scanner::get_scan_jobs,
+            commands::pairing::generate_pairing_qr,
+            commands::pairing::get_pairing_status,
+            commands::pairing::unpair_device,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
