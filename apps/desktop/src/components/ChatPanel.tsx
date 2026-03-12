@@ -1460,7 +1460,10 @@ export function ChatPanel() {
                 <ActivityLog activity={activityLog.activity} defaultExpanded={activityLog.isPlaybook} t={t} />
               )}
             </div>
-            <div className="sticky bottom-0 pt-4 pb-3 bg-bg-primary border-t border-border-primary/30">
+            <div
+              data-testid="chat-input-footer"
+              className="sticky bottom-0 z-10 pt-3 pb-3 bg-bg-primary border-t border-border-primary/50 shadow-[0_-6px_18px_rgba(0,0,0,0.16)]"
+            >
               {inputCard}
             </div>
             <div ref={messagesEndRef} />
