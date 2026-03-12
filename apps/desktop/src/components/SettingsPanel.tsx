@@ -3,7 +3,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { useSessionStore } from "../stores/sessionStore";
 import { useTheme, type ThemePreference } from "../hooks/useTheme";
 import * as commands from "../lib/tauri-commands";
-import { useLocale, type LocalePreference } from "../i18n";
+import { useLocale, LOCALE_OPTIONS } from "../i18n";
 
 export function SettingsPanel() {
   const settingsOpen = useSessionStore((s) => s.settingsOpen);
@@ -280,26 +280,22 @@ export function SettingsPanel() {
               {t("settings.language")}
             </h3>
             <div className="flex rounded-lg border border-border-primary overflow-hidden">
-              {(["auto", "en", "zh"] as LocalePreference[]).map((opt) => (
+              {LOCALE_OPTIONS.map((opt) => (
                 <button
-                  key={opt}
-                  onClick={() => setLocale(opt)}
+                  key={opt.value}
+                  onClick={() => setLocale(opt.value)}
                   className={`flex-1 py-1.5 text-xs font-medium transition-colors cursor-pointer ${
-                    localePref === opt
+                    localePref === opt.value
                       ? "bg-accent-blue/15 text-accent-blue"
                       : "text-text-secondary hover:text-text-primary hover:bg-bg-tertiary/50"
                   }`}
                 >
-                  {opt === "auto" ? t("settings.auto") : opt === "en" ? t("settings.langEnglish") : t("settings.langChinese")}
+                  {t(opt.labelKey)}
                 </button>
               ))}
             </div>
             <p className="text-[10px] text-text-muted mt-1.5">
-              {localePref === "auto"
-                ? t("settings.langAutoDesc")
-                : localePref === "en"
-                  ? t("settings.langEnDesc")
-                  : t("settings.langZhDesc")}
+              {t(LOCALE_OPTIONS.find((opt) => opt.value === localePref)?.descKey ?? "settings.langAutoDesc")}
             </p>
           </section>
 
