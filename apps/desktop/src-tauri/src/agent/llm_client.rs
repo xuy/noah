@@ -161,18 +161,14 @@ fn strip_markdown_fences(s: &str) -> String {
     let trimmed = s.trim();
     if trimmed.starts_with("```") && trimmed.ends_with("```") {
         // Remove first line (```json or ```) and last line (```).
-        let inner = trimmed
-            .strip_prefix("```")
-            .unwrap_or(trimmed);
+        let inner = trimmed.strip_prefix("```").unwrap_or(trimmed);
         // Skip the language tag on the first line.
         let inner = match inner.find('\n') {
             Some(pos) => &inner[pos + 1..],
             None => inner,
         };
         // Remove trailing ```.
-        let inner = inner
-            .strip_suffix("```")
-            .unwrap_or(inner);
+        let inner = inner.strip_suffix("```").unwrap_or(inner);
         inner.trim().to_string()
     } else {
         trimmed.to_string()
@@ -182,13 +178,41 @@ fn strip_markdown_fences(s: &str) -> String {
 /// Map an HTTP status code from the Anthropic API to a user-friendly error message.
 fn friendly_api_error(status: reqwest::StatusCode, body: &str) -> String {
     match status.as_u16() {
-        401 => "Your API key is invalid or has been revoked. Please check it in Settings.".to_string(),
-        403 => "Your API key doesn't have permission for this request. Check your Anthropic account.".to_string(),
-        429 => "Too many requests — Claude is rate-limited. Wait a moment and try again.".to_string(),
-        500 | 502 | 503 => "Claude is having temporary issues. Please try again in a minute.".to_string(),
+        401 => {
+            "Your API key is invalid or has been revoked. Please check it in Settings.".to_string()
+        }
+        403 => {
+            "Your API key doesn't have permission for this request. Check your Anthropic account."
+                .to_string()
+        }
+        429 => {
+            "Too many requests — Claude is rate-limited. Wait a moment and try again.".to_string()
+        }
+        500 | 502 | 503 => {
+            "Claude is having temporary issues. Please try again in a minute.".to_string()
+        }
         529 => "Claude is currently overloaded. Please try again in a few minutes.".to_string(),
         _ => format!("Unexpected API error ({}): {}", status, body),
     }
+}
+
+pub fn is_context_limit_error(status: reqwest::StatusCode, body: &str) -> bool {
+    if !matches!(status.as_u16(), 400 | 413) {
+        return false;
+    }
+
+    let body = body.to_ascii_lowercase();
+    [
+        "context window",
+        "context_length",
+        "prompt is too long",
+        "prompt too long",
+        "too many tokens",
+        "input is too long",
+        "maximum context length",
+    ]
+    .iter()
+    .any(|needle| body.contains(needle))
 }
 
 impl LlmClient {
@@ -248,7 +272,9 @@ impl LlmClient {
         }
         match &self.auth {
             AuthMode::ApiKey(_) => ANTHROPIC_API_URL.to_string(),
-            AuthMode::Proxy { base_url, .. } => format!("{}/v1/messages", base_url.trim_end_matches('/')),
+            AuthMode::Proxy { base_url, .. } => {
+                format!("{}/v1/messages", base_url.trim_end_matches('/'))
+            }
         }
     }
 
@@ -256,7 +282,9 @@ impl LlmClient {
     fn apply_auth(&self, builder: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
         match &self.auth {
             AuthMode::ApiKey(key) => builder.header("x-api-key", key),
-            AuthMode::Proxy { token, .. } => builder.header("Authorization", format!("Bearer {}", token)),
+            AuthMode::Proxy { token, .. } => {
+                builder.header("Authorization", format!("Bearer {}", token))
+            }
         }
     }
 
@@ -279,7 +307,8 @@ impl LlmClient {
             .header("anthropic-version", API_VERSION)
             .header("content-type", "application/json")
             .json(&body);
-        let resp = self.apply_auth(builder)
+        let resp = self
+            .apply_auth(builder)
             .send()
             .await
             .context("Title generation request failed")?;
@@ -326,7 +355,8 @@ impl LlmClient {
             .header("anthropic-version", API_VERSION)
             .header("content-type", "application/json")
             .json(&body);
-        let resp = self.apply_auth(builder)
+        let resp = self
+            .apply_auth(builder)
             .send()
             .await
             .context("Summary generation request failed")?;
@@ -354,8 +384,86 @@ impl LlmClient {
         Ok(summary)
     }
 
+    /// Compress earlier session history into a durable diagnostic handoff.
+    pub async fn generate_context_summary(
+        &self,
+        existing_summary: Option<&str>,
+        messages_text: &str,
+    ) -> Result<String> {
+        let mut prompt = String::from(
+            "Compress this older IT support session history into a concise handoff for the main model.\n\
+             Preserve only durable facts the assistant still needs:\n\
+             - current diagnosis or strongest working theory\n\
+             - notable tool findings and error messages\n\
+             - actions already taken and their results\n\
+             - pending user follow-up or approval state if mentioned\n\
+             - dead ends worth avoiding repeating\n\
+             Omit chit-chat, duplicated logs, and routine command output.\n\
+             Use Markdown with these sections when relevant:\n\
+             ## Current state\n\
+             ## Actions taken\n\
+             ## Pending / watch-outs\n\
+             Keep it compact and factual.\n",
+        );
+
+        if let Some(existing) = existing_summary.filter(|s| !s.trim().is_empty()) {
+            prompt.push_str("\nExisting compressed summary:\n");
+            prompt.push_str(existing);
+            prompt.push_str("\n\nMerge the new history into that summary and return a single updated summary.\n");
+        }
+
+        let body = ApiRequest {
+            model: effective_model_or(TITLE_MODEL),
+            max_tokens: 500,
+            system: system_text(&prompt),
+            messages: vec![Message {
+                role: "user".to_string(),
+                content: MessageContent::Text(messages_text.to_string()),
+            }],
+            tools: vec![],
+        };
+
+        let builder = self
+            .client
+            .post(self.api_url())
+            .header("anthropic-version", API_VERSION)
+            .header("content-type", "application/json")
+            .json(&body);
+        let resp = self
+            .apply_auth(builder)
+            .send()
+            .await
+            .context("Context summary request failed")?;
+
+        let status = resp.status();
+        if !status.is_success() {
+            let error_body = resp.text().await.unwrap_or_default();
+            anyhow::bail!("{}", friendly_api_error(status, &error_body));
+        }
+
+        let response: Response = resp
+            .json()
+            .await
+            .context("Failed to parse context summary response")?;
+
+        let summary = response
+            .content
+            .iter()
+            .find_map(|b| match b {
+                ResponseBlock::Text { text } => Some(text.trim().to_string()),
+                _ => None,
+            })
+            .unwrap_or_default();
+
+        Ok(summary)
+    }
+
     /// Analyze diagnostic tool output using Haiku to determine if it's noteworthy.
-    pub async fn analyze_diagnostics(&self, category: &str, tool_output: &str) -> Result<DiagnosticAnalysis> {
+    pub async fn analyze_diagnostics(
+        &self,
+        category: &str,
+        tool_output: &str,
+    ) -> Result<DiagnosticAnalysis> {
         let system = format!(
             "You are a conservative IT health monitor analyzing {} diagnostics.\n\
              Only flag genuinely concerning issues:\n\
@@ -386,7 +494,8 @@ impl LlmClient {
             .header("anthropic-version", API_VERSION)
             .header("content-type", "application/json")
             .json(&body);
-        let resp = self.apply_auth(builder)
+        let resp = self
+            .apply_auth(builder)
             .send()
             .await
             .context("Diagnostic analysis request failed")?;
@@ -415,8 +524,8 @@ impl LlmClient {
         let cleaned = strip_markdown_fences(&text);
 
         // Parse the JSON response from Haiku.
-        let analysis: DiagnosticAnalysis = serde_json::from_str(&cleaned)
-            .unwrap_or(DiagnosticAnalysis {
+        let analysis: DiagnosticAnalysis =
+            serde_json::from_str(&cleaned).unwrap_or(DiagnosticAnalysis {
                 noteworthy: false,
                 headline: String::new(),
                 detail: String::new(),
@@ -455,10 +564,7 @@ impl LlmClient {
                 .header("anthropic-version", API_VERSION)
                 .header("content-type", "application/json")
                 .json(&body);
-            let resp = match self.apply_auth(builder)
-                .send()
-                .await
-            {
+            let resp = match self.apply_auth(builder).send().await {
                 Ok(r) => r,
                 Err(e) => {
                     let err = if e.is_timeout() {
@@ -486,6 +592,10 @@ impl LlmClient {
                 .await
                 .unwrap_or_else(|_| "unknown error".to_string());
 
+            if is_context_limit_error(status, &error_body) {
+                anyhow::bail!("Context limit exceeded: {}", error_body);
+            }
+
             // Only retry on retryable status codes
             let retryable = matches!(status.as_u16(), 429 | 500 | 502 | 503 | 529);
             let friendly = friendly_api_error(status, &error_body);
@@ -508,60 +618,91 @@ mod tests {
     #[test]
     fn test_friendly_api_error_401() {
         let msg = friendly_api_error(reqwest::StatusCode::UNAUTHORIZED, "");
-        assert!(msg.contains("API key"), "401 should mention API key: {}", msg);
-        assert!(msg.contains("Settings"), "401 should mention Settings: {}", msg);
+        assert!(
+            msg.contains("API key"),
+            "401 should mention API key: {}",
+            msg
+        );
+        assert!(
+            msg.contains("Settings"),
+            "401 should mention Settings: {}",
+            msg
+        );
     }
 
     #[test]
     fn test_friendly_api_error_429() {
         let msg = friendly_api_error(reqwest::StatusCode::TOO_MANY_REQUESTS, "");
-        assert!(msg.contains("Too many requests") || msg.contains("rate-limited"),
-            "429 should mention rate limit: {}", msg);
+        assert!(
+            msg.contains("Too many requests") || msg.contains("rate-limited"),
+            "429 should mention rate limit: {}",
+            msg
+        );
     }
 
     #[test]
     fn test_friendly_api_error_500() {
         let msg = friendly_api_error(reqwest::StatusCode::INTERNAL_SERVER_ERROR, "");
-        assert!(msg.contains("temporary issues") || msg.contains("try again"),
-            "500 should be friendly: {}", msg);
+        assert!(
+            msg.contains("temporary issues") || msg.contains("try again"),
+            "500 should be friendly: {}",
+            msg
+        );
     }
 
     #[test]
     fn test_friendly_api_error_502() {
         let msg = friendly_api_error(reqwest::StatusCode::BAD_GATEWAY, "");
-        assert!(msg.contains("temporary issues"),
-            "502 should be friendly: {}", msg);
+        assert!(
+            msg.contains("temporary issues"),
+            "502 should be friendly: {}",
+            msg
+        );
     }
 
     #[test]
     fn test_friendly_api_error_503() {
         let msg = friendly_api_error(reqwest::StatusCode::SERVICE_UNAVAILABLE, "");
-        assert!(msg.contains("temporary issues"),
-            "503 should be friendly: {}", msg);
+        assert!(
+            msg.contains("temporary issues"),
+            "503 should be friendly: {}",
+            msg
+        );
     }
 
     #[test]
     fn test_friendly_api_error_529_overloaded() {
-        let msg = friendly_api_error(
-            reqwest::StatusCode::from_u16(529).unwrap(),
-            "",
+        let msg = friendly_api_error(reqwest::StatusCode::from_u16(529).unwrap(), "");
+        assert!(
+            msg.contains("overloaded"),
+            "529 should mention overloaded: {}",
+            msg
         );
-        assert!(msg.contains("overloaded"),
-            "529 should mention overloaded: {}", msg);
     }
 
     #[test]
     fn test_friendly_api_error_unknown_includes_status() {
         let msg = friendly_api_error(reqwest::StatusCode::IM_A_TEAPOT, "brew coffee");
-        assert!(msg.contains("418"), "Unknown error should include status code: {}", msg);
-        assert!(msg.contains("brew coffee"), "Unknown error should include body: {}", msg);
+        assert!(
+            msg.contains("418"),
+            "Unknown error should include status code: {}",
+            msg
+        );
+        assert!(
+            msg.contains("brew coffee"),
+            "Unknown error should include body: {}",
+            msg
+        );
     }
 
     #[test]
     fn test_friendly_api_error_403() {
         let msg = friendly_api_error(reqwest::StatusCode::FORBIDDEN, "");
-        assert!(msg.contains("permission"),
-            "403 should mention permission: {}", msg);
+        assert!(
+            msg.contains("permission"),
+            "403 should mention permission: {}",
+            msg
+        );
     }
 
     #[test]
@@ -604,8 +745,8 @@ mod tests {
         // The analyze_diagnostics method uses unwrap_or on parse failure.
         // Verify the fallback works.
         let bad_json = "This is not JSON at all";
-        let analysis: DiagnosticAnalysis = serde_json::from_str(bad_json)
-            .unwrap_or(DiagnosticAnalysis {
+        let analysis: DiagnosticAnalysis =
+            serde_json::from_str(bad_json).unwrap_or(DiagnosticAnalysis {
                 noteworthy: false,
                 headline: String::new(),
                 detail: String::new(),
@@ -633,7 +774,8 @@ mod tests {
     fn test_diagnostic_analysis_with_markdown_fenced_json() {
         // Haiku sometimes wraps its response in ```json ... ```.
         // Verify strip_markdown_fences handles this.
-        let fenced = "```json\n{\"noteworthy\": true, \"headline\": \"test\", \"detail\": \"x\"}\n```";
+        let fenced =
+            "```json\n{\"noteworthy\": true, \"headline\": \"test\", \"detail\": \"x\"}\n```";
         let cleaned = strip_markdown_fences(fenced);
         let analysis: DiagnosticAnalysis = serde_json::from_str(&cleaned).unwrap();
         assert!(analysis.noteworthy);
@@ -657,7 +799,8 @@ mod tests {
 
     #[test]
     fn test_strip_markdown_fences_with_whitespace() {
-        let fenced = "  ```json\n{\"noteworthy\": false, \"headline\": \"\", \"detail\": \"\"}\n```  ";
+        let fenced =
+            "  ```json\n{\"noteworthy\": false, \"headline\": \"\", \"detail\": \"\"}\n```  ";
         let cleaned = strip_markdown_fences(fenced);
         let analysis: DiagnosticAnalysis = serde_json::from_str(&cleaned).unwrap();
         assert!(!analysis.noteworthy);
@@ -667,12 +810,30 @@ mod tests {
     fn test_no_raw_error_messages() {
         // All mapped status codes should NOT contain "Anthropic API error" (the old raw format).
         for status in [401u16, 403, 429, 500, 502, 503, 529] {
-            let msg = friendly_api_error(
-                reqwest::StatusCode::from_u16(status).unwrap(),
-                "raw body",
+            let msg =
+                friendly_api_error(reqwest::StatusCode::from_u16(status).unwrap(), "raw body");
+            assert!(
+                !msg.contains("Anthropic API error"),
+                "Status {} should not show raw error: {}",
+                status,
+                msg
             );
-            assert!(!msg.contains("Anthropic API error"),
-                "Status {} should not show raw error: {}", status, msg);
         }
+    }
+
+    #[test]
+    fn test_is_context_limit_error_detects_context_window_failures() {
+        assert!(is_context_limit_error(
+            reqwest::StatusCode::BAD_REQUEST,
+            "prompt is too long for the model context window"
+        ));
+        assert!(is_context_limit_error(
+            reqwest::StatusCode::PAYLOAD_TOO_LARGE,
+            "maximum context length exceeded"
+        ));
+        assert!(!is_context_limit_error(
+            reqwest::StatusCode::BAD_REQUEST,
+            "invalid request body"
+        ));
     }
 }
