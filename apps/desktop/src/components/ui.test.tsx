@@ -28,13 +28,15 @@ vi.mock("../lib/tauri-commands", () => ({
   sendMessage: vi.fn().mockResolvedValue(""),
   cancelProcessing: vi.fn().mockResolvedValue(undefined),
 }));
+const mockAgent = {
+  sendMessage: vi.fn(),
+  sendConfirmation: vi.fn(),
+  sendEvent: vi.fn(),
+  cancelProcessing: vi.fn().mockResolvedValue(undefined),
+  isProcessing: false,
+};
 vi.mock("../hooks/useAgent", () => ({
-  useAgent: () => ({
-    sendMessage: vi.fn(),
-    sendConfirmation: vi.fn(),
-    cancelProcessing: vi.fn(),
-    isProcessing: false,
-  }),
+  useAgent: () => mockAgent,
 }));
 vi.mock("../hooks/useSession", () => ({
   useSession: () => ({
@@ -82,6 +84,12 @@ afterEach(() => cleanup());
 
 beforeEach(() => {
   startDraggingMock.mockClear();
+  mockAgent.sendMessage.mockReset();
+  mockAgent.sendConfirmation.mockReset();
+  mockAgent.sendEvent.mockReset();
+  mockAgent.cancelProcessing.mockReset();
+  mockAgent.cancelProcessing.mockResolvedValue(undefined);
+  mockAgent.isProcessing = false;
   useSessionStore.setState({
     changes: [],
     changeLogOpen: false,
@@ -285,6 +293,26 @@ describe("ChangesBlock", () => {
     expect(footer.className).toContain("z-10");
     expect(footer.className).toContain("bg-bg-primary");
     expect(footer.className).toContain("shadow-[0_-6px_18px_rgba(0,0,0,0.16)]");
+  });
+
+  it("shows stopping feedback immediately after stop is clicked", async () => {
+    mockAgent.isProcessing = true;
+    mockAgent.cancelProcessing.mockImplementation(() => new Promise<void>(() => {}));
+    useChatStore.setState({
+      messages: [
+        {
+          id: "msg1",
+          role: "assistant",
+          content: "Working on it.",
+          timestamp: Date.now(),
+        },
+      ],
+    });
+    const user = userEvent.setup();
+    render(<ChatPanel />);
+    await user.click(screen.getByTitle("Stop processing"));
+    await screen.findByText("Noah is stopping...");
+    expect(mockAgent.cancelProcessing).toHaveBeenCalledTimes(1);
   });
 });
 
