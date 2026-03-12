@@ -930,7 +930,7 @@ mod tests {
         ] {
             assert!(obj.contains_key(key), "Missing expected key: {}", key);
         }
-        assert_eq!(obj.len(), 7);
+        assert_eq!(obj.len(), 8);
         // Must NOT have camelCase
         assert!(!obj.contains_key("createdAt"));
         assert!(!obj.contains_key("endedAt"));
@@ -954,10 +954,10 @@ mod tests {
     }
 
     #[test]
-    fn test_schema_version_is_7() {
+    fn test_schema_version_is_8() {
         let conn = test_db();
         let version = get_schema_version(&conn);
-        assert_eq!(version, 7);
+        assert_eq!(version, 8);
     }
 
     #[test]
