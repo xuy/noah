@@ -2,20 +2,18 @@ import { useState, useEffect, useRef } from "react";
 import {
   View,
   Text,
-  TextInput,
   TouchableOpacity,
   StyleSheet,
   Alert,
-  KeyboardAvoidingView,
   Platform,
   ScrollView,
   Modal,
   ActivityIndicator,
 } from "react-native";
-import * as SecureStore from "expo-secure-store";
 import { CameraView } from "expo-camera";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { colors } from "../../constants/theme";
+import { useAuth } from "../_layout";
 import {
   parseQrPayload,
   pairWithDesktop,
@@ -26,12 +24,8 @@ import {
   type DesktopStatus,
 } from "../../lib/desktop-client";
 
-const API_KEY_STORAGE_KEY = "noah_api_key";
-
 export default function SettingsTab() {
-  const [apiKey, setApiKey] = useState("");
-  const [hasStoredKey, setHasStoredKey] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
+  const { user, signOut } = useAuth();
 
   // Pairing state
   const [pairing, setPairing] = useState<PairingInfo | null>(null);
@@ -41,7 +35,6 @@ export default function SettingsTab() {
   const scannedRef = useRef(false);
 
   useEffect(() => {
-    loadStoredKey();
     loadPairingState();
   }, []);
 
@@ -68,67 +61,28 @@ export default function SettingsTab() {
     };
   }, [pairing]);
 
-  async function loadStoredKey() {
-    try {
-      const stored = await SecureStore.getItemAsync(API_KEY_STORAGE_KEY);
-      if (stored) {
-        setHasStoredKey(true);
-        setApiKey(maskKey(stored));
-      }
-    } catch {
-      // SecureStore not available
-    } finally {
-      setIsLoading(false);
-    }
-  }
-
   async function loadPairingState() {
     const p = await loadPairing();
     setPairing(p);
   }
 
-  function maskKey(key: string): string {
-    if (key.length <= 8) return "****";
-    return key.slice(0, 4) + "****" + key.slice(-4);
-  }
-
-  async function handleSave() {
-    const trimmed = apiKey.trim();
-    if (!trimmed) {
-      Alert.alert("Empty Key", "Please enter an API key before saving.");
-      return;
-    }
-    if (hasStoredKey && trimmed === maskKey(trimmed)) {
-      Alert.alert("No Changes", "The API key has not been modified.");
-      return;
-    }
+  async function handleAutoPair() {
+    setIsPairing(true);
     try {
-      await SecureStore.setItemAsync(API_KEY_STORAGE_KEY, trimmed);
-      setHasStoredKey(true);
-      setApiKey(maskKey(trimmed));
-      Alert.alert("Saved", "API key stored securely.");
-    } catch {
-      Alert.alert("Error", "Failed to save API key.");
+      const res = await fetch("http://192.168.86.22:7892/generate-qr");
+      if (!res.ok) throw new Error("Desktop not reachable");
+      const data = await res.json();
+      const qr = parseQrPayload(data.qr_json);
+      if (!qr) throw new Error("Invalid QR data from desktop");
+      const result = await pairWithDesktop(qr, `${Platform.OS} phone`);
+      setPairing(result);
+      Alert.alert("Paired!", `Connected to ${result.desktopName}`);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Auto-pair failed";
+      Alert.alert("Auto-Pair Failed", msg);
+    } finally {
+      setIsPairing(false);
     }
-  }
-
-  async function handleClear() {
-    Alert.alert("Clear API Key", "Remove the stored API key?", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Clear",
-        style: "destructive",
-        onPress: async () => {
-          try {
-            await SecureStore.deleteItemAsync(API_KEY_STORAGE_KEY);
-            setApiKey("");
-            setHasStoredKey(false);
-          } catch {
-            Alert.alert("Error", "Failed to clear API key.");
-          }
-        },
-      },
-    ]);
   }
 
   async function handleBarcodeScan(data: string) {
@@ -172,59 +126,91 @@ export default function SettingsTab() {
     ]);
   }
 
-  if (isLoading) {
-    return (
-      <SafeAreaView style={styles.container} edges={["bottom"]}>
-        <View style={styles.centered}>
-          <Text style={styles.loadingText}>Loading...</Text>
-        </View>
-      </SafeAreaView>
-    );
+  function handleSignOut() {
+    Alert.alert("Sign Out", "Sign out of your Noah account?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Sign Out",
+        style: "destructive",
+        onPress: signOut,
+      },
+    ]);
   }
 
   return (
     <SafeAreaView style={styles.container} edges={["bottom"]}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        style={styles.flex}
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
       >
-        <ScrollView
-          contentContainerStyle={styles.scrollContent}
-          keyboardShouldPersistTaps="handled"
-        >
-          {/* Desktop Pairing Section */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Desktop Pairing</Text>
-            {pairing ? (
-              <>
-                <View style={styles.statusRow}>
-                  <View
-                    style={[
-                      styles.statusDot,
-                      { backgroundColor: desktopStatus?.online ? colors.statusActive : colors.accentRed },
-                    ]}
-                  />
-                  <Text style={styles.statusText}>
-                    {desktopStatus?.online
-                      ? `Connected to ${pairing.desktopName}`
-                      : "Desktop offline"}
+        {/* Account Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Account</Text>
+          {user && (
+            <View style={styles.accountInfo}>
+              <View style={styles.accountRow}>
+                <Text style={styles.accountLabel}>Email</Text>
+                <Text style={styles.accountValue}>{user.email}</Text>
+              </View>
+              {user.name && (
+                <View style={styles.accountRow}>
+                  <Text style={styles.accountLabel}>Name</Text>
+                  <Text style={styles.accountValue}>{user.name}</Text>
+                </View>
+              )}
+              <View style={styles.accountRow}>
+                <Text style={styles.accountLabel}>Plan</Text>
+                <Text style={styles.tierBadge}>{user.subscription_tier}</Text>
+              </View>
+              {user.expires_at && (
+                <View style={styles.accountRow}>
+                  <Text style={styles.accountLabel}>Expires</Text>
+                  <Text style={styles.accountValue}>
+                    {new Date(user.expires_at).toLocaleDateString()}
                   </Text>
                 </View>
-                {desktopStatus?.online && desktopStatus.pending_approvals > 0 && (
-                  <Text style={styles.pendingText}>
-                    {desktopStatus.pending_approvals} pending approval(s)
-                  </Text>
-                )}
-                <TouchableOpacity style={styles.dangerButton} onPress={handleUnpair}>
-                  <Text style={styles.dangerButtonText}>Disconnect</Text>
-                </TouchableOpacity>
-              </>
-            ) : (
-              <>
-                <Text style={styles.sectionDescription}>
-                  Pair with Noah Desktop to send photo analyses for automatic
-                  diagnosis and remediation on your computer.
+              )}
+            </View>
+          )}
+          <TouchableOpacity style={styles.dangerButton} onPress={handleSignOut}>
+            <Text style={styles.dangerButtonText}>Sign Out</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Desktop Pairing Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Desktop Pairing</Text>
+          {pairing ? (
+            <>
+              <View style={styles.statusRow}>
+                <View
+                  style={[
+                    styles.statusDot,
+                    { backgroundColor: desktopStatus?.online ? colors.statusActive : colors.accentRed },
+                  ]}
+                />
+                <Text style={styles.statusText}>
+                  {desktopStatus?.online
+                    ? `Connected to ${pairing.desktopName}`
+                    : "Desktop offline"}
                 </Text>
+              </View>
+              {desktopStatus?.online && desktopStatus.pending_approvals > 0 && (
+                <Text style={styles.pendingText}>
+                  {desktopStatus.pending_approvals} pending approval(s)
+                </Text>
+              )}
+              <TouchableOpacity style={styles.dangerButton} onPress={handleUnpair}>
+                <Text style={styles.dangerButtonText}>Disconnect</Text>
+              </TouchableOpacity>
+            </>
+          ) : (
+            <>
+              <Text style={styles.sectionDescription}>
+                Pair with Noah Desktop to send photo analyses for automatic
+                diagnosis and remediation on your computer.
+              </Text>
+              <View style={styles.buttonRow}>
                 <TouchableOpacity
                   style={styles.primaryButton}
                   onPress={() => {
@@ -232,62 +218,28 @@ export default function SettingsTab() {
                     setShowScanner(true);
                   }}
                 >
-                  <Text style={styles.primaryButtonText}>Scan QR Code</Text>
+                  <Text style={styles.primaryButtonText}>Scan QR</Text>
                 </TouchableOpacity>
-              </>
-            )}
-          </View>
-
-          {/* API Configuration Section */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>API Configuration</Text>
-            <Text style={styles.sectionDescription}>
-              Enter your API key to enable photo analysis. The key is stored
-              securely on your device.
-            </Text>
-
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>API Key</Text>
-              <TextInput
-                style={styles.input}
-                value={apiKey}
-                onChangeText={setApiKey}
-                onFocus={() => {
-                  if (hasStoredKey) setApiKey("");
-                }}
-                placeholder="sk-..."
-                placeholderTextColor={colors.textMuted}
-                secureTextEntry={!hasStoredKey}
-                autoCapitalize="none"
-                autoCorrect={false}
-                autoComplete="off"
-              />
-            </View>
-
-            <View style={styles.buttonRow}>
-              <TouchableOpacity style={styles.primaryButton} onPress={handleSave}>
-                <Text style={styles.primaryButtonText}>Save</Text>
-              </TouchableOpacity>
-              {hasStoredKey && (
-                <TouchableOpacity style={styles.dangerButton} onPress={handleClear}>
-                  <Text style={styles.dangerButtonText}>Clear</Text>
+                <TouchableOpacity
+                  style={styles.secondaryButton}
+                  onPress={handleAutoPair}
+                  disabled={isPairing}
+                >
+                  {isPairing ? (
+                    <ActivityIndicator color={colors.textPrimary} size="small" />
+                  ) : (
+                    <Text style={styles.secondaryButtonText}>Auto-Pair</Text>
+                  )}
                 </TouchableOpacity>
-              )}
-            </View>
-
-            {hasStoredKey && (
-              <View style={styles.statusRow}>
-                <View style={styles.statusDot} />
-                <Text style={styles.statusText}>API key is stored</Text>
               </View>
-            )}
-          </View>
+            </>
+          )}
+        </View>
 
-          <View style={styles.footer}>
-            <Text style={styles.footerText}>Noah v1.0.0</Text>
-          </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
+        <View style={styles.footer}>
+          <Text style={styles.footerText}>Noah v1.0.0</Text>
+        </View>
+      </ScrollView>
 
       {/* QR Scanner Modal */}
       <Modal visible={showScanner} animationType="slide">
@@ -325,17 +277,10 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.bgPrimary,
   },
-  flex: {
-    flex: 1,
-  },
   centered: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-  },
-  loadingText: {
-    color: colors.textSecondary,
-    fontSize: 16,
   },
   scrollContent: {
     padding: 20,
@@ -361,24 +306,36 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     marginBottom: 16,
   },
-  inputGroup: {
-    marginBottom: 20,
+  accountInfo: {
+    marginBottom: 16,
+    gap: 12,
   },
-  label: {
+  accountRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  accountLabel: {
     fontSize: 14,
     fontWeight: "600",
     color: colors.textSecondary,
-    marginBottom: 8,
   },
-  input: {
-    backgroundColor: colors.bgInput,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.borderPrimary,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    fontSize: 16,
+  accountValue: {
+    fontSize: 14,
     color: colors.textPrimary,
+    fontWeight: "500",
+  },
+  tierBadge: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: colors.accentTeal,
+    textTransform: "uppercase",
+    letterSpacing: 1,
+    backgroundColor: "rgba(45, 212, 191, 0.1)",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6,
+    overflow: "hidden",
   },
   buttonRow: {
     flexDirection: "row",
@@ -397,6 +354,21 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "600",
   },
+  secondaryButton: {
+    backgroundColor: colors.bgTertiary,
+    paddingHorizontal: 28,
+    paddingVertical: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.borderPrimary,
+    flex: 1,
+    alignItems: "center",
+  },
+  secondaryButtonText: {
+    color: colors.textPrimary,
+    fontSize: 16,
+    fontWeight: "600",
+  },
   dangerButton: {
     backgroundColor: "transparent",
     paddingHorizontal: 28,
@@ -404,7 +376,6 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
     borderColor: colors.accentRed,
-    flex: 1,
     alignItems: "center",
   },
   dangerButtonText: {
@@ -415,7 +386,8 @@ const styles = StyleSheet.create({
   statusRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginTop: 16,
+    marginTop: 8,
+    marginBottom: 16,
     gap: 8,
   },
   statusDot: {
@@ -432,7 +404,7 @@ const styles = StyleSheet.create({
   pendingText: {
     color: colors.accentAmber,
     fontSize: 13,
-    marginTop: 8,
+    marginBottom: 16,
     marginLeft: 16,
   },
   footer: {

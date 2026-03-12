@@ -1,17 +1,16 @@
-import * as SecureStore from "expo-secure-store";
-import * as FileSystem from "expo-file-system";
+import { File } from "expo-file-system";
+import { getProxyHeaders, getProxyUrl } from "./auth";
 
-const API_KEY_STORAGE_KEY = "noah_api_key";
-const API_URL = "https://api.anthropic.com/v1/messages";
-const MODEL = "claude-sonnet-4-20250514";
-
-export async function getApiKey(): Promise<string | null> {
-  try {
-    return await SecureStore.getItemAsync(API_KEY_STORAGE_KEY);
-  } catch {
-    return null;
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+  for (let i = 0; i < bytes.byteLength; i++) {
+    binary += String.fromCharCode(bytes[i]);
   }
+  return btoa(binary);
 }
+
+const MODEL = "claude-sonnet-4-20250514";
 
 export interface TriageResult {
   analysis: string;
@@ -20,18 +19,18 @@ export interface TriageResult {
 
 /**
  * Send a photo to Claude Vision for IT triage analysis.
- * Reads the image from disk, base64-encodes it, and calls the Messages API.
+ * Routes through the Noah proxy using Bearer token auth.
  */
 export async function analyzePhoto(photoUri: string): Promise<TriageResult> {
-  const apiKey = await getApiKey();
-  if (!apiKey) {
-    throw new Error("No API key configured. Go to Settings to add one.");
+  const headers = await getProxyHeaders();
+  if (!headers.Authorization) {
+    throw new Error("Not authenticated. Please sign in first.");
   }
 
   // Read image as base64
-  const base64 = await FileSystem.readAsStringAsync(photoUri, {
-    encoding: FileSystem.EncodingType.Base64,
-  });
+  const file = new File(photoUri);
+  const buffer = await file.arrayBuffer();
+  const base64 = arrayBufferToBase64(buffer);
 
   // Detect media type from URI
   const ext = photoUri.split(".").pop()?.toLowerCase() ?? "jpeg";
@@ -44,12 +43,12 @@ export async function analyzePhoto(photoUri: string): Promise<TriageResult> {
           ? "image/gif"
           : "image/jpeg";
 
-  const response = await fetch(API_URL, {
+  const proxyUrl = getProxyUrl();
+  const response = await fetch(`${proxyUrl}/v1/messages`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
+      ...headers,
     },
     body: JSON.stringify({
       model: MODEL,
@@ -84,7 +83,7 @@ export async function analyzePhoto(photoUri: string): Promise<TriageResult> {
   if (!response.ok) {
     const body = await response.text();
     if (response.status === 401) {
-      throw new Error("Invalid API key. Check your key in Settings.");
+      throw new Error("Session expired. Please sign in again.");
     }
     if (response.status === 429) {
       throw new Error("Rate limited. Please wait a moment and try again.");

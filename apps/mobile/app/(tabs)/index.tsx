@@ -46,7 +46,11 @@ export default function CameraTab() {
       await saveAnalysis(uri, result.analysis, result.model);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Analysis failed.";
-      Alert.alert("Analysis Error", msg);
+      if (msg.includes("Session expired") || msg.includes("Not authenticated")) {
+        Alert.alert("Authentication Required", "Your session has expired. Please sign in again from Settings.");
+      } else {
+        Alert.alert("Analysis Error", msg);
+      }
     } finally {
       setAnalyzing(false);
     }
