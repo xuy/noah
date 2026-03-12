@@ -223,6 +223,58 @@ impl Orchestrator {
         self.cancelled.clone()
     }
 
+    async fn restore_session_if_needed(&mut self, session_id: &str) -> Result<()> {
+        if self.sessions.contains_key(session_id) {
+            return Ok(());
+        }
+
+        let conn = self.db.lock().await;
+        let session_record = journal::get_session(&conn, session_id)
+            .context("Failed to load session metadata from database")?;
+
+        let Some(session_record) = session_record else {
+            anyhow::bail!("Session not found: {}", session_id);
+        };
+
+        let messages = if session_record
+            .compressed_summary
+            .as_deref()
+            .is_some_and(|summary| !summary.trim().is_empty())
+        {
+            journal::get_recent_messages(&conn, session_id, RECENT_MESSAGES_TO_KEEP)
+                .context("Failed to load recent session messages from database")?
+        } else {
+            journal::get_messages(&conn, session_id)
+                .context("Failed to load session messages from database")?
+        };
+        drop(conn);
+
+        let restored_messages: Vec<Message> = messages
+            .iter()
+            .map(|record| Message {
+                role: record.role.clone(),
+                content: MessageContent::Text(record.content.clone()),
+            })
+            .collect();
+
+        let created_at = chrono::DateTime::parse_from_rfc3339(&session_record.created_at)
+            .map(|dt| dt.with_timezone(&chrono::Utc))
+            .unwrap_or_else(|_| chrono::Utc::now());
+
+        let session = Session {
+            id: session_id.to_string(),
+            messages: restored_messages,
+            compressed_summary: session_record.compressed_summary,
+            created_at,
+            playbook: None,
+            secrets: HashMap::new(),
+            locale: None,
+            mode: "default".to_string(),
+        };
+        self.sessions.insert(session_id.to_string(), session);
+        Ok(())
+    }
+
     // ── Agentic loop ───────────────────────────────────────────────────
 
     /// Send a user message and run the agentic loop until a text response
@@ -235,53 +287,7 @@ impl Orchestrator {
         app_handle: &tauri::AppHandle<R>,
         db: &tokio::sync::Mutex<rusqlite::Connection>,
     ) -> Result<String> {
-        // Verify session exists, or restore it from the database.
-        if !self.sessions.contains_key(session_id) {
-            // Try to restore the session from the database.
-            let conn = db.lock().await;
-
-            // Get session metadata
-            let session_record = journal::get_session(&conn, session_id)
-                .context("Failed to load session metadata from database")?;
-
-            if session_record.is_none() {
-                drop(conn);
-                anyhow::bail!("Session not found: {}", session_id);
-            }
-
-            let session_record = session_record.unwrap();
-
-            // Load messages
-            let messages = journal::get_messages(&conn, session_id)
-                .context("Failed to load session messages from database")?;
-            drop(conn);
-
-            // Restore the session to memory.
-            let restored_messages: Vec<Message> = messages
-                .iter()
-                .map(|record| Message {
-                    role: record.role.clone(),
-                    content: MessageContent::Text(record.content.clone()),
-                })
-                .collect();
-
-            // Parse created_at timestamp
-            let created_at = chrono::DateTime::parse_from_rfc3339(&session_record.created_at)
-                .map(|dt| dt.with_timezone(&chrono::Utc))
-                .unwrap_or_else(|_| chrono::Utc::now());
-
-            let session = Session {
-                id: session_id.to_string(),
-                messages: restored_messages,
-                compressed_summary: None,
-                created_at,
-                playbook: None,
-                secrets: HashMap::new(),
-                locale: None,
-                mode: "default".to_string(),
-            };
-            self.sessions.insert(session_id.to_string(), session);
-        }
+        self.restore_session_if_needed(session_id).await?;
 
         // Add the user message to history.
         {
@@ -757,6 +763,14 @@ impl Orchestrator {
         let session = self.sessions.get_mut(session_id).unwrap();
         session.compressed_summary = Some(updated_summary);
         session.messages = session.messages.split_off(split_at);
+        let persisted_summary = session.compressed_summary.clone();
+
+        let conn = self.db.lock().await;
+        journal::update_session_compressed_summary(
+            &conn,
+            session_id,
+            persisted_summary.as_deref(),
+        )?;
 
         Ok(())
     }
@@ -1226,5 +1240,63 @@ mod tests {
             .as_deref()
             .unwrap_or_default()
             .contains("Older session history was trimmed"));
+    }
+
+    #[tokio::test]
+    async fn test_restore_session_reuses_compressed_summary_and_recent_messages() {
+        let mut orch = test_orchestrator();
+        let session_id = "session-1";
+        {
+            let conn = orch.db.lock().await;
+            crate::safety::journal::create_session_record(
+                &conn,
+                session_id,
+                "2026-03-12T00:00:00Z",
+            )
+            .unwrap();
+            crate::safety::journal::update_session_compressed_summary(
+                &conn,
+                session_id,
+                Some("## Current state\nPreserved diagnosis"),
+            )
+            .unwrap();
+            for idx in 0..10 {
+                crate::safety::journal::save_message(
+                    &conn,
+                    session_id,
+                    if idx % 2 == 0 { "user" } else { "assistant" },
+                    &format!("message-{idx}"),
+                )
+                .unwrap();
+            }
+        }
+
+        orch.restore_session_if_needed(session_id).await.unwrap();
+
+        let session = orch.sessions.get(session_id).unwrap();
+        assert_eq!(
+            session.compressed_summary.as_deref(),
+            Some("## Current state\nPreserved diagnosis")
+        );
+        assert_eq!(session.messages.len(), RECENT_MESSAGES_TO_KEEP);
+        let restored: Vec<String> = session
+            .messages
+            .iter()
+            .map(|message| match &message.content {
+                MessageContent::Text(text) => text.clone(),
+                _ => panic!("expected restored text messages"),
+            })
+            .collect();
+        assert_eq!(
+            restored,
+            vec![
+                "message-4".to_string(),
+                "message-5".to_string(),
+                "message-6".to_string(),
+                "message-7".to_string(),
+                "message-8".to_string(),
+                "message-9".to_string()
+            ]
+        );
     }
 }

@@ -51,12 +51,13 @@ pub struct SessionRecord {
     pub title: Option<String>,
     pub message_count: i32,
     pub change_count: i32,
+    pub compressed_summary: Option<String>,
     /// User-confirmed resolution: true = resolved, false = not resolved, None = not yet marked.
     pub resolved: Option<bool>,
 }
 
 /// Current schema version. Increment when adding migrations.
-const SCHEMA_VERSION: i32 = 7;
+const SCHEMA_VERSION: i32 = 8;
 
 /// Initialise the journal database, creating tables if they don't exist,
 /// then run any pending migrations.
@@ -101,7 +102,8 @@ pub fn init_db(path: &str) -> Result<Connection> {
             created_at    TEXT NOT NULL,
             ended_at      TEXT,
             title         TEXT,
-            message_count INTEGER NOT NULL DEFAULT 0
+            message_count INTEGER NOT NULL DEFAULT 0,
+            compressed_summary TEXT
         );
 
         CREATE TABLE IF NOT EXISTS messages (
@@ -337,8 +339,17 @@ fn apply_migrations(conn: &Connection, current: i32) -> Result<()> {
         set_schema_version(conn, 7)?;
     }
 
-    // ── Add new migrations here ──
-    // if current < 8 { ... }
+    if current < 8 {
+        // Migration 8: Persist compressed session summaries for restore/reopen.
+        let has_compressed_summary: bool = conn
+            .prepare("SELECT compressed_summary FROM sessions LIMIT 0")
+            .is_ok();
+        if !has_compressed_summary {
+            conn.execute_batch("ALTER TABLE sessions ADD COLUMN compressed_summary TEXT;")
+                .context("Migration 8 failed")?;
+        }
+        set_schema_version(conn, 8)?;
+    }
 
     Ok(())
 }
@@ -494,6 +505,20 @@ pub fn update_session_message_count(conn: &Connection, id: &str, count: i32) -> 
     Ok(())
 }
 
+/// Persist the latest compressed context summary for a session.
+pub fn update_session_compressed_summary(
+    conn: &Connection,
+    id: &str,
+    compressed_summary: Option<&str>,
+) -> Result<()> {
+    conn.execute(
+        "UPDATE sessions SET compressed_summary = ?1 WHERE id = ?2",
+        rusqlite::params![compressed_summary, id],
+    )
+    .context("Failed to update session compressed summary")?;
+    Ok(())
+}
+
 /// Mark a session as ended.
 pub fn end_session_record(conn: &Connection, id: &str, ended_at: &str, message_count: i32) -> Result<()> {
     conn.execute(
@@ -615,12 +640,48 @@ pub fn get_messages(conn: &Connection, session_id: &str) -> Result<Vec<MessageRe
     Ok(records)
 }
 
+/// Retrieve the most recent display messages for a session, in chronological order.
+pub fn get_recent_messages(
+    conn: &Connection,
+    session_id: &str,
+    limit: usize,
+) -> Result<Vec<MessageRecord>> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, session_id, role, content, timestamp, action_taken, action_confirmation
+             FROM messages
+             WHERE session_id = ?1
+             ORDER BY timestamp DESC
+             LIMIT ?2",
+        )
+        .context("Failed to prepare get_recent_messages query")?;
+
+    let mut records = stmt
+        .query_map(rusqlite::params![session_id, limit as i64], |row| {
+            Ok(MessageRecord {
+                id: row.get(0)?,
+                session_id: row.get(1)?,
+                role: row.get(2)?,
+                content: row.get(3)?,
+                timestamp: row.get(4)?,
+                action_taken: row.get::<_, i32>(5).unwrap_or(0) != 0,
+                action_confirmation: row.get::<_, i32>(6).unwrap_or(0) != 0,
+            })
+        })
+        .context("Failed to execute get_recent_messages query")?
+        .collect::<std::result::Result<Vec<_>, _>>()
+        .context("Failed to collect recent message records")?;
+
+    records.reverse();
+    Ok(records)
+}
+
 /// List all sessions, most recent first. Includes change_count from the journal table.
 pub fn list_sessions(conn: &Connection) -> Result<Vec<SessionRecord>> {
     let mut stmt = conn
         .prepare(
             "SELECT s.id, s.created_at, s.ended_at, s.title, s.message_count,
-                    COALESCE(j.change_count, 0), s.resolved
+                    COALESCE(j.change_count, 0), s.compressed_summary, s.resolved
              FROM sessions s
              LEFT JOIN (
                  SELECT session_id, COUNT(*) as change_count
@@ -634,7 +695,6 @@ pub fn list_sessions(conn: &Connection) -> Result<Vec<SessionRecord>> {
 
     let records = stmt
         .query_map([], |row| {
-            let resolved_int: Option<i32> = row.get(6)?;
             Ok(SessionRecord {
                 id: row.get(0)?,
                 created_at: row.get(1)?,
@@ -642,7 +702,8 @@ pub fn list_sessions(conn: &Connection) -> Result<Vec<SessionRecord>> {
                 title: row.get(3)?,
                 message_count: row.get(4)?,
                 change_count: row.get(5)?,
-                resolved: resolved_int.map(|v| v != 0),
+                compressed_summary: row.get(6)?,
+                resolved: row.get::<_, Option<i32>>(7)?.map(|v| v != 0),
             })
         })
         .context("Failed to execute list_sessions query")?
@@ -657,7 +718,7 @@ pub fn get_session(conn: &Connection, session_id: &str) -> Result<Option<Session
     let mut stmt = conn
         .prepare(
             "SELECT s.id, s.created_at, s.ended_at, s.title, s.message_count,
-                    COALESCE(j.change_count, 0), s.resolved
+                    COALESCE(j.change_count, 0), s.compressed_summary, s.resolved
              FROM sessions s
              LEFT JOIN (
                  SELECT session_id, COUNT(*) as change_count
@@ -668,19 +729,18 @@ pub fn get_session(conn: &Connection, session_id: &str) -> Result<Option<Session
         )
         .context("Failed to prepare get_session query")?;
 
-    let result = stmt
-        .query_row(rusqlite::params![session_id], |row| {
-            let resolved_int: Option<i32> = row.get(6)?;
-            Ok(SessionRecord {
-                id: row.get(0)?,
-                created_at: row.get(1)?,
-                ended_at: row.get(2)?,
-                title: row.get(3)?,
-                message_count: row.get(4)?,
-                change_count: row.get(5)?,
-                resolved: resolved_int.map(|v| v != 0),
-            })
-        });
+    let result = stmt.query_row(rusqlite::params![session_id], |row| {
+        Ok(SessionRecord {
+            id: row.get(0)?,
+            created_at: row.get(1)?,
+            ended_at: row.get(2)?,
+            title: row.get(3)?,
+            message_count: row.get(4)?,
+            change_count: row.get(5)?,
+            compressed_summary: row.get(6)?,
+            resolved: row.get::<_, Option<i32>>(7)?.map(|v| v != 0),
+        })
+    });
 
     match result {
         Ok(record) => Ok(Some(record)),
@@ -852,6 +912,7 @@ mod tests {
             title: Some("Test".to_string()),
             message_count: 3,
             change_count: 1,
+            compressed_summary: Some("Summary".to_string()),
             resolved: None,
         };
         let json = serde_json::to_value(&rec).unwrap();
@@ -864,6 +925,7 @@ mod tests {
             "title",
             "message_count",
             "change_count",
+            "compressed_summary",
             "resolved",
         ] {
             assert!(obj.contains_key(key), "Missing expected key: {}", key);
@@ -1040,6 +1102,40 @@ mod tests {
 
         let session = get_session(&conn, "s1").unwrap().unwrap();
         assert_eq!(session.change_count, 2);
+    }
+
+    #[test]
+    fn test_get_recent_messages_returns_tail_in_order() {
+        let conn = test_db();
+        create_session_record(&conn, "s1", "2026-01-01T00:00:00Z").unwrap();
+        for idx in 0..5 {
+            save_message(&conn, "s1", "user", &format!("message-{idx}")).unwrap();
+        }
+
+        let recent = get_recent_messages(&conn, "s1", 3).unwrap();
+        let content: Vec<String> = recent.into_iter().map(|record| record.content).collect();
+        assert_eq!(
+            content,
+            vec![
+                "message-2".to_string(),
+                "message-3".to_string(),
+                "message-4".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn test_update_session_compressed_summary_round_trips() {
+        let conn = test_db();
+        create_session_record(&conn, "s1", "2026-01-01T00:00:00Z").unwrap();
+
+        update_session_compressed_summary(&conn, "s1", Some("## Current state\nSaved")).unwrap();
+
+        let session = get_session(&conn, "s1").unwrap().unwrap();
+        assert_eq!(
+            session.compressed_summary.as_deref(),
+            Some("## Current state\nSaved")
+        );
     }
 }
 
