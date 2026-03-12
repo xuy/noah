@@ -338,4 +338,11 @@ describe("Sidebar session list", () => {
     render(<Sidebar session={mockSidebarSession} />);
     expect(await screen.findByTitle("Settings")).not.toBeNull();
   });
+
+  it("keeps settings accessible when the sidebar is collapsed", async () => {
+    useSessionStore.setState({ sidebarOpen: false });
+    render(<Sidebar session={mockSidebarSession} />);
+    expect(screen.getByTitle("Settings")).not.toBeNull();
+    expect(screen.queryByText("Settings")).toBeNull();
+  });
 });
