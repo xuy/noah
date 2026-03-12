@@ -1,0 +1,47 @@
+{
+  "expo": {
+    "name": "Noah",
+    "slug": "noah-mobile",
+    "scheme": "noah",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0f1729"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "app.onnoah.mobile",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Noah needs camera access to capture photos for analysis."
+      }
+    },
+    "android": {
+      "package": "app.onnoah.mobile",
+      "adaptiveIcon": {
+        "backgroundColor": "#0f1729",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "permissions": ["android.permission.CAMERA"]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro"
+    },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Noah needs camera access to capture photos for analysis."
+        }
+      ],
+      "expo-router",
+      "expo-secure-store"
+    ]
+  }
+}
