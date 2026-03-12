@@ -366,10 +366,41 @@ export function Sidebar({ session }: SidebarProps) {
   );
 
   const toggleSidebar = useSessionStore((s) => s.toggleSidebar);
-  const toggleSettings = useSessionStore((s) => s.toggleSettings);
-  const settingsOpen = useSessionStore((s) => s.settingsOpen);
+  const settingsActive = activeView === "settings";
 
-  if (!sidebarOpen) return null;
+  if (!sidebarOpen) {
+    return (
+      <div className="w-14 flex-shrink-0 bg-bg-secondary border-r border-border-primary flex flex-col h-full">
+        <div className="px-2 pt-2 pb-2">
+          {!isMac && (
+            <button
+              onClick={toggleSidebar}
+              title="Show sidebar"
+              aria-label="Show sidebar"
+              className="flex items-center justify-center w-9 h-9 rounded-lg text-text-muted hover:text-text-primary hover:bg-bg-tertiary/50 transition-colors cursor-pointer"
+            >
+              <SidebarToggleIcon />
+            </button>
+          )}
+        </div>
+
+        <div className="mt-auto px-2 pb-2 pt-1 border-t border-border-primary">
+          <button
+            onClick={() => setActiveView(settingsActive ? "chat" : "settings")}
+            title={t("sidebar.settings")}
+            aria-label={t("sidebar.settings")}
+            className={`flex items-center justify-center w-full h-9 rounded-lg transition-colors cursor-pointer ${
+              settingsActive
+                ? "bg-accent-blue/15 text-accent-blue"
+                : "text-text-secondary hover:bg-bg-tertiary/50 hover:text-text-primary"
+            }`}
+          >
+            <SettingsGearIcon />
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="w-64 flex-shrink-0 bg-bg-secondary border-r border-border-primary flex flex-col h-full">
@@ -464,22 +495,21 @@ export function Sidebar({ session }: SidebarProps) {
         )}
       </div>
 
-      {/* Settings gear — on non-macOS, lives at the bottom of the sidebar */}
-      {!isMac && (
-        <div className="px-2 pb-2 pt-1 border-t border-border-primary mt-auto">
-          <button
-            onClick={toggleSettings}
-            className={`flex items-center gap-2.5 w-full px-3 py-2 rounded-lg text-sm transition-colors cursor-pointer ${
-              settingsOpen
-                ? "bg-accent-blue/15 text-accent-blue"
-                : "text-text-secondary hover:bg-bg-tertiary/50 hover:text-text-primary"
-            }`}
-          >
-            <SettingsGearIcon />
-            {t("sidebar.settings")}
-          </button>
-        </div>
-      )}
+      <div className="px-2 pb-2 pt-1 border-t border-border-primary mt-auto">
+        <button
+          onClick={() => setActiveView(settingsActive ? "chat" : "settings")}
+          title={t("sidebar.settings")}
+          aria-label={t("sidebar.settings")}
+          className={`flex items-center gap-2.5 w-full px-3 py-2 rounded-lg text-sm transition-colors cursor-pointer ${
+            settingsActive
+              ? "bg-accent-blue/15 text-accent-blue"
+              : "text-text-secondary hover:bg-bg-tertiary/50 hover:text-text-primary"
+          }`}
+        >
+          <SettingsGearIcon />
+          {t("sidebar.settings")}
+        </button>
+      </div>
 
       {contextMenu && (
         <ContextMenu

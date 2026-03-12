@@ -30,8 +30,6 @@ export function SettingsGearIcon() {
 export function MainTitleBar() {
   const sidebarOpen = useSessionStore((s) => s.sidebarOpen);
   const toggleSidebar = useSessionStore((s) => s.toggleSidebar);
-  const toggleSettings = useSessionStore((s) => s.toggleSettings);
-  const settingsOpen = useSessionStore((s) => s.settingsOpen);
 
   // On Linux/Windows the WM provides a title bar + Tauri adds a native menu bar.
   // Rendering a third custom strip wastes vertical space and looks odd.
@@ -46,7 +44,7 @@ export function MainTitleBar() {
 
   return (
     <div
-      className="flex items-center justify-between h-[36px] pr-3 flex-shrink-0 select-none"
+      className="flex items-center h-[36px] pr-3 flex-shrink-0 select-none"
       style={{ paddingLeft: 76 }}
       data-tauri-drag-region=""
       onMouseDown={startWindowDrag}
@@ -58,22 +56,6 @@ export function MainTitleBar() {
         className="flex items-center justify-center w-7 h-7 -mt-1 rounded-md text-text-muted hover:text-text-primary hover:bg-bg-tertiary/50 transition-colors cursor-pointer"
       >
         <SidebarToggleIcon />
-      </button>
-
-      {/* Right: Settings */}
-      <button
-        onClick={toggleSettings}
-        className={`
-          flex items-center justify-center w-7 h-7 rounded-lg
-          transition-colors duration-150 cursor-pointer
-          ${
-            settingsOpen
-              ? "bg-accent-blue/15 text-accent-blue"
-              : "text-text-muted hover:text-text-secondary hover:bg-bg-tertiary/50"
-          }
-        `}
-      >
-        <SettingsGearIcon />
       </button>
     </div>
   );

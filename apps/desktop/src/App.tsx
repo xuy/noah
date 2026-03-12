@@ -4,8 +4,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import * as commands from "./lib/tauri-commands";
 import { useSession } from "./hooks/useSession";
 import { ChatPanel } from "./components/ChatPanel";
-import { MainTitleBar, SidebarToggleIcon } from "./components/MainTitleBar";
-import { isMac } from "./lib/platform";
+import { MainTitleBar } from "./components/MainTitleBar";
 import { ActionApproval } from "./components/ActionApproval";
 import { Sidebar } from "./components/Sidebar";
 import { KnowledgeView } from "./components/KnowledgePanel";
@@ -66,25 +65,10 @@ function App() {
   return <MainApp />;
 }
 
-/** Small button to re-open sidebar on Linux/Windows when it's collapsed. */
-function SidebarOpenButton() {
-  const toggleSidebar = useSessionStore((s) => s.toggleSidebar);
-  return (
-    <button
-      onClick={toggleSidebar}
-      title="Show sidebar"
-      className="absolute top-2 left-2 z-10 flex items-center justify-center w-8 h-8 rounded-lg text-text-muted hover:text-text-primary hover:bg-bg-tertiary/60 transition-colors cursor-pointer"
-    >
-      <SidebarToggleIcon />
-    </button>
-  );
-}
-
 function MainApp() {
   const zoom = useZoom(); // CSS-based zoom via Cmd+/-/0
   const session = useSession();
   const activeView = useSessionStore((s) => s.activeView);
-  const sidebarOpen = useSessionStore((s) => s.sidebarOpen);
   const addEvent = useDebugStore((s) => s.addEvent);
   const toggle = useDebugStore((s) => s.toggle);
 
@@ -127,11 +111,6 @@ function MainApp() {
       <div className="flex flex-1 min-h-0 relative">
         <Sidebar session={session} />
 
-        {/* Floating sidebar toggle when sidebar is closed on Linux/Windows */}
-        {!isMac && !sidebarOpen && (
-          <SidebarOpenButton />
-        )}
-
         {/* Only the main content area zooms — title bar & sidebar stay fixed */}
         <div className="flex flex-col flex-1 min-w-0 origin-top-left" style={{ zoom }}>
           <SessionSummary />
@@ -142,11 +121,12 @@ function MainApp() {
             }} />
           ) : activeView === "diagnostics" ? (
             <DiagnosticsView />
+          ) : activeView === "settings" ? (
+            <SettingsPanel />
           ) : (
             <ChatPanel />
           )}
           <DebugPanel />
-          <SettingsPanel />
           <ActionApproval />
         </div>
       </div>

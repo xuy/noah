@@ -102,8 +102,8 @@ beforeEach(() => {
     isActive: true,
     pendingApproval: null,
     knowledgeOpen: false,
-    settingsOpen: false,
     sidebarOpen: true,
+    activeView: "chat",
   });
   useChatStore.setState({ messages: [] });
   vi.clearAllMocks();
@@ -122,6 +122,11 @@ describe("MainTitleBar", () => {
   it("renders sidebar toggle", () => {
     render(<MainTitleBar />);
     screen.getByTitle("Hide sidebar");
+  });
+
+  it("does not render a settings button", () => {
+    render(<MainTitleBar />);
+    expect(screen.queryByTitle("Settings")).toBeNull();
   });
 
   it("shows 'Show sidebar' when sidebar is closed", () => {
@@ -155,6 +160,28 @@ describe("MainTitleBar", () => {
 // ── ChangesBlock (tested through ChatPanel) ──────────────────────────────────
 
 describe("ChangesBlock", () => {
+  it("renders markdown tables in DONE cards", async () => {
+    useChatStore.setState({
+      messages: [
+        {
+          id: "msg1",
+          role: "assistant",
+          content: `[DONE]
+| Check | Status |
+| --- | --- |
+| DNS | Fixed |`,
+          timestamp: Date.now(),
+        },
+      ],
+    });
+    render(<ChatPanel />);
+    await screen.findByRole("table");
+    screen.getByText("Check");
+    screen.getByText("Status");
+    screen.getByText("DNS");
+    screen.getByText("Fixed");
+  });
+
   it("shows change count for mutating actions", async () => {
     useSessionStore.setState({ changes: [CHANGE] });
     useChatStore.setState({
@@ -294,8 +321,7 @@ describe("ChangesBlock", () => {
     const footer = screen.getByTestId("chat-input-footer");
     expect(footer.className).toContain("sticky");
     expect(footer.className).toContain("z-10");
-    expect(footer.className).toContain("bg-bg-primary");
-    expect(footer.className).toContain("shadow-[0_-6px_18px_rgba(0,0,0,0.16)]");
+    expect(footer.className).toContain("bg-gradient-to-t");
   });
 
   it("shows stopping feedback immediately after stop is clicked", async () => {
@@ -367,5 +393,18 @@ describe("Sidebar session list", () => {
     useSessionStore.setState({ sidebarOpen: true });
     render(<Sidebar session={mockSidebarSession} />);
     await screen.findByText(/Sessions will appear here/);
+  });
+
+  it("renders settings in the sidebar footer", async () => {
+    vi.mocked(commands.listSessions).mockResolvedValue([]);
+    render(<Sidebar session={mockSidebarSession} />);
+    expect(await screen.findByTitle("Settings")).not.toBeNull();
+  });
+
+  it("keeps settings accessible when the sidebar is collapsed", async () => {
+    useSessionStore.setState({ sidebarOpen: false });
+    render(<Sidebar session={mockSidebarSession} />);
+    expect(screen.getByTitle("Settings")).not.toBeNull();
+    expect(screen.queryByText("Settings")).toBeNull();
   });
 });

@@ -5,7 +5,7 @@ import type {
   SessionRecord,
 } from "../lib/tauri-commands";
 
-type ActiveView = "chat" | "knowledge" | "diagnostics";
+type ActiveView = "chat" | "knowledge" | "diagnostics" | "settings";
 export type SessionMode = "default" | "learn";
 
 interface SessionState {
@@ -22,7 +22,6 @@ interface SessionState {
   changeLogOpen: boolean;
   historyOpen: boolean;
   knowledgeOpen: boolean;
-  settingsOpen: boolean;
   sidebarOpen: boolean;
   activeView: ActiveView;
   pastSessions: SessionRecord[];
@@ -42,8 +41,6 @@ interface SessionState {
   setHistoryOpen: (open: boolean) => void;
   toggleKnowledge: () => void;
   setKnowledgeOpen: (open: boolean) => void;
-  toggleSettings: () => void;
-  setSettingsOpen: (open: boolean) => void;
   toggleSidebar: () => void;
   setSidebarOpen: (open: boolean) => void;
   setActiveView: (view: ActiveView) => void;
@@ -57,7 +54,6 @@ const allPanelsClosed = {
   changeLogOpen: false,
   historyOpen: false,
   knowledgeOpen: false,
-  settingsOpen: false,
 };
 
 export const useSessionStore = create<SessionState>((set) => ({
@@ -71,7 +67,6 @@ export const useSessionStore = create<SessionState>((set) => ({
   changeLogOpen: false,
   historyOpen: false,
   knowledgeOpen: false,
-  settingsOpen: false,
   sidebarOpen: true,
   activeView: "chat",
   pastSessions: [],
@@ -143,15 +138,6 @@ export const useSessionStore = create<SessionState>((set) => ({
 
   setKnowledgeOpen: (open) =>
     set(open ? { ...allPanelsClosed, knowledgeOpen: true } : { knowledgeOpen: false }),
-
-  toggleSettings: () =>
-    set((state) => ({
-      ...allPanelsClosed,
-      settingsOpen: !state.settingsOpen,
-    })),
-
-  setSettingsOpen: (open) =>
-    set(open ? { ...allPanelsClosed, settingsOpen: true } : { settingsOpen: false }),
 
   toggleSidebar: () =>
     set((state) => ({ sidebarOpen: !state.sidebarOpen })),

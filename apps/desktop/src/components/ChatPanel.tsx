@@ -156,6 +156,15 @@ function MarkdownSummary({ text }: { text: string }) {
   const lines = text.replace(/\\n/g, "\n").split("\n");
   const blocks: React.ReactNode[] = [];
   let i = 0;
+  const tableSeparator = /^\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?$/;
+
+  const splitTableRow = (row: string): string[] =>
+    row
+      .trim()
+      .replace(/^\|/, "")
+      .replace(/\|$/, "")
+      .split("|")
+      .map((cell) => cell.trim());
 
   while (i < lines.length) {
     const line = lines[i].trim();
@@ -177,6 +186,63 @@ function MarkdownSummary({ text }: { text: string }) {
         </div>,
       );
       i += 1;
+      continue;
+    }
+
+    if (
+      line.includes("|") &&
+      i + 1 < lines.length &&
+      tableSeparator.test(lines[i + 1].trim())
+    ) {
+      const headers = splitTableRow(lines[i]);
+      i += 2;
+      const rows: string[][] = [];
+      while (i < lines.length) {
+        const current = lines[i].trim();
+        if (!current || !current.includes("|") || tableSeparator.test(current)) break;
+        rows.push(splitTableRow(current));
+        i += 1;
+      }
+
+      const columnCount = headers.length;
+      const normalizedRows = rows.map((row) => {
+        if (row.length === columnCount) return row;
+        if (row.length > columnCount) return row.slice(0, columnCount);
+        return [...row, ...Array.from({ length: columnCount - row.length }, () => "")];
+      });
+
+      blocks.push(
+        <div key={`table-${i}`} className="overflow-x-auto">
+          <table className="min-w-full border-collapse text-sm">
+            <thead>
+              <tr>
+                {headers.map((header, idx) => (
+                  <th
+                    key={idx}
+                    className="border border-border-primary px-2 py-1 text-left font-semibold text-text-primary bg-bg-tertiary/40"
+                  >
+                    <InlineMarkdown text={header} />
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {normalizedRows.map((row, rowIdx) => (
+                <tr key={rowIdx}>
+                  {row.map((cell, cellIdx) => (
+                    <td
+                      key={cellIdx}
+                      className="border border-border-primary px-2 py-1 text-text-secondary align-top"
+                    >
+                      <InlineMarkdown text={cell} />
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>,
+      );
       continue;
     }
 
@@ -1459,7 +1525,7 @@ export function ChatPanel() {
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
-      <div className="flex-1 overflow-y-auto px-6 py-4">
+      <div className="flex-1 overflow-y-auto px-6 pt-4">
         {showWelcome ? (
           <div className="flex flex-col items-center justify-center h-full gap-8">
             <WelcomeHero hasContextual={false} learnMode={sessionMode === "learn"} />
@@ -1511,13 +1577,13 @@ export function ChatPanel() {
                 <ActivityLog activity={activityLog.activity} defaultExpanded={activityLog.isPlaybook} t={t} />
               )}
             </div>
+            <div ref={messagesEndRef} />
             <div
               data-testid="chat-input-footer"
-              className="sticky bottom-0 z-10 pt-3 pb-3 bg-bg-primary border-t border-border-primary/50 shadow-[0_-6px_18px_rgba(0,0,0,0.16)]"
+              className="sticky bottom-0 z-10 pt-6 pb-3 bg-gradient-to-t from-bg-primary from-60% to-transparent"
             >
               {inputCard}
             </div>
-            <div ref={messagesEndRef} />
           </div>
         )}
       </div>

@@ -1,14 +1,10 @@
 import { useState, useEffect, useCallback } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { useSessionStore } from "../stores/sessionStore";
 import { useTheme, type ThemePreference } from "../hooks/useTheme";
 import * as commands from "../lib/tauri-commands";
 import { useLocale, LOCALE_OPTIONS } from "../i18n";
 
 export function SettingsPanel() {
-  const settingsOpen = useSessionStore((s) => s.settingsOpen);
-  const setSettingsOpen = useSessionStore((s) => s.setSettingsOpen);
-
   const [apiKey, setApiKey] = useState("");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -17,22 +13,18 @@ export function SettingsPanel() {
   const [authMode, setAuthMode] = useState<"api_key" | "proxy">("api_key");
 
   useEffect(() => {
-    if (settingsOpen) {
-      commands.getAppVersion().then(setVersion).catch(() => {});
-      commands.getAuthMode().then(setAuthMode).catch(() => {});
-      setApiKey("");
-      setSaved(false);
-      setError(null);
-    }
-  }, [settingsOpen]);
+    commands.getAppVersion().then(setVersion).catch(() => {});
+    commands.getAuthMode().then(setAuthMode).catch(() => {});
+    setApiKey("");
+    setSaved(false);
+    setError(null);
+  }, []);
 
   const [proactiveEnabled, setProactiveEnabled] = useState(true);
 
   useEffect(() => {
-    if (settingsOpen) {
-      commands.getProactiveEnabled().then(setProactiveEnabled).catch(() => {});
-    }
-  }, [settingsOpen]);
+    commands.getProactiveEnabled().then(setProactiveEnabled).catch(() => {});
+  }, []);
 
   const handleToggleProactive = useCallback(async () => {
     const next = !proactiveEnabled;
@@ -109,57 +101,26 @@ export function SettingsPanel() {
     } finally {
       setSaving(false);
     }
-  }, [apiKey]);
-
-  if (!settingsOpen) return null;
+  }, [apiKey, t]);
 
   return (
-    <>
-      {/* Backdrop */}
-      <div
-        className="fixed inset-0 z-30 bg-black/20"
-        onClick={() => setSettingsOpen(false)}
-      />
-
-      {/* Slide-out panel */}
-      <div className="fixed top-0 right-0 bottom-0 z-40 w-80 bg-bg-secondary border-l border-border-primary shadow-2xl flex flex-col animate-slide-in-right">
-        {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-border-primary">
-          <h2 className="text-sm font-semibold text-text-primary">{t("settings.title")}</h2>
-          <button
-            onClick={() => setSettingsOpen(false)}
-            className="w-7 h-7 rounded-md flex items-center justify-center text-text-muted hover:text-text-primary hover:bg-bg-tertiary transition-colors cursor-pointer"
-          >
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 14 14"
-              fill="none"
-              xmlns="http://www.w3.org/2000/svg"
-            >
-              <path
-                d="M3 3L11 11M11 3L3 11"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-              />
-            </svg>
-          </button>
+    <div className="flex-1 min-h-0 overflow-y-auto bg-bg-primary">
+      <div className="mx-auto w-full max-w-4xl px-6 py-8 space-y-6">
+        <div className="space-y-1">
+          <h1 className="text-2xl font-semibold text-text-primary">{t("settings.title")}</h1>
         </div>
 
-        {/* Content */}
-        <div className="flex-1 overflow-y-auto px-4 py-4 space-y-6">
-          {/* Auth */}
-          <section>
-            <h3 className="text-xs font-semibold text-text-primary uppercase tracking-wider mb-2">
+        <div className="grid gap-6 lg:grid-cols-2">
+          <section className="rounded-2xl border border-border-primary bg-bg-secondary p-5">
+            <h2 className="text-xs font-semibold text-text-primary uppercase tracking-wider mb-3">
               {authMode === "proxy" ? t("settings.connection") : t("settings.apiKey")}
-            </h3>
+            </h2>
             {authMode === "proxy" ? (
               <>
-                <p className="text-[11px] text-text-muted mb-2">
+                <p className="text-sm text-text-muted mb-2">
                   {t("settings.connectedViaProxy")}
                 </p>
-                <p className="text-[11px] text-text-muted mb-2">
+                <p className="text-sm text-text-muted mb-3">
                   {t("settings.switchPrompt")}
                 </p>
                 <input
@@ -170,15 +131,15 @@ export function SettingsPanel() {
                     if (e.key === "Enter") handleSaveKey();
                   }}
                   placeholder="sk-ant-..."
-                  className="w-full px-3 py-2 rounded-lg bg-bg-input border border-border-primary text-xs text-text-primary placeholder-text-muted outline-none focus:border-border-focus transition-colors"
+                  className="w-full px-3 py-2 rounded-lg bg-bg-input border border-border-primary text-sm text-text-primary placeholder-text-muted outline-none focus:border-border-focus transition-colors"
                 />
                 {error && (
-                  <p className="text-[11px] text-accent-red mt-1">{error}</p>
+                  <p className="text-xs text-accent-red mt-2">{error}</p>
                 )}
                 <button
                   onClick={handleSaveKey}
                   disabled={!apiKey.trim() || saving}
-                  className="mt-2 w-full py-1.5 rounded-lg bg-accent-green text-white text-xs font-medium hover:bg-accent-green/80 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="mt-3 w-full py-2 rounded-lg bg-accent-green text-white text-sm font-medium hover:bg-accent-green/80 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {saving
                     ? t("settings.saving")
@@ -189,7 +150,7 @@ export function SettingsPanel() {
               </>
             ) : (
               <>
-                <p className="text-[11px] text-text-muted mb-2">
+                <p className="text-sm text-text-muted mb-3">
                   {t("settings.replaceKeyPrompt")}
                 </p>
                 <input
@@ -200,15 +161,15 @@ export function SettingsPanel() {
                     if (e.key === "Enter") handleSaveKey();
                   }}
                   placeholder="sk-ant-..."
-                  className="w-full px-3 py-2 rounded-lg bg-bg-input border border-border-primary text-xs text-text-primary placeholder-text-muted outline-none focus:border-border-focus transition-colors"
+                  className="w-full px-3 py-2 rounded-lg bg-bg-input border border-border-primary text-sm text-text-primary placeholder-text-muted outline-none focus:border-border-focus transition-colors"
                 />
                 {error && (
-                  <p className="text-[11px] text-accent-red mt-1">{error}</p>
+                  <p className="text-xs text-accent-red mt-2">{error}</p>
                 )}
                 <button
                   onClick={handleSaveKey}
                   disabled={!apiKey.trim() || saving}
-                  className="mt-2 w-full py-1.5 rounded-lg bg-accent-green text-white text-xs font-medium hover:bg-accent-green/80 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="mt-3 w-full py-2 rounded-lg bg-accent-green text-white text-sm font-medium hover:bg-accent-green/80 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {saving ? t("settings.saving") : saved ? t("settings.saved") : t("settings.updateApiKey")}
                 </button>
@@ -216,17 +177,16 @@ export function SettingsPanel() {
             )}
           </section>
 
-          {/* Proactive Suggestions */}
-          <section>
-            <h3 className="text-xs font-semibold text-text-primary uppercase tracking-wider mb-2">
+          <section className="rounded-2xl border border-border-primary bg-bg-secondary p-5">
+            <h2 className="text-xs font-semibold text-text-primary uppercase tracking-wider mb-3">
               {t("settings.proactiveSuggestions")}
-            </h3>
+            </h2>
             <div className="flex items-center justify-between">
               <div className="flex-1 min-w-0 mr-3">
-                <p className="text-xs text-text-secondary">
+                <p className="text-sm text-text-secondary">
                   {t("settings.notifyIssues")}
                 </p>
-                <p className="text-[10px] text-text-muted mt-0.5">
+                <p className="text-xs text-text-muted mt-1">
                   {t("settings.proactiveDesc")}
                 </p>
               </div>
@@ -245,17 +205,16 @@ export function SettingsPanel() {
             </div>
           </section>
 
-          {/* Appearance */}
-          <section>
-            <h3 className="text-xs font-semibold text-text-primary uppercase tracking-wider mb-2">
+          <section className="rounded-2xl border border-border-primary bg-bg-secondary p-5">
+            <h2 className="text-xs font-semibold text-text-primary uppercase tracking-wider mb-3">
               {t("settings.appearance")}
-            </h3>
+            </h2>
             <div className="flex rounded-lg border border-border-primary overflow-hidden">
               {(["system", "light", "dark"] as ThemePreference[]).map((opt) => (
                 <button
                   key={opt}
                   onClick={() => setTheme(opt)}
-                  className={`flex-1 py-1.5 text-xs font-medium transition-colors cursor-pointer ${
+                  className={`flex-1 py-2 text-sm font-medium transition-colors cursor-pointer ${
                     themePref === opt
                       ? "bg-accent-blue/15 text-accent-blue"
                       : "text-text-secondary hover:text-text-primary hover:bg-bg-tertiary/50"
@@ -265,7 +224,7 @@ export function SettingsPanel() {
                 </button>
               ))}
             </div>
-            <p className="text-[10px] text-text-muted mt-1.5">
+            <p className="text-xs text-text-muted mt-2">
               {themePref === "system"
                 ? t("settings.followsOS")
                 : themePref === "light"
@@ -274,17 +233,16 @@ export function SettingsPanel() {
             </p>
           </section>
 
-          {/* Language */}
-          <section>
-            <h3 className="text-xs font-semibold text-text-primary uppercase tracking-wider mb-2">
+          <section className="rounded-2xl border border-border-primary bg-bg-secondary p-5">
+            <h2 className="text-xs font-semibold text-text-primary uppercase tracking-wider mb-3">
               {t("settings.language")}
-            </h3>
+            </h2>
             <div className="flex rounded-lg border border-border-primary overflow-hidden">
               {LOCALE_OPTIONS.map((opt) => (
                 <button
                   key={opt.value}
                   onClick={() => setLocale(opt.value)}
-                  className={`flex-1 py-1.5 text-xs font-medium transition-colors cursor-pointer ${
+                  className={`flex-1 py-2 text-sm font-medium transition-colors cursor-pointer ${
                     localePref === opt.value
                       ? "bg-accent-blue/15 text-accent-blue"
                       : "text-text-secondary hover:text-text-primary hover:bg-bg-tertiary/50"
@@ -294,21 +252,27 @@ export function SettingsPanel() {
                 </button>
               ))}
             </div>
-            <p className="text-[10px] text-text-muted mt-1.5">
+            <p className="text-xs text-text-muted mt-2">
               {t(LOCALE_OPTIONS.find((opt) => opt.value === localePref)?.descKey ?? "settings.langAutoDesc")}
             </p>
           </section>
 
-          {/* Links */}
-          <section>
-            <h3 className="text-xs font-semibold text-text-primary uppercase tracking-wider mb-2">
-              {t("settings.helpFeedback")}
-            </h3>
-            <div className="space-y-1.5">
+          <section className="rounded-2xl border border-border-primary bg-bg-secondary p-5 lg:col-span-2">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-xs font-semibold text-text-primary uppercase tracking-wider mb-3">
+                  {t("settings.helpFeedback")}
+                </h2>
+              </div>
+              <p className="text-xs text-text-muted whitespace-nowrap">
+                {t("settings.version", { version: version || "..." })}
+              </p>
+            </div>
+            <div className="mt-4 grid gap-2 sm:grid-cols-2">
               <button
                 onClick={handleReportProblem}
                 disabled={reportingBug}
-                className="flex items-center gap-2 w-full px-3 py-2 rounded-lg text-xs text-text-secondary hover:bg-bg-tertiary hover:text-text-primary transition-colors cursor-pointer disabled:opacity-50"
+                className="flex items-center gap-2 w-full px-3 py-3 rounded-lg text-sm text-text-secondary hover:bg-bg-tertiary hover:text-text-primary transition-colors cursor-pointer disabled:opacity-50"
               >
                 <svg
                   width="14"
@@ -338,7 +302,7 @@ export function SettingsPanel() {
                 href="https://platform.claude.com/settings/keys"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-text-secondary hover:bg-bg-tertiary hover:text-text-primary transition-colors"
+                className="flex items-center gap-2 px-3 py-3 rounded-lg text-sm text-text-secondary hover:bg-bg-tertiary hover:text-text-primary transition-colors"
               >
                 <svg
                   width="14"
@@ -360,14 +324,7 @@ export function SettingsPanel() {
             </div>
           </section>
         </div>
-
-        {/* Footer */}
-        <div className="px-4 py-3 border-t border-border-primary">
-          <p className="text-[10px] text-text-muted text-center">
-            {t("settings.version", { version: version || "..." })}
-          </p>
-        </div>
       </div>
-    </>
+    </div>
   );
 }
