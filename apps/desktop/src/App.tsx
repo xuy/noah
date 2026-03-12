@@ -20,6 +20,7 @@ import { SetupScreen } from "./components/SetupScreen";
 import { useDebugStore, type DebugEvent } from "./stores/debugStore";
 import { useTheme } from "./hooks/useTheme";
 import { useZoom } from "./hooks/useZoom";
+import { SettingsGearIcon } from "./components/MainTitleBar";
 
 const WINDOW_TITLES = [
   "Noah \u2014 Your Trusted Support",
@@ -66,17 +67,35 @@ function App() {
   return <MainApp />;
 }
 
-/** Small button to re-open sidebar on Linux/Windows when it's collapsed. */
-function SidebarOpenButton() {
+/** Quick actions shown when the sidebar is collapsed. */
+function SidebarQuickActions() {
   const toggleSidebar = useSessionStore((s) => s.toggleSidebar);
+  const activeView = useSessionStore((s) => s.activeView);
+  const setActiveView = useSessionStore((s) => s.setActiveView);
+
   return (
-    <button
-      onClick={toggleSidebar}
-      title="Show sidebar"
-      className="absolute top-2 left-2 z-10 flex items-center justify-center w-8 h-8 rounded-lg text-text-muted hover:text-text-primary hover:bg-bg-tertiary/60 transition-colors cursor-pointer"
-    >
-      <SidebarToggleIcon />
-    </button>
+    <div className={`absolute left-2 z-10 flex flex-col gap-2 ${isMac ? "top-11" : "top-2"}`}>
+      {!isMac && (
+        <button
+          onClick={toggleSidebar}
+          title="Show sidebar"
+          className="flex items-center justify-center w-8 h-8 rounded-lg text-text-muted hover:text-text-primary hover:bg-bg-tertiary/60 transition-colors cursor-pointer"
+        >
+          <SidebarToggleIcon />
+        </button>
+      )}
+      <button
+        onClick={() => setActiveView(activeView === "settings" ? "chat" : "settings")}
+        title="Settings"
+        className={`flex items-center justify-center w-8 h-8 rounded-lg transition-colors cursor-pointer ${
+          activeView === "settings"
+            ? "bg-accent-blue/15 text-accent-blue"
+            : "text-text-muted hover:text-text-primary hover:bg-bg-tertiary/60"
+        }`}
+      >
+        <SettingsGearIcon />
+      </button>
+    </div>
   );
 }
 
@@ -127,9 +146,9 @@ function MainApp() {
       <div className="flex flex-1 min-h-0 relative">
         <Sidebar session={session} />
 
-        {/* Floating sidebar toggle when sidebar is closed on Linux/Windows */}
-        {!isMac && !sidebarOpen && (
-          <SidebarOpenButton />
+        {/* Floating quick actions keep navigation reachable while the sidebar is collapsed */}
+        {!sidebarOpen && (
+          <SidebarQuickActions />
         )}
 
         {/* Only the main content area zooms — title bar & sidebar stay fixed */}
@@ -142,11 +161,12 @@ function MainApp() {
             }} />
           ) : activeView === "diagnostics" ? (
             <DiagnosticsView />
+          ) : activeView === "settings" ? (
+            <SettingsPanel />
           ) : (
             <ChatPanel />
           )}
           <DebugPanel />
-          <SettingsPanel />
           <ActionApproval />
         </div>
       </div>

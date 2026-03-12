@@ -366,8 +366,6 @@ export function Sidebar({ session }: SidebarProps) {
   );
 
   const toggleSidebar = useSessionStore((s) => s.toggleSidebar);
-  const toggleSettings = useSessionStore((s) => s.toggleSettings);
-  const settingsOpen = useSessionStore((s) => s.settingsOpen);
 
   if (!sidebarOpen) return null;
 
@@ -464,22 +462,20 @@ export function Sidebar({ session }: SidebarProps) {
         )}
       </div>
 
-      {/* Settings gear — on non-macOS, lives at the bottom of the sidebar */}
-      {!isMac && (
-        <div className="px-2 pb-2 pt-1 border-t border-border-primary mt-auto">
-          <button
-            onClick={toggleSettings}
-            className={`flex items-center gap-2.5 w-full px-3 py-2 rounded-lg text-sm transition-colors cursor-pointer ${
-              settingsOpen
-                ? "bg-accent-blue/15 text-accent-blue"
-                : "text-text-secondary hover:bg-bg-tertiary/50 hover:text-text-primary"
-            }`}
-          >
-            <SettingsGearIcon />
-            {t("sidebar.settings")}
-          </button>
-        </div>
-      )}
+      <div className="px-2 pb-2 pt-1 border-t border-border-primary mt-auto">
+        <button
+          onClick={() => setActiveView(activeView === "settings" ? "chat" : "settings")}
+          title={t("sidebar.settings")}
+          className={`flex items-center gap-2.5 w-full px-3 py-2 rounded-lg text-sm transition-colors cursor-pointer ${
+            activeView === "settings"
+              ? "bg-accent-blue/15 text-accent-blue"
+              : "text-text-secondary hover:bg-bg-tertiary/50 hover:text-text-primary"
+          }`}
+        >
+          <SettingsGearIcon />
+          {t("sidebar.settings")}
+        </button>
+      </div>
 
       {contextMenu && (
         <ContextMenu

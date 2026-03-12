@@ -91,8 +91,8 @@ beforeEach(() => {
     isActive: true,
     pendingApproval: null,
     knowledgeOpen: false,
-    settingsOpen: false,
     sidebarOpen: true,
+    activeView: "chat",
   });
   useChatStore.setState({ messages: [] });
   vi.clearAllMocks();
@@ -111,6 +111,11 @@ describe("MainTitleBar", () => {
   it("renders sidebar toggle", () => {
     render(<MainTitleBar />);
     screen.getByTitle("Hide sidebar");
+  });
+
+  it("does not render a settings button", () => {
+    render(<MainTitleBar />);
+    expect(screen.queryByTitle("Settings")).toBeNull();
   });
 
   it("shows 'Show sidebar' when sidebar is closed", () => {
@@ -326,5 +331,11 @@ describe("Sidebar session list", () => {
     useSessionStore.setState({ sidebarOpen: true });
     render(<Sidebar session={mockSidebarSession} />);
     await screen.findByText(/Sessions will appear here/);
+  });
+
+  it("renders settings in the sidebar footer", async () => {
+    vi.mocked(commands.listSessions).mockResolvedValue([]);
+    render(<Sidebar session={mockSidebarSession} />);
+    expect(await screen.findByTitle("Settings")).not.toBeNull();
   });
 });
