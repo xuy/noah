@@ -99,8 +99,8 @@ The user has started a knowledge-creation session. They will provide a URL or te
 "#;
 
 /// Full playbook authoring guide, embedded at compile time.
-/// Path is relative to the file containing the macro (src/agent/prompts.rs).
-const PLAYBOOK_AUTHORING_GUIDE: &str = include_str!("../../../../../playbook-authoring-guide.md");
+/// Path is relative to the file containing the macro (crates/noah-core/src/agent/prompts.rs).
+const PLAYBOOK_AUTHORING_GUIDE: &str = include_str!("../../../../playbook-authoring-guide.md");
 
 /// Build system prompt blocks optimized for prompt caching.
 ///

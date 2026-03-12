@@ -14,7 +14,7 @@ pub async fn has_api_key(state: State<'_, AppState>) -> Result<bool, String> {
 #[tauri::command]
 pub async fn set_api_key(state: State<'_, AppState>, api_key: String) -> Result<(), String> {
     // Save to disk so it persists across restarts.
-    crate::save_api_key(&state.app_dir, &api_key)?;
+    crate::config::save_api_key(&state.app_dir, &api_key)?;
 
     // Update the in-memory LLM client.
     let mut orch = state.orchestrator.lock().await;
@@ -63,7 +63,7 @@ pub async fn redeem_invite_code(
         .ok_or_else(|| "No token in server response".to_string())?;
 
     // Save proxy config to disk
-    crate::save_proxy_config(&state.app_dir, &proxy_url, &token)?;
+    crate::config::save_proxy_config(&state.app_dir, &proxy_url, &token)?;
 
     // Update the in-memory LLM client
     let mut orch = state.orchestrator.lock().await;
@@ -83,7 +83,7 @@ pub async fn get_auth_mode(state: State<'_, AppState>) -> Result<String, String>
 
 #[tauri::command]
 pub async fn clear_auth(state: State<'_, AppState>) -> Result<(), String> {
-    crate::clear_auth_files(&state.app_dir);
+    crate::config::clear_auth_files(&state.app_dir);
     let mut orch = state.orchestrator.lock().await;
     orch.set_auth(AuthMode::ApiKey(String::new()));
     Ok(())

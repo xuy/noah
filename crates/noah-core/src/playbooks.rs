@@ -898,54 +898,8 @@ mod tests {
         }
     }
 
-    /// Verify that macOS playbooks only reference tool names that actually exist.
-    /// This catches typos like `mac_dns_flush` instead of `mac_flush_dns`.
-    #[test]
-    fn test_macos_playbooks_reference_existing_tools() {
-        use crate::agent::tool_router::ToolRouter;
-
-        // Build the real tool router to get all registered tool names.
-        let mut router = ToolRouter::new();
-        crate::platform::macos::register_tools(&mut router, None);
-        let tool_defs = router.tool_definitions();
-        let tool_names: Vec<&str> = tool_defs.iter().map(|d| d.name.as_str()).collect();
-
-        // Also accept tools registered outside platform (knowledge, playbooks).
-        let extra_tools = [
-            "write_knowledge",
-            "knowledge_search",
-            "knowledge_read",
-            "activate_playbook",
-        ];
-
-        for (filename, content) in &bundled_flat() {
-            let meta = parse_frontmatter(content).unwrap();
-            if meta.platform != "macos" { continue; }
-            // Procedural playbooks use ui_* tools and reference tools in doc sections.
-            if is_procedural(content) { continue; }
-
-            // Find backtick-quoted tool references in the playbook body.
-            for cap in content.split('`') {
-                let word = cap.trim();
-                // Only check words that look like tool names (contain underscore,
-                // start with mac_ or known prefixes).
-                if (word.starts_with("mac_")
-                    || word.starts_with("wifi_")
-                    || word.starts_with("disk_")
-                    || word.starts_with("crash_")
-                    || word.starts_with("shell_"))
-                    && word.chars().all(|c| c.is_alphanumeric() || c == '_')
-                {
-                    assert!(
-                        tool_names.contains(&word) || extra_tools.contains(&word),
-                        "Playbook {} references tool `{}` which is not registered",
-                        filename,
-                        word
-                    );
-                }
-            }
-        }
-    }
+    // NOTE: test_macos_playbooks_reference_existing_tools lives in noah-desktop
+    // (it needs platform::macos which is desktop-only).
 
     /// Verify that Windows playbooks don't reference `mac_*` tools.
     #[test]

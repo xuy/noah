@@ -1,15 +1,21 @@
-pub mod agent;
+// Re-export noah-core modules so existing `crate::` paths in commands/ still work.
+pub use noah_core::agent;
+pub use noah_core::config;
+pub use noah_core::events;
+pub use noah_core::knowledge;
+pub use noah_core::machine_context;
+pub use noah_core::playbooks;
+pub use noah_core::safety;
+pub use noah_core::ui_parsing;
+pub use noah_core::ui_tools;
+pub use noah_core::web_fetch;
+
+// Desktop-only modules (Tauri-dependent).
 mod commands;
-pub mod debug_runner;
-mod knowledge;
-mod machine_context;
+pub mod tauri_events;
 mod platform;
-mod playbooks;
 mod proactive;
-mod safety;
 mod scanner;
-pub mod ui_tools;
-mod web_fetch;
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -19,7 +25,7 @@ use tauri::Manager;
 use tauri::menu::{MenuBuilder, SubmenuBuilder, PredefinedMenuItem};
 use tokio::sync::{oneshot, Mutex};
 
-use agent::llm_client::{AuthMode, LlmClient};
+use agent::llm_client::LlmClient;
 use agent::orchestrator::{Orchestrator, PendingApprovals};
 use agent::tool_router::ToolRouter;
 use safety::journal;
@@ -41,76 +47,8 @@ pub struct AppState {
     pub scanner_pause: Arc<std::sync::Mutex<std::collections::HashSet<String>>>,
 }
 
-/// Load auth: proxy.json first, then api_key.txt, then env var.
-fn load_auth(app_dir: &std::path::Path) -> AuthMode {
-    // Check for proxy config first
-    let proxy_path = app_dir.join("proxy.json");
-    if let Ok(contents) = std::fs::read_to_string(&proxy_path) {
-        if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&contents) {
-            if let (Some(base_url), Some(token)) = (
-                parsed.get("base_url").and_then(|v| v.as_str()),
-                parsed.get("token").and_then(|v| v.as_str()),
-            ) {
-                if !token.is_empty() {
-                    return AuthMode::Proxy {
-                        base_url: base_url.to_string(),
-                        token: token.to_string(),
-                    };
-                }
-            }
-        }
-    }
-
-    // Fall back to API key file
-    let key_path = app_dir.join("api_key.txt");
-    if let Ok(contents) = std::fs::read_to_string(&key_path) {
-        let key = contents.trim().to_string();
-        if !key.is_empty() {
-            return AuthMode::ApiKey(key);
-        }
-    }
-
-    // Fall back to environment variable
-    AuthMode::ApiKey(std::env::var("ANTHROPIC_API_KEY").unwrap_or_default())
-}
-
-/// Save API key to config file (and remove proxy.json if present).
-pub fn save_api_key(app_dir: &std::path::Path, key: &str) -> Result<(), String> {
-    let key_path = app_dir.join("api_key.txt");
-    std::fs::write(&key_path, key).map_err(|e| format!("Failed to save API key: {}", e))?;
-    // Remove proxy config if switching to API key mode
-    let proxy_path = app_dir.join("proxy.json");
-    let _ = std::fs::remove_file(&proxy_path);
-    Ok(())
-}
-
-/// Save proxy config (and remove api_key.txt if present).
-pub fn save_proxy_config(app_dir: &std::path::Path, base_url: &str, token: &str) -> Result<(), String> {
-    let proxy_path = app_dir.join("proxy.json");
-    let json = serde_json::json!({ "base_url": base_url, "token": token });
-    std::fs::write(&proxy_path, json.to_string())
-        .map_err(|e| format!("Failed to save proxy config: {}", e))?;
-    // Remove API key file if switching to proxy mode
-    let key_path = app_dir.join("api_key.txt");
-    let _ = std::fs::remove_file(&key_path);
-    Ok(())
-}
-
-/// Clear all auth config.
-pub fn clear_auth_files(app_dir: &std::path::Path) {
-    let _ = std::fs::remove_file(app_dir.join("api_key.txt"));
-    let _ = std::fs::remove_file(app_dir.join("proxy.json"));
-}
-
 /// Migrate user data from the old `com.itman.app` directory to the new location.
-///
-/// Tauri derives the app data dir from `identifier` in tauri.conf.json.
-/// We renamed from `com.itman.app` → `app.onnoah.desktop`, so existing users
-/// have their DB, keys, and knowledge under the old path. This function copies
-/// all files from the old dir into the new dir (without overwriting), then
-/// removes the old directory.
 fn migrate_old_data_dir(new_dir: &std::path::Path) {
-    // Build the old path by replacing the last component.
     let Some(parent) = new_dir.parent() else { return };
     let old_dir = parent.join("com.itman.app");
 
@@ -118,8 +56,6 @@ fn migrate_old_data_dir(new_dir: &std::path::Path) {
         return;
     }
 
-    // If the new dir already has a journal.db, the user has already used the
-    // new version — don't overwrite their data.
     if new_dir.join("journal.db").exists() {
         eprintln!(
             "[migrate] New data dir already has journal.db, skipping migration from {:?}",
@@ -133,13 +69,11 @@ fn migrate_old_data_dir(new_dir: &std::path::Path) {
         old_dir, new_dir
     );
 
-    // Copy everything from old → new recursively.
     if let Err(e) = copy_dir_recursive(&old_dir, new_dir) {
         eprintln!("[migrate] Error copying data: {}. Old dir preserved.", e);
         return;
     }
 
-    // Remove old dir after successful copy.
     if let Err(e) = std::fs::remove_dir_all(&old_dir) {
         eprintln!("[migrate] Could not remove old dir {:?}: {}", old_dir, e);
     } else {
@@ -147,7 +81,6 @@ fn migrate_old_data_dir(new_dir: &std::path::Path) {
     }
 }
 
-/// Recursively copy contents of `src` into `dst`, skipping files that already exist.
 fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) -> std::io::Result<()> {
     std::fs::create_dir_all(dst)?;
     for entry in std::fs::read_dir(src)? {
@@ -165,8 +98,6 @@ fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) -> std::io::
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // Disable GPU acceleration for WebKit2GTK on Linux to fix GBM/EGL errors
-    // This is needed on Fedora 43 and other Linux systems with certain GPU drivers
     #[cfg(target_os = "linux")] {
         std::env::set_var("WEBKIT_DISABLE_COMPOSITING_MODE", "1");
         std::env::set_var("WEBKIT_DISABLE_GPU_COMPOSITING", "1");
@@ -177,9 +108,6 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .setup(|app| {
-            // Native menu bar — macOS only.
-            // On Linux/Windows the WM provides window controls and the menu bar
-            // just wastes vertical space with macOS-specific items (Services, Hide, etc.).
             if cfg!(target_os = "macos") {
                 let app_menu = SubmenuBuilder::new(app, "Noah")
                     .about(None)
@@ -224,24 +152,20 @@ pub fn run() {
                 app.set_menu(menu)?;
             }
 
-            // Initialise the journal database.
             let app_dir = app
                 .path()
                 .app_data_dir()
                 .expect("Failed to resolve app data directory");
             std::fs::create_dir_all(&app_dir).expect("Failed to create app data directory");
 
-            // Migrate data from old app identifiers (com.itman.app) if present.
             migrate_old_data_dir(&app_dir);
 
             let db_path = app_dir.join("journal.db");
             let db_path_str = db_path.to_str().expect("Invalid database path");
 
-            // Try to open the database; if corrupted, back it up and start fresh.
             let db = match journal::init_db(db_path_str) {
                 Ok(db) => db,
                 Err(_) => {
-                    // Rename corrupted DB to .bak
                     let bak_path = app_dir.join("journal.db.bak");
                     let _ = std::fs::rename(&db_path, &bak_path);
                     eprintln!(
@@ -252,37 +176,28 @@ pub fn run() {
                 }
             };
 
-            // Wrap DB in Arc<Mutex<>> early so tools can share it.
             let db_arc = Arc::new(Mutex::new(db));
 
-            // Initialise the knowledge directory.
             let knowledge_dir = knowledge::init_knowledge_dir(&app_dir)
                 .expect("Failed to create knowledge directory");
 
-            // Run file-based migrations (e.g. artifact → knowledge file migration).
             {
                 let conn = db_arc.blocking_lock();
                 journal::run_file_migrations(&conn, &knowledge_dir)
                     .expect("Failed to run file migrations");
             }
 
-            // Build the tool router and register platform tools.
             let mut router = ToolRouter::new();
             platform::register_platform_tools(&mut router, Some(&db_path));
 
-            // Register knowledge tools.
             router.register(Box::new(knowledge::WriteKnowledgeTool::new(knowledge_dir.clone())));
             router.register(Box::new(knowledge::KnowledgeSearchTool::new(knowledge_dir.clone())));
             router.register(Box::new(knowledge::KnowledgeReadTool::new(knowledge_dir.clone())));
 
-            // Register UI tools.
             ui_tools::register_ui_tools(&mut router);
 
-            // Register web_fetch tool.
             router.register(Box::new(web_fetch::WebFetchTool));
 
-            // Seed bundled playbooks into knowledge/playbooks/ and register activate_playbook.
-            // Playbooks ship as Tauri bundled resources (plain files, not compiled in).
             let bundled_playbooks = app
                 .path()
                 .resource_dir()
@@ -292,34 +207,28 @@ pub fn run() {
                 .expect("Failed to initialise playbooks");
             router.register(Box::new(playbooks::ActivatePlaybookTool::new(playbook_registry)));
 
-            // Load auth: proxy config, API key file, or env var.
-            let auth = load_auth(&app_dir);
+            let auth = config::load_auth(&app_dir);
             let llm = LlmClient::with_auth(auth);
             let llm_for_monitor = llm.clone();
 
             let pending_approvals: PendingApprovals =
                 Arc::new(Mutex::new(HashMap::<String, oneshot::Sender<bool>>::new()));
 
-            // Gather OS context for the system prompt.
             let os_context = machine_context::MachineContext::load_or_gather(&app_dir)
                 .to_prompt_string();
 
-            // Build the orchestrator.
             let orchestrator =
                 Orchestrator::new(llm, router, os_context, pending_approvals.clone(), db_arc.clone(), knowledge_dir.clone());
             let cancelled = orchestrator.cancelled_flag();
 
-            // Build the scanner manager with registered scanners.
             let mut scanner_mgr = scanner::ScannerManager::new(db_arc.clone(), Some(app.handle().clone()));
             #[cfg(target_os = "macos")]
             scanner_mgr.register(Box::new(scanner::disk::DiskScanner));
             let scanner_trigger = scanner_mgr.trigger_handle();
             let scanner_pause = scanner_mgr.pause_handle();
 
-            // Clone app_dir before moving into AppState (needed for background refresh).
             let ctx_dir = app_dir.clone();
 
-            // Manage shared state.
             app.manage(AppState {
                 orchestrator: Mutex::new(orchestrator),
                 pending_approvals,
@@ -331,33 +240,25 @@ pub fn run() {
                 scanner_pause,
             });
 
-            // Refresh machine context in background (avoids blocking main thread
-            // with slow PowerShell/WMI commands on Windows).
             tauri::async_runtime::spawn(async move {
                 tokio::task::spawn_blocking(move || {
                     machine_context::MachineContext::refresh_if_stale(&ctx_dir);
                 }).await.ok();
             });
 
-            // Spawn the proactive health monitor in the background.
             let monitor = proactive::ProactiveMonitor::new(
                 llm_for_monitor, db_arc, app.handle().clone(),
             );
             tauri::async_runtime::spawn(async move { monitor.run_forever().await });
 
-            // Spawn the scanner manager: initial light scan after 5 min, then periodic.
             tauri::async_runtime::spawn(async move {
-                // Initial delay — let app finish starting.
                 tokio::time::sleep(std::time::Duration::from_secs(300)).await;
                 eprintln!("[scanner] starting initial scan");
                 scanner_mgr.run_cycle(std::time::Duration::from_secs(30)).await;
 
-                // Then run every 6 hours alongside proactive monitor.
                 loop {
                     tokio::time::sleep(std::time::Duration::from_secs(6 * 60 * 60)).await;
-                    // Check for on-demand triggers first.
                     scanner_mgr.run_triggered().await;
-                    // Regular cycle.
                     scanner_mgr.run_cycle(std::time::Duration::from_secs(60)).await;
                 }
             });
@@ -423,25 +324,21 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let parent = tmp.path();
 
-        // Set up old dir with some files.
         let old_dir = parent.join("com.itman.app");
         fs::create_dir_all(old_dir.join("knowledge")).unwrap();
         fs::write(old_dir.join("journal.db"), b"fake-db-content").unwrap();
         fs::write(old_dir.join("api_key.txt"), b"sk-ant-test").unwrap();
         fs::write(old_dir.join("knowledge/note.md"), b"# My note").unwrap();
 
-        // New dir exists but is empty (no journal.db).
         let new_dir = parent.join("app.onnoah.desktop");
         fs::create_dir_all(&new_dir).unwrap();
 
         migrate_old_data_dir(&new_dir);
 
-        // Files should be in the new dir.
         assert_eq!(fs::read_to_string(new_dir.join("journal.db")).unwrap(), "fake-db-content");
         assert_eq!(fs::read_to_string(new_dir.join("api_key.txt")).unwrap(), "sk-ant-test");
         assert_eq!(fs::read_to_string(new_dir.join("knowledge/note.md")).unwrap(), "# My note");
 
-        // Old dir should be gone.
         assert!(!old_dir.exists());
     }
 
@@ -450,21 +347,17 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let parent = tmp.path();
 
-        // Old dir with data.
         let old_dir = parent.join("com.itman.app");
         fs::create_dir_all(&old_dir).unwrap();
         fs::write(old_dir.join("journal.db"), b"old-data").unwrap();
 
-        // New dir already has its own journal.db.
         let new_dir = parent.join("app.onnoah.desktop");
         fs::create_dir_all(&new_dir).unwrap();
         fs::write(new_dir.join("journal.db"), b"new-data").unwrap();
 
         migrate_old_data_dir(&new_dir);
 
-        // New data should be untouched.
         assert_eq!(fs::read_to_string(new_dir.join("journal.db")).unwrap(), "new-data");
-        // Old dir should still exist (not removed since migration was skipped).
         assert!(old_dir.exists());
     }
 
@@ -474,7 +367,6 @@ mod tests {
         let new_dir = tmp.path().join("app.onnoah.desktop");
         fs::create_dir_all(&new_dir).unwrap();
 
-        // Should not panic or error.
         migrate_old_data_dir(&new_dir);
     }
 
@@ -488,16 +380,13 @@ mod tests {
         fs::write(old_dir.join("api_key.txt"), b"old-key").unwrap();
         fs::write(old_dir.join("journal.db"), b"old-db").unwrap();
 
-        // New dir has api_key.txt but no journal.db → migration runs.
         let new_dir = parent.join("app.onnoah.desktop");
         fs::create_dir_all(&new_dir).unwrap();
         fs::write(new_dir.join("api_key.txt"), b"new-key").unwrap();
 
         migrate_old_data_dir(&new_dir);
 
-        // Existing file should not be overwritten.
         assert_eq!(fs::read_to_string(new_dir.join("api_key.txt")).unwrap(), "new-key");
-        // But new files should be copied.
         assert_eq!(fs::read_to_string(new_dir.join("journal.db")).unwrap(), "old-db");
     }
 }

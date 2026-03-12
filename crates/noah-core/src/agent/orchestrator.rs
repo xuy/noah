@@ -15,6 +15,7 @@ use crate::agent::llm_client::{
 };
 use crate::agent::prompts;
 use crate::agent::tool_router::ToolRouter;
+use crate::events::EventEmitter;
 use crate::knowledge;
 use crate::playbooks::PlaybookState;
 use crate::safety::journal;
@@ -29,27 +30,6 @@ pub struct ApprovalRequest {
     pub parameters: Value,
     /// Plain-language reason from the LLM explaining why this action is needed.
     pub reason: String,
-}
-
-/// A debug event emitted to the frontend for observability.
-#[derive(Debug, Clone, Serialize)]
-struct DebugEvent {
-    timestamp: String,
-    event_type: String,
-    summary: String,
-    detail: Value,
-}
-
-fn emit_debug<R: tauri::Runtime>(app_handle: &tauri::AppHandle<R>, event_type: &str, summary: &str, detail: Value) {
-    use tauri::Emitter;
-
-    let event = DebugEvent {
-        timestamp: chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
-        event_type: event_type.to_string(),
-        summary: summary.to_string(),
-        detail,
-    };
-    let _ = app_handle.emit("debug-log", &event);
 }
 
 /// Session state kept in memory.
@@ -212,13 +192,13 @@ impl Orchestrator {
     // ── Agentic loop ───────────────────────────────────────────────────
 
     /// Send a user message and run the agentic loop until a text response
-    /// is produced. The `app_handle` is used to emit approval-request events
+    /// is produced. The `emitter` is used to emit debug/approval events
     /// and the `db` connection is used to record changes in the journal.
-    pub async fn send_message<R: tauri::Runtime>(
+    pub async fn send_message(
         &mut self,
         session_id: &str,
         user_message: &str,
-        app_handle: &tauri::AppHandle<R>,
+        emitter: &dyn EventEmitter,
         db: &tokio::sync::Mutex<rusqlite::Connection>,
     ) -> Result<String> {
         // Verify session exists, or restore it from the database.
@@ -319,8 +299,7 @@ impl Orchestrator {
             // Clone messages for the LLM call to avoid borrow issues.
             let messages = self.sessions[session_id].messages.clone();
 
-            emit_debug(
-                app_handle,
+            emitter.emit_debug(
                 "llm_request",
                 &format!(
                     "Calling Claude with {} messages, {} tools",
@@ -369,8 +348,7 @@ impl Orchestrator {
                 }
             }
 
-            emit_debug(
-                app_handle,
+            emitter.emit_debug(
                 "llm_response",
                 &format!(
                     "Response: {} text blocks, {} tool calls, stop={}",
@@ -530,8 +508,7 @@ impl Orchestrator {
                     .map(|t| format!("{:?}", t.safety_tier_for_input(&tool_input)))
                     .unwrap_or_else(|| "unknown".to_string());
 
-                emit_debug(
-                    app_handle,
+                emitter.emit_debug(
                     "tool_call",
                     &format!("Calling {} [{}]", tool_name, tier_label),
                     json!({
@@ -542,7 +519,7 @@ impl Orchestrator {
                 );
 
                 let result = self
-                    .execute_tool(session_id, &tool_name, &tool_input, app_handle, db)
+                    .execute_tool(session_id, &tool_name, &tool_input, emitter, db)
                     .await;
 
                 match result {
@@ -552,8 +529,7 @@ impl Orchestrator {
                             if let Some(pb_name) = tool_input.get("name").and_then(|v| v.as_str()) {
                                 let state = PlaybookState::from_content(pb_name, output);
                                 if !state.steps.is_empty() {
-                                    emit_debug(
-                                        app_handle,
+                                    emitter.emit_debug(
                                         "playbook_activated",
                                         &format!("Playbook '{}' activated with {} steps", pb_name, state.total_steps),
                                         json!({
@@ -571,8 +547,7 @@ impl Orchestrator {
                             }
                         }
 
-                        emit_debug(
-                            app_handle,
+                        emitter.emit_debug(
                             "tool_result",
                             &format!("{} completed", tool_name),
                             json!({
@@ -587,8 +562,7 @@ impl Orchestrator {
                         });
                     }
                     Err(ref e) => {
-                        emit_debug(
-                            app_handle,
+                        emitter.emit_debug(
                             "error",
                             &format!("{} failed: {}", tool_name, e),
                             json!({
@@ -617,12 +591,12 @@ impl Orchestrator {
     }
 
     /// Execute a single tool call, handling safety tier checks and approvals.
-    async fn execute_tool<R: tauri::Runtime>(
+    async fn execute_tool(
         &self,
         session_id: &str,
         tool_name: &str,
         tool_input: &Value,
-        app_handle: &tauri::AppHandle<R>,
+        emitter: &dyn EventEmitter,
         db: &tokio::sync::Mutex<rusqlite::Connection>,
     ) -> Result<String> {
         let tool = self
@@ -655,12 +629,11 @@ impl Orchestrator {
                 .to_string();
 
             let approved = self
-                .request_approval(app_handle, tool_name, tool.description(), tool_input, &reason)
+                .request_approval(emitter, tool_name, tool.description(), tool_input, &reason)
                 .await?;
 
             if !approved {
-                emit_debug(
-                    app_handle,
+                emitter.emit_debug(
                     "tool_denied",
                     &format!("User denied {}", tool_name),
                     json!({
@@ -688,17 +661,15 @@ impl Orchestrator {
         Ok(tool_result.output)
     }
 
-    /// Emit an approval-request event to the frontend and wait for the response.
-    async fn request_approval<R: tauri::Runtime>(
+    /// Emit an approval-request event and wait for the response.
+    async fn request_approval(
         &self,
-        app_handle: &tauri::AppHandle<R>,
+        emitter: &dyn EventEmitter,
         tool_name: &str,
         description: &str,
         parameters: &Value,
         reason: &str,
     ) -> Result<bool> {
-        use tauri::Emitter;
-
         let approval_id = Uuid::new_v4().to_string();
 
         let (tx, rx) = oneshot::channel::<bool>();
@@ -717,8 +688,8 @@ impl Orchestrator {
             reason: reason.to_string(),
         };
 
-        app_handle
-            .emit("approval-request", &request)
+        emitter
+            .emit_approval_request(&request)
             .context("Failed to emit approval-request event")?;
 
         // Wait for the frontend to respond, with a 5-minute timeout.
@@ -736,8 +707,7 @@ impl Orchestrator {
                     pending.remove(&approval_id);
                 }
 
-                emit_debug(
-                    app_handle,
+                emitter.emit_debug(
                     "approval_timeout",
                     &format!("Approval for {} timed out after 5 minutes", tool_name),
                     json!({
@@ -746,13 +716,7 @@ impl Orchestrator {
                     }),
                 );
 
-                // Emit a timeout event so the frontend can dismiss the approval modal.
-                {
-                    use tauri::Emitter;
-                    let _ = app_handle.emit("approval-timeout", json!({
-                        "approval_id": approval_id,
-                    }));
-                }
+                emitter.emit_approval_timeout(&approval_id);
 
                 false
             }

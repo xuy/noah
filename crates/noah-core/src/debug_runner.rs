@@ -1,6 +1,6 @@
 //! Headless debug runner for end-to-end backend testing.
 //!
-//! Instantiates a real Orchestrator with a mock Tauri app handle,
+//! Instantiates a real Orchestrator with a StderrEventEmitter (no Tauri needed),
 //! sends prompts through the full agentic loop, and returns structured results.
 
 use std::collections::HashMap;
@@ -13,12 +13,15 @@ use tokio::sync::Mutex;
 use crate::agent::llm_client::LlmClient;
 use crate::agent::orchestrator::{Orchestrator, PendingApprovals};
 use crate::agent::tool_router::ToolRouter;
-use crate::commands::agent::{parse_assistant_ui, AssistantActionType, AssistantUiPayload};
+use crate::config;
+use crate::events::StderrEventEmitter;
 use crate::knowledge;
 use crate::machine_context::MachineContext;
-use crate::platform;
 use crate::playbooks;
 use crate::safety::journal;
+use crate::ui_parsing::{
+    parse_assistant_ui, AssistantActionType, AssistantUiPayload,
+};
 use crate::ui_tools;
 
 #[derive(Debug, Clone)]
@@ -104,7 +107,15 @@ async fn spawn_auto_approver(pending: PendingApprovals) -> tokio::task::JoinHand
 ///
 /// This creates a real Orchestrator with all tools registered, sends the prompt,
 /// and auto-confirms any actions. Useful for end-to-end testing of the UI tool flow.
-pub async fn run_prompt_flow(prompt: &str, max_turns: usize) -> Result<PromptRunResult> {
+///
+/// `register_platform_tools` is a callback that registers OS-specific tools.
+/// Pass `None` to skip platform tools (core-only testing).
+pub async fn run_prompt_flow(
+    prompt: &str,
+    max_turns: usize,
+    register_platform_tools: Option<&dyn Fn(&mut ToolRouter, Option<&std::path::Path>)>,
+    bundled_playbooks_dir: Option<&std::path::Path>,
+) -> Result<PromptRunResult> {
     let app_dir = default_app_dir()?;
     std::fs::create_dir_all(&app_dir).context("Failed to create app dir")?;
 
@@ -123,7 +134,9 @@ pub async fn run_prompt_flow(prompt: &str, max_turns: usize) -> Result<PromptRun
     }
 
     let mut router = ToolRouter::new();
-    platform::register_platform_tools(&mut router, Some(&db_path));
+    if let Some(register_fn) = register_platform_tools {
+        register_fn(&mut router, Some(&db_path));
+    }
     ui_tools::register_ui_tools(&mut router);
     router.register(Box::new(knowledge::WriteKnowledgeTool::new(
         knowledge_dir.clone(),
@@ -137,14 +150,15 @@ pub async fn run_prompt_flow(prompt: &str, max_turns: usize) -> Result<PromptRun
 
     router.register(Box::new(crate::web_fetch::WebFetchTool));
 
-    // In debug/CLI mode, read bundled playbooks from the source tree.
-    let bundled_playbooks = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("playbooks");
-    let playbook_registry = playbooks::PlaybookRegistry::init(&knowledge_dir, &bundled_playbooks)?;
-    router.register(Box::new(playbooks::ActivatePlaybookTool::new(
-        playbook_registry,
-    )));
+    // Playbooks: use provided dir or skip.
+    if let Some(pb_dir) = bundled_playbooks_dir {
+        let playbook_registry = playbooks::PlaybookRegistry::init(&knowledge_dir, pb_dir)?;
+        router.register(Box::new(playbooks::ActivatePlaybookTool::new(
+            playbook_registry,
+        )));
+    }
 
-    let auth = super::load_auth(&app_dir);
+    let auth = config::load_auth(&app_dir);
     let llm = LlmClient::with_auth(auth);
     if !llm.has_auth() {
         return Err(anyhow!(
@@ -180,8 +194,7 @@ pub async fn run_prompt_flow(prompt: &str, max_turns: usize) -> Result<PromptRun
         journal::create_session_record(&conn, &session_id, &chrono::Utc::now().to_rfc3339())?;
     }
 
-    let app = tauri::test::mock_app();
-    let app_handle = app.handle().clone();
+    let emitter = StderrEventEmitter;
     let approver = spawn_auto_approver(pending_approvals).await;
 
     let preset_secrets = load_preset_secrets();
@@ -199,7 +212,7 @@ pub async fn run_prompt_flow(prompt: &str, max_turns: usize) -> Result<PromptRun
 
         let output = match tokio::time::timeout(
             std::time::Duration::from_secs(600),
-            orchestrator.send_message(&session_id, &input, &app_handle, &db_arc),
+            orchestrator.send_message(&session_id, &input, &emitter, &db_arc),
         )
         .await
         {

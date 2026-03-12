@@ -21,7 +21,11 @@ async fn main() -> ExitCode {
     eprintln!("Max turns: {}", max_turns);
     eprintln!("---");
 
-    match noah_desktop_lib::debug_runner::run_prompt_flow(&prompt, max_turns).await {
+    // NOTE: Platform tools are not registered here since noah-core doesn't
+    // have platform-specific tools. For full E2E testing with platform tools,
+    // a separate binary that depends on both noah-core and the platform
+    // crate would be needed. For now, this tests the core agent loop.
+    match noah_core::debug_runner::run_prompt_flow(&prompt, max_turns, None, None).await {
         Ok(result) => {
             println!("SESSION_ID={}", result.session_id);
             for (idx, (input, output)) in result.turns.iter().enumerate() {

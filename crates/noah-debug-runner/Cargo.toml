@@ -1,6 +1,6 @@
 [package]
 name = "noah-debug-runner"
-version = "0.14.0"
+version = "0.14.1"
 edition = "2021"
 description = "Headless backend prompt runner for end-to-end testing"
 
@@ -9,5 +9,5 @@ name = "noah-backend-prompt"
 path = "src/main.rs"
 
 [dependencies]
-noah-desktop-lib = { path = "../../apps/desktop/src-tauri", package = "noah-desktop" }
+noah-core = { path = "../noah-core" }
 tokio = { version = "1", features = ["full"] }

@@ -2306,10 +2306,28 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "650eef8c711430f1a879fdd01d4745a7deea475becfb90269c06775983bbf086"
 
 [[package]]
-name = "noah-debug-runner"
-version = "0.14.0"
+name = "noah-core"
+version = "0.14.1"
 dependencies = [
- "noah-desktop",
+ "anyhow",
+ "async-trait",
+ "chrono",
+ "html2text",
+ "noah-tools",
+ "reqwest 0.12.28",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
+name = "noah-debug-runner"
+version = "0.14.1"
+dependencies = [
+ "noah-core",
  "tokio",
 ]
 
@@ -2322,6 +2340,7 @@ dependencies = [
  "chrono",
  "futures",
  "html2text",
+ "noah-core",
  "noah-tools",
  "reqwest 0.12.28",
  "rusqlite",
