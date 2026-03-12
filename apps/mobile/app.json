@@ -16,7 +16,8 @@
       "supportsTablet": true,
       "bundleIdentifier": "app.onnoah.mobile",
       "infoPlist": {
-        "NSCameraUsageDescription": "Noah needs camera access to capture photos for analysis."
+        "NSCameraUsageDescription": "Noah needs camera access to capture photos for analysis.",
+        "NSPhotoLibraryUsageDescription": "Noah can analyze photos from your library."
       }
     },
     "android": {
@@ -41,7 +42,8 @@
         }
       ],
       "expo-router",
-      "expo-secure-store"
+      "expo-secure-store",
+      "expo-sqlite"
     ]
   }
 }

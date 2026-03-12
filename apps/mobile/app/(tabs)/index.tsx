@@ -6,16 +6,49 @@ import {
   StyleSheet,
   Image,
   Alert,
+  ActivityIndicator,
+  ScrollView,
 } from "react-native";
 import { CameraView, useCameraPermissions } from "expo-camera";
+import * as ImagePicker from "expo-image-picker";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { colors } from "../../constants/theme";
+import { analyzePhoto } from "../../lib/claude-api";
+import { saveAnalysis } from "../../lib/history-db";
 
 export default function CameraTab() {
   const [permission, requestPermission] = useCameraPermissions();
   const [photo, setPhoto] = useState<string | null>(null);
   const [analysisResult, setAnalysisResult] = useState<string | null>(null);
+  const [analyzing, setAnalyzing] = useState(false);
   const cameraRef = useRef<CameraView>(null);
+
+  async function handleAnalyze(uri: string) {
+    setAnalyzing(true);
+    setAnalysisResult(null);
+    try {
+      const result = await analyzePhoto(uri);
+      setAnalysisResult(result.analysis);
+      await saveAnalysis(uri, result.analysis, result.model);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Analysis failed.";
+      Alert.alert("Analysis Error", msg);
+    } finally {
+      setAnalyzing(false);
+    }
+  }
+
+  async function handlePickFromGallery() {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      quality: 0.8,
+    });
+    if (!result.canceled && result.assets[0]) {
+      const uri = result.assets[0].uri;
+      setPhoto(uri);
+      handleAnalyze(uri);
+    }
+  }
 
   // Still loading permission status
   if (!permission) {
@@ -40,20 +73,34 @@ export default function CameraTab() {
           <TouchableOpacity style={styles.primaryButton} onPress={requestPermission}>
             <Text style={styles.primaryButtonText}>Grant Permission</Text>
           </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.secondaryButton, { marginTop: 12 }]}
+            onPress={handlePickFromGallery}
+          >
+            <Text style={styles.secondaryButtonText}>Pick from Gallery</Text>
+          </TouchableOpacity>
         </View>
       </SafeAreaView>
     );
   }
 
-  // Captured photo review
+  // Captured photo review + analysis
   if (photo) {
     return (
       <SafeAreaView style={styles.container}>
-        <View style={styles.previewContainer}>
+        <ScrollView style={styles.previewContainer} contentContainerStyle={styles.previewContent}>
           <Image source={{ uri: photo }} style={styles.previewImage} />
+
+          {analyzing && (
+            <View style={styles.analysisCard}>
+              <ActivityIndicator color={colors.accentTeal} size="small" />
+              <Text style={styles.analyzingText}>Analyzing photo...</Text>
+            </View>
+          )}
 
           {analysisResult && (
             <View style={styles.analysisCard}>
+              <Text style={styles.analysisLabel}>Analysis</Text>
               <Text style={styles.analysisText}>{analysisResult}</Text>
             </View>
           )}
@@ -66,19 +113,21 @@ export default function CameraTab() {
                 setAnalysisResult(null);
               }}
             >
-              <Text style={styles.secondaryButtonText}>Retake</Text>
+              <Text style={styles.secondaryButtonText}>
+                {analysisResult ? "New Photo" : "Retake"}
+              </Text>
             </TouchableOpacity>
 
-            <TouchableOpacity
-              style={styles.primaryButton}
-              onPress={() => {
-                setAnalysisResult("Analysis coming soon. This feature will be available in a future update.");
-              }}
-            >
-              <Text style={styles.primaryButtonText}>Analyze</Text>
-            </TouchableOpacity>
+            {!analysisResult && !analyzing && (
+              <TouchableOpacity
+                style={styles.primaryButton}
+                onPress={() => handleAnalyze(photo)}
+              >
+                <Text style={styles.primaryButtonText}>Analyze</Text>
+              </TouchableOpacity>
+            )}
           </View>
-        </View>
+        </ScrollView>
       </SafeAreaView>
     );
   }
@@ -92,8 +141,9 @@ export default function CameraTab() {
       });
       if (result) {
         setPhoto(result.uri);
+        handleAnalyze(result.uri);
       }
-    } catch (error) {
+    } catch {
       Alert.alert("Capture Failed", "Could not take photo. Please try again.");
     }
   };
@@ -107,12 +157,20 @@ export default function CameraTab() {
           </View>
           <View style={styles.captureRow}>
             <TouchableOpacity
+              style={styles.galleryButton}
+              onPress={handlePickFromGallery}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.galleryButtonText}>Gallery</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
               style={styles.captureButton}
               onPress={handleCapture}
               activeOpacity={0.7}
             >
               <View style={styles.captureButtonInner} />
             </TouchableOpacity>
+            <View style={{ width: 60 }} />
           </View>
         </SafeAreaView>
       </CameraView>
@@ -193,8 +251,11 @@ const styles = StyleSheet.create({
     textShadowRadius: 4,
   },
   captureRow: {
+    flexDirection: "row",
     alignItems: "center",
+    justifyContent: "space-around",
     paddingBottom: 32,
+    paddingHorizontal: 32,
   },
   captureButton: {
     width: 76,
@@ -211,11 +272,27 @@ const styles = StyleSheet.create({
     borderRadius: 30,
     backgroundColor: colors.textInverse,
   },
+  galleryButton: {
+    width: 60,
+    alignItems: "center",
+  },
+  galleryButtonText: {
+    color: colors.textInverse,
+    fontSize: 13,
+    fontWeight: "600",
+    textShadowColor: "rgba(0,0,0,0.5)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
+  },
   previewContainer: {
     flex: 1,
   },
+  previewContent: {
+    paddingBottom: 32,
+  },
   previewImage: {
-    flex: 1,
+    width: "100%",
+    height: 300,
     resizeMode: "contain",
     backgroundColor: "#000",
   },
@@ -225,21 +302,33 @@ const styles = StyleSheet.create({
     gap: 16,
     paddingVertical: 20,
     paddingHorizontal: 16,
-    backgroundColor: colors.bgSecondary,
   },
   analysisCard: {
     backgroundColor: colors.bgSecondary,
     marginHorizontal: 16,
-    marginTop: -40,
+    marginTop: 16,
     padding: 16,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: colors.borderPrimary,
   },
+  analysisLabel: {
+    color: colors.accentTeal,
+    fontSize: 13,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 1,
+    marginBottom: 8,
+  },
   analysisText: {
-    color: colors.textSecondary,
+    color: colors.textPrimary,
     fontSize: 15,
     lineHeight: 22,
+  },
+  analyzingText: {
+    color: colors.textSecondary,
+    fontSize: 15,
     textAlign: "center",
+    marginTop: 8,
   },
 });

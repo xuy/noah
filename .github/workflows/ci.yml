@@ -37,7 +37,9 @@ jobs:
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
-      - name: TypeScript check
+      - name: TypeScript check (shared)
+        run: cd packages/shared && npx tsc --noEmit
+      - name: TypeScript check (desktop)
         run: cd apps/desktop && npx tsc --noEmit
       - name: Run tests
         run: cd apps/desktop && npx vitest run
