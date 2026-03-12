@@ -1,22 +1,35 @@
 import { useState, useEffect, useCallback } from "react";
 import en from "./en.json";
+import es from "./es.json";
 import zh from "./zh.json";
 
-export type Locale = "en" | "zh";
-export type LocalePreference = "auto" | "en" | "zh";
+export type Locale = "en" | "es" | "zh";
+export type LocalePreference = "auto" | Locale;
+export type LocaleOption = {
+  value: LocalePreference;
+  labelKey: string;
+  descKey: string;
+};
 
 const STORAGE_KEY = "noah-locale";
 
-const messages: Record<Locale, Record<string, unknown>> = { en, zh };
+const messages: Record<Locale, Record<string, unknown>> = { en, es, zh };
+export const LOCALE_OPTIONS: LocaleOption[] = [
+  { value: "auto", labelKey: "settings.auto", descKey: "settings.langAutoDesc" },
+  { value: "en", labelKey: "settings.langEnglish", descKey: "settings.langEnDesc" },
+  { value: "es", labelKey: "settings.langSpanish", descKey: "settings.langEsDesc" },
+  { value: "zh", labelKey: "settings.langChinese", descKey: "settings.langZhDesc" },
+];
 
 function getStored(): LocalePreference {
   const v = localStorage.getItem(STORAGE_KEY);
-  if (v === "en" || v === "zh") return v;
+  if (v === "en" || v === "es" || v === "zh") return v;
   return "auto";
 }
 
 function detectLocale(): Locale {
   const lang = navigator.language.toLowerCase();
+  if (lang.startsWith("es")) return "es";
   if (lang.startsWith("zh")) return "zh";
   return "en";
 }

@@ -266,6 +266,26 @@ describe("ChangesBlock", () => {
     await screen.findByText("Just checked your system.");
     expect(screen.queryByText(/action taken/)).toBeNull();
   });
+
+  it("renders a grounded sticky footer for chat input", async () => {
+    useChatStore.setState({
+      messages: [
+        {
+          id: "msg1",
+          role: "assistant",
+          content: "How can I help?",
+          timestamp: Date.now(),
+        },
+      ],
+    });
+    render(<ChatPanel />);
+    await screen.findByText("How can I help?");
+    const footer = screen.getByTestId("chat-input-footer");
+    expect(footer.className).toContain("sticky");
+    expect(footer.className).toContain("z-10");
+    expect(footer.className).toContain("bg-bg-primary");
+    expect(footer.className).toContain("shadow-[0_-6px_18px_rgba(0,0,0,0.16)]");
+  });
 });
 
 // ── Sidebar session list ─────────────────────────────────────────────────────

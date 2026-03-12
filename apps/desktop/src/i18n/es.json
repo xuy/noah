@@ -1,0 +1,53 @@
+{
+  "chat": {
+    "placeholder": "Dile a Noah en qué necesitas ayuda..."
+  },
+  "welcome": {
+    "greeting": "Hola, soy Noah",
+    "subtitleContextual": "¿Qué está pasando? O revisa algo que ya conozco.",
+    "subtitleDefault": "Tu asistente para la computadora. ¿Qué está pasando?"
+  },
+  "sidebar": {
+    "newChat": "Nuevo chat",
+    "knowledge": "Conocimiento",
+    "actions": "Acciones",
+    "settings": "Configuración"
+  },
+  "settings": {
+    "title": "Configuración",
+    "connection": "Conexión",
+    "apiKey": "Clave API",
+    "connectedViaProxy": "Conectado por Noah Beta (código de invitación).",
+    "switchPrompt": "¿Quieres usar tu propia clave API de Anthropic?",
+    "replaceKeyPrompt": "Ingresa una nueva clave API de Anthropic para reemplazar la actual.",
+    "errorApiKeyInvalid": "No parece una clave API de Anthropic. Debe comenzar con sk-ant-",
+    "saving": "Guardando...",
+    "saved": "¡Guardado!",
+    "switchToOwnKey": "Cambiar a mi clave API",
+    "updateApiKey": "Actualizar clave API",
+    "proactiveSuggestions": "Sugerencias proactivas",
+    "notifyIssues": "Notificarme posibles problemas",
+    "proactiveDesc": "Noah revisará tu sistema periódicamente y te avisará si algo necesita atención. Como máximo una vez al día.",
+    "appearance": "Apariencia",
+    "system": "Sistema",
+    "light": "Claro",
+    "dark": "Oscuro",
+    "followsOS": "Sigue la configuración de tu sistema operativo.",
+    "alwaysLight": "Usar siempre modo claro.",
+    "alwaysDark": "Usar siempre modo oscuro.",
+    "language": "Idioma",
+    "auto": "Automático",
+    "langEnglish": "English",
+    "langSpanish": "Español",
+    "langChinese": "中文",
+    "langAutoDesc": "Sigue la configuración de idioma de tu sistema operativo.",
+    "langEnDesc": "Usar siempre inglés.",
+    "langEsDesc": "Usar siempre español.",
+    "langZhDesc": "始终使用中文。",
+    "helpFeedback": "Ayuda y comentarios",
+    "reportProblem": "Reportar un problema",
+    "gatheringInfo": "Recopilando información...",
+    "anthropicConsole": "Consola de Anthropic",
+    "version": "Noah v{version}"
+  }
+}
