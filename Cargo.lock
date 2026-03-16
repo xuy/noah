@@ -2315,13 +2315,14 @@ dependencies = [
 
 [[package]]
 name = "noah-desktop"
-version = "0.14.1"
+version = "0.15.0"
 dependencies = [
  "anyhow",
  "async-trait",
  "chrono",
  "futures",
  "html2text",
+ "noah-health",
  "noah-tools",
  "reqwest 0.12.28",
  "rusqlite",
@@ -2335,6 +2336,14 @@ dependencies = [
  "tempfile",
  "tokio",
  "uuid",
+]
+
+[[package]]
+name = "noah-health"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "serde",
 ]
 
 [[package]]

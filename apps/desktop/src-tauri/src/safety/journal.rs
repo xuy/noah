@@ -57,7 +57,7 @@ pub struct SessionRecord {
 }
 
 /// Current schema version. Increment when adding migrations.
-const SCHEMA_VERSION: i32 = 8;
+const SCHEMA_VERSION: i32 = 9;
 
 /// Initialise the journal database, creating tables if they don't exist,
 /// then run any pending migrations.
@@ -350,6 +350,23 @@ fn apply_migrations(conn: &Connection, current: i32) -> Result<()> {
                 .context("Migration 8 failed")?;
         }
         set_schema_version(conn, 8)?;
+    }
+
+    if current < 9 {
+        // Migration 9: Health scores table for tracking device health over time.
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS health_scores (
+                id          TEXT PRIMARY KEY,
+                score       INTEGER NOT NULL,
+                grade       TEXT NOT NULL,
+                categories  TEXT NOT NULL,
+                computed_at TEXT NOT NULL,
+                device_id   TEXT
+            );
+            CREATE INDEX IF NOT EXISTS idx_hs_computed ON health_scores(computed_at);",
+        )
+        .context("Migration 9 failed")?;
+        set_schema_version(conn, 9)?;
     }
 
     // ── Post-migration column checks ──
@@ -978,10 +995,10 @@ mod tests {
     }
 
     #[test]
-    fn test_schema_version_is_8() {
+    fn test_schema_version_is_9() {
         let conn = test_db();
         let version = get_schema_version(&conn);
-        assert_eq!(version, 8);
+        assert_eq!(version, 9);
     }
 
     #[test]
@@ -1498,4 +1515,56 @@ pub fn latest_scan_timestamp(conn: &Connection, scan_type: &str) -> Result<Optio
         Some(Err(e)) => Err(e.into()),
         None => Ok(None),
     }
+}
+
+// ── Health scores ───────────────────────────────────────────────────
+
+/// Persisted health score record.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HealthScoreRecord {
+    pub id: String,
+    pub score: i32,
+    pub grade: String,
+    pub categories: String, // JSON
+    pub computed_at: String,
+    pub device_id: Option<String>,
+}
+
+/// Insert a health score record.
+pub fn insert_health_score(conn: &Connection, record: &HealthScoreRecord) -> Result<()> {
+    conn.execute(
+        "INSERT INTO health_scores (id, score, grade, categories, computed_at, device_id)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        rusqlite::params![
+            record.id,
+            record.score,
+            record.grade,
+            record.categories,
+            record.computed_at,
+            record.device_id,
+        ],
+    )
+    .context("Failed to insert health score")?;
+    Ok(())
+}
+
+/// Get the N most recent health scores.
+pub fn list_health_scores(conn: &Connection, limit: usize) -> Result<Vec<HealthScoreRecord>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, score, grade, categories, computed_at, device_id
+         FROM health_scores ORDER BY computed_at DESC LIMIT ?1",
+    )?;
+
+    let rows = stmt.query_map(rusqlite::params![limit as i64], |row| {
+        Ok(HealthScoreRecord {
+            id: row.get(0)?,
+            score: row.get(1)?,
+            grade: row.get(2)?,
+            categories: row.get(3)?,
+            computed_at: row.get(4)?,
+            device_id: row.get(5)?,
+        })
+    })?;
+
+    rows.collect::<std::result::Result<Vec<_>, _>>().map_err(Into::into)
 }

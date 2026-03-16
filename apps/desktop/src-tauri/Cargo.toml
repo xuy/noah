@@ -1,6 +1,6 @@
 [package]
 name = "noah-desktop"
-version = "0.14.1"
+version = "0.15.0"
 description = "Noah - AI-Powered IT Support"
 authors = ["Noah"]
 edition = "2021"
@@ -31,6 +31,7 @@ futures = "0.3"
 async-trait = "0.1"
 html2text = "0.12"
 noah-tools = { path = "../../../crates/noah-tools" }
+noah-health = { path = "../../../crates/noah-health" }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt", "macros"] }
