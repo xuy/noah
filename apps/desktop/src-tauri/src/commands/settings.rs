@@ -221,3 +221,53 @@ pub async fn get_feedback_context(state: State<'_, AppState>) -> Result<Feedback
         traces: trace_summaries,
     })
 }
+
+/// Link this device to a web dashboard using a 6-char code.
+#[tauri::command]
+pub async fn link_dashboard(
+    state: State<'_, AppState>,
+    code: String,
+    url: String,
+) -> Result<String, String> {
+    use crate::dashboard_link::{self, DashboardConfig};
+
+    let (device_id, device_token) = dashboard_link::link_device(&url, &code)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let config = DashboardConfig {
+        dashboard_url: url,
+        device_token,
+        device_id: device_id.clone(),
+        linked_at: chrono::Utc::now().to_rfc3339(),
+    };
+    config.save(&state.app_dir).map_err(|e| e.to_string())?;
+
+    Ok(device_id)
+}
+
+/// Unlink this device from the web dashboard.
+#[tauri::command]
+pub async fn unlink_dashboard(state: State<'_, AppState>) -> Result<(), String> {
+    use crate::dashboard_link::DashboardConfig;
+    DashboardConfig::remove(&state.app_dir);
+    Ok(())
+}
+
+/// Get current dashboard link status.
+#[tauri::command]
+pub async fn get_dashboard_status(state: State<'_, AppState>) -> Result<String, String> {
+    use crate::dashboard_link::DashboardConfig;
+    match DashboardConfig::load(&state.app_dir) {
+        Some(config) => {
+            let status = serde_json::json!({
+                "linked": true,
+                "url": config.dashboard_url,
+                "device_id": config.device_id,
+                "linked_at": config.linked_at,
+            });
+            serde_json::to_string(&status).map_err(|e| e.to_string())
+        }
+        None => Ok(r#"{"linked":false}"#.to_string()),
+    }
+}

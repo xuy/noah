@@ -428,6 +428,21 @@ export function Sidebar({ session }: SidebarProps) {
           )}
         </div>
 
+        {/* Health */}
+        <button
+          onClick={() => setActiveView(activeView === "health" ? "chat" : "health")}
+          className={`flex items-center gap-2.5 w-full px-3 py-2 rounded-lg text-sm transition-colors cursor-pointer ${
+            activeView === "health"
+              ? "bg-bg-tertiary text-text-primary"
+              : "text-text-secondary hover:bg-bg-tertiary/50 hover:text-text-primary"
+          }`}
+        >
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <path d="M7 1L8.5 3.5L11.5 2.5L10.5 5.5L13 7L10.5 8.5L11.5 11.5L8.5 10.5L7 13L5.5 10.5L2.5 11.5L3.5 8.5L1 7L3.5 5.5L2.5 2.5L5.5 3.5L7 1Z" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round" />
+          </svg>
+          {t("sidebar.health")}
+        </button>
+
         {/* Knowledge */}
         <button
           onClick={() => setActiveView(activeView === "knowledge" ? "chat" : "knowledge")}
@@ -444,22 +459,7 @@ export function Sidebar({ session }: SidebarProps) {
           {t("sidebar.knowledge")}
         </button>
 
-        {/* Actions */}
-        <button
-          onClick={() => setActiveView(activeView === "diagnostics" ? "chat" : "diagnostics")}
-          className={`flex items-center gap-2.5 w-full px-3 py-2 rounded-lg text-sm transition-colors cursor-pointer ${
-            activeView === "diagnostics"
-              ? "bg-bg-tertiary text-text-primary"
-              : "text-text-secondary hover:bg-bg-tertiary/50 hover:text-text-primary"
-          }`}
-        >
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-            <rect x="1" y="7" width="2.5" height="5.5" rx="0.5" stroke="currentColor" strokeWidth="1.1" />
-            <rect x="5.75" y="4" width="2.5" height="8.5" rx="0.5" stroke="currentColor" strokeWidth="1.1" />
-            <rect x="10.5" y="1.5" width="2.5" height="11" rx="0.5" stroke="currentColor" strokeWidth="1.1" />
-          </svg>
-          {t("sidebar.actions")}
-        </button>
+        {/* Actions — now merged into Health panel */}
       </div>
 
       {/* Divider */}

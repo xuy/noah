@@ -398,3 +398,74 @@ fn format_size(kb: u64) -> String {
         format!("{} KB", kb)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── TCC guard regression tests ─────────────────────────────────
+    // These directories trigger macOS permission popups ("Noah wants
+    // to access your Music"). The scanner must never traverse them.
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn tcc_blocks_home_private_dirs() {
+        let home = std::env::var("HOME").unwrap_or_else(|_| "/Users/testuser".into());
+        for dir in &["Music", "Pictures", "Photos", "Movies", "Desktop", "Documents"] {
+            let path = format!("{}/{}", home, dir);
+            assert!(
+                is_macos_private(&path, &home),
+                "TCC guard must block ~/{}",
+                dir
+            );
+            // Also block subdirectories.
+            let subpath = format!("{}/{}/subfolder", home, dir);
+            assert!(
+                is_macos_private(&subpath, &home),
+                "TCC guard must block ~/{}/subfolder",
+                dir
+            );
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn tcc_blocks_library_private_paths() {
+        let home = std::env::var("HOME").unwrap_or_else(|_| "/Users/testuser".into());
+        for component in &[
+            "/Library/Mail",
+            "/Library/Messages",
+            "/Library/Calendars",
+            "/Library/Contacts",
+            "/Library/Safari",
+        ] {
+            let path = format!("{}{}", home, component);
+            assert!(
+                is_macos_private(&path, &home),
+                "TCC guard must block ~{}",
+                component
+            );
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn tcc_allows_safe_dirs() {
+        let home = std::env::var("HOME").unwrap_or_else(|_| "/Users/testuser".into());
+        for dir in &["Downloads", "Library/Caches", "Library/Application Support", ".config"] {
+            let path = format!("{}/{}", home, dir);
+            assert!(
+                !is_macos_private(&path, &home),
+                "TCC guard must allow ~/{}",
+                dir
+            );
+        }
+    }
+
+    #[test]
+    fn format_size_units() {
+        assert_eq!(format_size(500), "500 KB");
+        assert_eq!(format_size(2048), "2.0 MB");
+        assert_eq!(format_size(1_572_864), "1.5 GB");
+    }
+}

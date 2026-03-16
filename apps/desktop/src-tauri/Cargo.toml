@@ -32,6 +32,7 @@ async-trait = "0.1"
 html2text = "0.12"
 noah-tools = { path = "../../../crates/noah-tools" }
 noah-health = { path = "../../../crates/noah-health" }
+hostname = "0.4"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt", "macros"] }

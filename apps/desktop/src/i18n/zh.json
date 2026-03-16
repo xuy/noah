@@ -49,6 +49,7 @@
   "sidebar": {
     "newChat": "新对话",
     "knowledge": "知识库",
+    "health": "健康",
     "actions": "操作",
     "untitledSession": "未命名会话",
     "sessionsEmpty": "使用应用后，会话将显示在这里。",

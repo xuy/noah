@@ -1,5 +1,6 @@
 pub mod agent;
 mod commands;
+mod dashboard_link;
 pub mod debug_runner;
 mod knowledge;
 mod machine_context;
@@ -321,6 +322,10 @@ pub fn run() {
             let mut scanner_mgr = scanner::ScannerManager::new(db_arc.clone(), Some(app.handle().clone()));
             #[cfg(target_os = "macos")]
             scanner_mgr.register(Box::new(scanner::disk::DiskScanner));
+            #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+            scanner_mgr.register(Box::new(scanner::security::SecurityScanner));
+            #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+            scanner_mgr.register(Box::new(scanner::updates::UpdateScanner));
             let scanner_trigger = scanner_mgr.trigger_handle();
             let scanner_pause = scanner_mgr.pause_handle();
 
@@ -415,6 +420,9 @@ pub fn run() {
             commands::settings::act_on_proactive_suggestion,
             commands::settings::set_locale,
             commands::settings::set_session_mode,
+            commands::settings::link_dashboard,
+            commands::settings::unlink_dashboard,
+            commands::settings::get_dashboard_status,
             commands::knowledge::list_knowledge,
             commands::knowledge::read_knowledge_file,
             commands::knowledge::delete_knowledge_file,
@@ -422,6 +430,10 @@ pub fn run() {
             commands::scanner::pause_scan,
             commands::scanner::resume_scan,
             commands::scanner::get_scan_jobs,
+            commands::health::get_health_score,
+            commands::health::run_health_check,
+            commands::health::get_health_history,
+            commands::health::open_health_fix,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

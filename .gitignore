@@ -33,3 +33,7 @@ apps/desktop/src-tauri/tests/playbook-results/
 
 # Firebase site (deployed separately)
 site/
+
+# Web app local dev files
+apps/web/.dev.vars
+apps/web/.wrangler/

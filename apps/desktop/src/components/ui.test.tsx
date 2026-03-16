@@ -408,3 +408,77 @@ describe("Sidebar session list", () => {
     expect(screen.queryByText("Settings")).toBeNull();
   });
 });
+
+// ── UX regression guards ──────────────────────────────────────────────────────
+// These tests encode invariants that have broken in the past. Each test
+// documents which regression it prevents so agents know not to violate them.
+
+describe("UX regression guards", () => {
+  // Regression: title bar lost data-tauri-drag-region, making the window
+  // impossible to move on macOS. The attribute must be on the root container
+  // and the onMouseDown handler must call startDragging.
+  it("title bar root has data-tauri-drag-region for window dragging", () => {
+    const { container } = render(<MainTitleBar />);
+    const root = container.firstElementChild as HTMLElement;
+    expect(root).not.toBeNull();
+    expect(root.hasAttribute("data-tauri-drag-region")).toBe(true);
+  });
+
+  it("title bar has left padding for macOS traffic lights", () => {
+    const { container } = render(<MainTitleBar />);
+    const root = container.firstElementChild as HTMLElement;
+    expect(root.style.paddingLeft).toBe("76px");
+  });
+
+  // Regression: chat input became position:fixed or floated above content,
+  // detaching from the scroll container. It must be sticky (inside flow),
+  // never fixed or absolute.
+  it("chat input footer is sticky, not fixed or absolute", async () => {
+    useChatStore.setState({
+      messages: [
+        { id: "m1", role: "assistant", content: "Hi", timestamp: Date.now() },
+      ],
+    });
+    render(<ChatPanel />);
+    const footer = await screen.findByTestId("chat-input-footer");
+    expect(footer.className).toContain("sticky");
+    expect(footer.className).not.toContain("fixed");
+    expect(footer.className).not.toContain("absolute");
+  });
+
+  it("chat input footer stays within the scroll container, not at viewport level", async () => {
+    useChatStore.setState({
+      messages: [
+        { id: "m1", role: "assistant", content: "Hi", timestamp: Date.now() },
+      ],
+    });
+    render(<ChatPanel />);
+    const footer = await screen.findByTestId("chat-input-footer");
+    // The footer's parent should be the scrollable messages container,
+    // not document.body or a top-level fixed wrapper.
+    expect(footer.parentElement).not.toBeNull();
+    expect(footer.parentElement?.tagName).not.toBe("BODY");
+  });
+
+  // Regression: settings gear moved out of sidebar or disappeared entirely.
+  // It must always be in the sidebar footer, accessible in both open and
+  // collapsed states.
+  it("settings button is inside the sidebar, not the title bar", () => {
+    render(<MainTitleBar />);
+    expect(screen.queryByTitle("Settings")).toBeNull();
+
+    cleanup();
+
+    render(<Sidebar session={mockSidebarSession} />);
+    expect(screen.getByTitle("Settings")).not.toBeNull();
+  });
+
+  // Regression: title bar height changed, pushing content down or overlapping.
+  // Must be exactly h-[36px] with flex-shrink-0 to prevent squishing.
+  it("title bar has fixed 36px height and does not shrink", () => {
+    const { container } = render(<MainTitleBar />);
+    const root = container.firstElementChild as HTMLElement;
+    expect(root.className).toContain("h-[36px]");
+    expect(root.className).toContain("flex-shrink-0");
+  });
+});

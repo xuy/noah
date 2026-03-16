@@ -40,6 +40,35 @@ export function SettingsPanel() {
   const { preference: themePref, setTheme } = useTheme();
   const { t, preference: localePref, setLocale } = useLocale();
 
+  const [dashboardStatus, setDashboardStatus] = useState<commands.DashboardStatus | null>(null);
+  const [dashboardUrl, setDashboardUrl] = useState("https://noah-web.workers.dev");
+  const [linkCode, setLinkCode] = useState("");
+  const [linkError, setLinkError] = useState<string | null>(null);
+  const [linkLoading, setLinkLoading] = useState(false);
+
+  useEffect(() => {
+    commands.getDashboardStatus().then(setDashboardStatus).catch(() => {});
+  }, []);
+
+  const handleLink = async () => {
+    setLinkLoading(true);
+    setLinkError(null);
+    try {
+      await commands.linkDashboard(linkCode, dashboardUrl);
+      const status = await commands.getDashboardStatus();
+      setDashboardStatus(status);
+      setLinkCode("");
+    } catch (e) {
+      setLinkError(e instanceof Error ? e.message : String(e));
+    }
+    setLinkLoading(false);
+  };
+
+  const handleUnlink = async () => {
+    await commands.unlinkDashboard();
+    setDashboardStatus({ linked: false });
+  };
+
   const [reportingBug, setReportingBug] = useState(false);
 
   const handleReportProblem = useCallback(async () => {
@@ -255,6 +284,52 @@ export function SettingsPanel() {
             <p className="text-xs text-text-muted mt-2">
               {t(LOCALE_OPTIONS.find((opt) => opt.value === localePref)?.descKey ?? "settings.langAutoDesc")}
             </p>
+          </section>
+
+          <section className="rounded-2xl border border-border-primary bg-bg-secondary p-5 lg:col-span-2">
+            <h2 className="text-xs font-semibold text-text-primary uppercase tracking-wider mb-3">
+              {t("settings.dashboard")}
+            </h2>
+            {dashboardStatus?.linked ? (
+              <>
+                <p className="text-sm text-text-secondary">
+                  {t("settings.linkedTo")} <span className="font-medium text-text-primary">{dashboardStatus.url}</span>
+                </p>
+                <button
+                  onClick={handleUnlink}
+                  className="mt-2 text-xs text-accent-red hover:underline cursor-pointer"
+                >
+                  {t("settings.unlink")}
+                </button>
+              </>
+            ) : (
+              <div className="space-y-3">
+                <p className="text-xs text-text-muted">{t("settings.dashboardDesc")}</p>
+                <input
+                  type="text"
+                  placeholder="https://noah-web.workers.dev"
+                  value={dashboardUrl}
+                  onChange={(e) => setDashboardUrl(e.target.value)}
+                  className="w-full px-3 py-2 text-sm bg-bg-primary border border-border-primary rounded-lg text-text-primary"
+                />
+                <input
+                  type="text"
+                  placeholder="ABC123"
+                  value={linkCode}
+                  onChange={(e) => setLinkCode(e.target.value.toUpperCase())}
+                  maxLength={6}
+                  className="w-full px-3 py-2 text-sm bg-bg-primary border border-border-primary rounded-lg text-text-primary font-mono tracking-widest"
+                />
+                {linkError && <p className="text-xs text-accent-red">{linkError}</p>}
+                <button
+                  onClick={handleLink}
+                  disabled={linkLoading || !linkCode.trim()}
+                  className="px-4 py-2 text-sm font-medium text-white bg-accent-blue rounded-lg hover:bg-accent-blue/90 disabled:opacity-50 cursor-pointer"
+                >
+                  {linkLoading ? "Linking..." : t("settings.linkDevice")}
+                </button>
+              </div>
+            )}
           </section>
 
           <section className="rounded-2xl border border-border-primary bg-bg-secondary p-5 lg:col-span-2">

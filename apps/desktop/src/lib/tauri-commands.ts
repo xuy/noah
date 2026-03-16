@@ -326,6 +326,81 @@ export async function resumeScan(scanType: string): Promise<void> {
   await invoke<void>("resume_scan", { scanType });
 }
 
+// ── Health Score ──
+
+export interface CheckResult {
+  id: string;
+  category: string;
+  label: string;
+  status: "pass" | "warn" | "fail";
+  detail: string;
+}
+
+export interface CategoryScore {
+  category: string;
+  score: number;
+  grade: string;
+  checks: CheckResult[];
+}
+
+export interface HealthScore {
+  overall_score: number;
+  overall_grade: string;
+  categories: CategoryScore[];
+  computed_at: string;
+  device_id: string | null;
+}
+
+export interface HealthScoreRecord {
+  id: string;
+  score: number;
+  grade: string;
+  categories: string; // JSON
+  computed_at: string;
+  device_id: string | null;
+}
+
+export async function getHealthScore(): Promise<HealthScore | null> {
+  const json = await invoke<string>("get_health_score");
+  return JSON.parse(json);
+}
+
+export async function runHealthCheck(): Promise<HealthScore> {
+  const json = await invoke<string>("run_health_check");
+  return JSON.parse(json);
+}
+
+export async function openHealthFix(checkId: string): Promise<void> {
+  await invoke<void>("open_health_fix", { checkId });
+}
+
+export async function getHealthHistory(limit?: number): Promise<HealthScoreRecord[]> {
+  const json = await invoke<string>("get_health_history", { limit });
+  return JSON.parse(json);
+}
+
+// ── Dashboard Link ──
+
+export interface DashboardStatus {
+  linked: boolean;
+  url?: string;
+  device_id?: string;
+  linked_at?: string;
+}
+
+export async function linkDashboard(code: string, url: string): Promise<string> {
+  return await invoke<string>("link_dashboard", { code, url });
+}
+
+export async function unlinkDashboard(): Promise<void> {
+  await invoke<void>("unlink_dashboard");
+}
+
+export async function getDashboardStatus(): Promise<DashboardStatus> {
+  const json = await invoke<string>("get_dashboard_status");
+  return JSON.parse(json);
+}
+
 // ── V2 Agent Commands ──
 
 export async function sendMessageV2(
