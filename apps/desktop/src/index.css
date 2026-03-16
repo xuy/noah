@@ -6,29 +6,33 @@
  * Design intent: Noah is IT support for non-technical people.
  * They're often stressed when they open this app. The palette
  * should feel like a calm, competent professional's office —
- * deep navy base (trust, authority), teal accent (the brand),
- * clean readable text, and enough color to feel alive.
+ * soft dark base (cool gray, not navy), teal accent (the brand),
+ * clean readable text, and enough contrast to feel trustworthy.
+ *
+ * Palette D: "Soft Dark" — desaturated cool gray with a whisper
+ * of blue. Professional enough to sit alongside Slack, Teams, and
+ * Chrome without looking tinted. The teal accent carries the brand.
  */
 @theme {
-  /* Deep navy backgrounds — professional, not cave-like */
-  --color-bg-primary: #0f1729;
-  --color-bg-secondary: #182036;
-  --color-bg-tertiary: #243049;
-  --color-bg-input: #1a2440;
-  --color-bg-user-bubble: #275e56;
-  --color-text-user-bubble: #ffffff;
-  --color-bg-assistant-bubble: #182036;
-  --color-bg-system-bubble: #141c30;
-  --color-bg-overlay: rgba(8, 12, 24, 0.6);
+  /* Soft dark backgrounds — cool gray, desaturated */
+  --color-bg-primary: #14171c;
+  --color-bg-secondary: #1a1d24;
+  --color-bg-tertiary: #24272e;
+  --color-bg-input: #1c1f26;
+  --color-bg-user-bubble: #1f5c4f;
+  --color-text-user-bubble: #d1fae5;
+  --color-bg-assistant-bubble: #1a1d24;
+  --color-bg-system-bubble: #16191f;
+  --color-bg-overlay: rgba(10, 12, 16, 0.6);
 
   /* Clean, high-contrast text */
-  --color-text-primary: #eef2f7;
-  --color-text-secondary: #8b9ab8;
-  --color-text-muted: #566888;
+  --color-text-primary: #e5e7eb;
+  --color-text-secondary: #9ca3af;
+  --color-text-muted: #6b7280;
   --color-text-inverse: #ffffff;
 
-  /* Subtle blue-tinted borders */
-  --color-border-primary: #263354;
+  /* Subtle neutral borders */
+  --color-border-primary: #2a2d35;
   --color-border-focus: #2dd4bf;
 
   /* Teal-forward accents — brand color leads */
@@ -41,17 +45,23 @@
 
   /* Status */
   --color-status-active: #34d399;
-  --color-status-idle: #566888;
+  --color-status-idle: #6b7280;
   --color-status-pending: #fbbf24;
   --color-status-running: #2dd4bf;
   --color-status-error: #f87171;
-  --color-status-denied: #566888;
+  --color-status-denied: #6b7280;
+
+  /* Seamless chat surfaces */
+  --color-surface-card: rgba(45, 212, 191, 0.03);
+  --color-surface-card-border: rgba(255, 255, 255, 0.06);
+  --color-accent-border: rgba(45, 212, 191, 0.12);
+  --color-surface-pill: rgba(36, 39, 46, 0.7);
 }
 
 /* ── Light Mode ──
- * Same brand, daylight version. Soft blue-whites (not stark),
- * deep navy text (reusing dark mode's backgrounds as text),
- * and slightly deeper accents for readability on light surfaces.
+ * Same brand, daylight version. Soft gray-whites (not stark),
+ * dark text for readability, and slightly deeper accents for
+ * contrast on light surfaces.
  *
  * Applied via .light class on :root (managed by useTheme hook).
  * "System" preference uses matchMedia to toggle the class.
@@ -88,6 +98,12 @@
     --color-status-running: #0d9488;
     --color-status-error: #dc2626;
     --color-status-denied: #7889a5;
+
+    /* Seamless chat surfaces — light */
+    --color-surface-card: #ffffff;
+    --color-surface-card-border: transparent;
+    --color-accent-border: rgba(13, 148, 136, 0.12);
+    --color-surface-pill: rgba(232, 236, 244, 0.6);
 }
 
 /* ── Base Styles ── */
@@ -134,6 +150,11 @@ body,
 ::selection {
   background-color: var(--color-accent-blue);
   color: var(--color-text-inverse);
+}
+
+/* ── Seamless card surface (light-mode shadow) ── */
+:root.light .surface-card {
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 6px 16px rgba(0,0,0,0.02);
 }
 
 /* ── Animations ── */

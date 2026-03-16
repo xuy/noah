@@ -439,17 +439,17 @@ function ChangesBlock({ changeIds }: { changeIds: string[] }) {
 
   if (changes.length === 0) {
     return (
-      <div className="mt-2 rounded-xl border border-border-primary/50 bg-bg-primary/50 px-4 py-2 text-sm text-text-muted">
+      <div className="mt-2 rounded-lg bg-surface-pill px-4 py-1.5 text-sm text-text-muted inline-flex items-center gap-2">
         {t("chat.diagnosticChecks", { count: diagnosticCount, s: diagnosticCount !== 1 ? "s" : "" })}
       </div>
     );
   }
 
   return (
-    <div className="mt-2 rounded-xl border border-border-primary/50 bg-bg-primary/50 overflow-hidden">
+    <div className="mt-2 rounded-xl bg-surface-pill overflow-hidden">
       <button
         onClick={() => setExpanded(!expanded)}
-        className="flex items-center gap-2 w-full px-4 py-2 text-sm text-left cursor-pointer hover:bg-bg-tertiary/30 transition-colors"
+        className="flex items-center gap-2 w-full px-4 py-1.5 text-sm text-left cursor-pointer hover:bg-bg-tertiary/20 transition-colors"
       >
         <svg width="12" height="12" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
           <path d="M8.5 1.5L12.5 5.5L5 13H1V9L8.5 1.5Z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
@@ -462,7 +462,7 @@ function ChangesBlock({ changeIds }: { changeIds: string[] }) {
         </span>
       </button>
       {expanded && (
-        <div className="px-4 py-2.5 border-t border-border-primary/50 text-sm space-y-1.5">
+        <div className="px-4 py-2 text-sm space-y-1">
           {changes.map((label, i) => (
             <div key={i} className="text-text-secondary leading-snug">
               {label}
@@ -512,7 +512,7 @@ function ActionCard({
 
   return (
     <div className="group animate-fade-in">
-      <div className="rounded-xl border border-border-primary/50 bg-bg-secondary overflow-hidden">
+      <div className="rounded-[14px] border border-surface-card-border bg-surface-card surface-card overflow-hidden">
         <div className="px-5 pt-4">
           {progress && <ProgressBar step={progress.step} total={progress.total} label={progress.label} />}
         </div>
@@ -524,11 +524,7 @@ function ActionCard({
               {t("chat.situation")}
             </div>
           )}
-          <div className={`rounded-lg px-3.5 py-3 text-base leading-relaxed ${
-            isWaitForUser
-              ? "border border-border-primary/50 bg-bg-primary text-text-primary"
-              : "border border-accent-blue/20 bg-accent-blue/5 text-text-primary"
-          }`}>
+          <div className="text-base leading-relaxed text-text-primary">
             <div className="whitespace-pre-wrap break-words">
               <MarkdownSummary text={prettySituation} />
             </div>
@@ -542,7 +538,7 @@ function ActionCard({
             <div className="text-sm font-semibold text-accent-purple mb-1.5 tracking-wide">
               {t("chat.plan")}
             </div>
-            <div className="rounded-lg border border-accent-purple/20 bg-accent-purple/5 px-3.5 py-3 text-base text-text-secondary leading-relaxed">
+            <div className="text-base text-text-secondary leading-relaxed">
               <div className="whitespace-pre-wrap break-words">
                 <MarkdownSummary text={prettyPlan} />
               </div>
@@ -634,7 +630,7 @@ function UserQuestionCard({
 
   return (
     <div className="group animate-fade-in">
-      <div className="rounded-xl border border-border-primary/50 bg-bg-secondary overflow-hidden">
+      <div className="rounded-[14px] border border-surface-card-border bg-surface-card surface-card overflow-hidden">
         <div className="px-5 pt-4 pb-3">
           {progress && <ProgressBar step={progress.step} total={progress.total} label={progress.label} />}
           <div className="text-sm font-semibold text-accent-blue mb-1.5 tracking-wide">
@@ -652,14 +648,23 @@ function UserQuestionCard({
                   key={opt.label}
                   onClick={() => setSelectedOption(opt.label)}
                   disabled={actionTaken || isProcessing}
-                  className={`w-full text-left rounded-lg border px-3 py-2 transition-colors cursor-pointer ${
+                  className={`w-full text-left rounded-lg px-3 py-2.5 transition-colors cursor-pointer flex items-start gap-3 ${
                     selectedOption === opt.label
-                      ? "border-accent-blue bg-accent-blue/10"
-                      : "border-border-primary bg-bg-secondary hover:bg-bg-tertiary"
+                      ? "bg-accent-blue/10"
+                      : "hover:bg-surface-pill"
                   }`}
                 >
-                  <div className="text-sm font-medium text-text-primary"><InlineMarkdown text={opt.label} /></div>
-                  <div className="text-xs text-text-muted"><InlineMarkdown text={opt.description || ""} /></div>
+                  <span className={`w-4 h-4 mt-0.5 rounded-full border-2 flex-shrink-0 flex items-center justify-center transition-colors ${
+                    selectedOption === opt.label
+                      ? "border-accent-blue bg-accent-blue"
+                      : "border-border-primary"
+                  }`}>
+                    {selectedOption === opt.label && <span className="w-1.5 h-1.5 rounded-full bg-white" />}
+                  </span>
+                  <div>
+                    <div className="text-sm font-medium text-text-primary"><InlineMarkdown text={opt.label} /></div>
+                    <div className="text-xs text-text-muted"><InlineMarkdown text={opt.description || ""} /></div>
+                  </div>
                 </button>
               ))}
             </div>
@@ -768,13 +773,11 @@ function DoneCard({
 
   return (
     <div className="group animate-fade-in">
-      <div className="rounded-xl border border-accent-green/20 bg-accent-green/5 px-5 py-4">
-        <div className="flex items-start gap-2.5">
-          <span className="text-accent-green text-lg mt-0.5">{"\u2713"}</span>
-          <div className="flex-1">
-            <div className="text-base text-text-primary leading-relaxed">
-              <MarkdownSummary text={summary} />
-            </div>
+      <div className="flex items-center gap-3 rounded-lg bg-accent-green/6 border border-accent-green/12 px-4 py-2.5">
+        <span className="flex items-center justify-center w-6 h-6 rounded-full bg-accent-green/15 text-accent-green text-sm flex-shrink-0">{"\u2713"}</span>
+        <div className="flex-1">
+          <div className="text-base text-text-primary leading-relaxed">
+            <MarkdownSummary text={summary} />
           </div>
         </div>
       </div>
@@ -828,13 +831,11 @@ function InfoCard({
 }) {
   return (
     <div className="group animate-fade-in">
-      <div className="rounded-xl border border-accent-blue/20 bg-accent-blue/5 px-5 py-4">
-        <div className="flex items-start gap-2.5">
-          <span className="text-accent-blue text-lg mt-0.5">{"\u2139"}</span>
-          <div className="flex-1">
-            <div className="text-base text-text-primary leading-relaxed">
-              <MarkdownSummary text={summary} />
-            </div>
+      <div className="flex items-start gap-3 py-2">
+        <span className="text-accent-blue text-base">{"\u2139"}</span>
+        <div className="flex-1">
+          <div className="text-base text-text-primary leading-relaxed">
+            <MarkdownSummary text={summary} />
           </div>
         </div>
       </div>
@@ -870,7 +871,7 @@ function MessageBubble({ message }: { message: Message }) {
   }
 
   return (
-    <div className="group animate-fade-in">
+    <div className="group animate-fade-in pl-4 border-l-2 border-accent-border">
       <div className="text-base text-text-primary leading-relaxed">
         <MarkdownSummary text={message.content} />
       </div>
