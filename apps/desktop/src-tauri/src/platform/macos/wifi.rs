@@ -23,7 +23,8 @@ impl Tool for WifiScan {
         json!({
             "type": "object",
             "properties": {},
-            "required": []
+            "required": [],
+            "additionalProperties": false
         })
     }
 

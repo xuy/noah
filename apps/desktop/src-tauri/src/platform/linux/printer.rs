@@ -5,18 +5,18 @@ use std::process::Command;
 
 use noah_tools::{ChangeRecord, SafetyTier, Tool, ToolResult};
 
-// ── MacPrinterList ─────────────────────────────────────────────────────
+// ── LinuxPrinterList ──────────────────────────────────────────────────
 
-pub struct MacPrinterList;
+pub struct LinuxPrinterList;
 
 #[async_trait]
-impl Tool for MacPrinterList {
+impl Tool for LinuxPrinterList {
     fn name(&self) -> &str {
-        "mac_printer_list"
+        "linux_printer_list"
     }
 
     fn description(&self) -> &str {
-        "List all configured printers and the default printer."
+        "List configured printers and the default printer using CUPS (lpstat)."
     }
 
     fn input_schema(&self) -> Value {
@@ -40,12 +40,24 @@ impl Tool for MacPrinterList {
                 let stdout = String::from_utf8_lossy(&o.stdout).to_string();
                 let stderr = String::from_utf8_lossy(&o.stderr).to_string();
                 if stdout.is_empty() && !stderr.is_empty() {
-                    stderr
+                    if stderr.contains("No destinations added") || stderr.contains("lpstat: error") {
+                        "No printers configured. CUPS may not be installed or running.".to_string()
+                    } else {
+                        format!("lpstat error: {}", stderr.trim())
+                    }
+                } else if stdout.trim().is_empty() {
+                    "No printers found.".to_string()
                 } else {
                     stdout
                 }
             })
-            .unwrap_or_else(|e| format!("lpstat failed: {}", e));
+            .unwrap_or_else(|e| {
+                if e.kind() == std::io::ErrorKind::NotFound {
+                    "lpstat not found. CUPS does not appear to be installed.".to_string()
+                } else {
+                    format!("lpstat failed: {}", e)
+                }
+            });
 
         Ok(ToolResult::read_only(
             output.clone(),
@@ -54,18 +66,18 @@ impl Tool for MacPrinterList {
     }
 }
 
-// ── MacPrintQueue ──────────────────────────────────────────────────────
+// ── LinuxPrintQueue ───────────────────────────────────────────────────
 
-pub struct MacPrintQueue;
+pub struct LinuxPrintQueue;
 
 #[async_trait]
-impl Tool for MacPrintQueue {
+impl Tool for LinuxPrintQueue {
     fn name(&self) -> &str {
-        "mac_print_queue"
+        "linux_print_queue"
     }
 
     fn description(&self) -> &str {
-        "Show all pending print jobs across all printers."
+        "Show the current print queue (pending print jobs)."
     }
 
     fn input_schema(&self) -> Value {
@@ -102,18 +114,18 @@ impl Tool for MacPrintQueue {
     }
 }
 
-// ── MacCancelPrintJobs ─────────────────────────────────────────────────
+// ── LinuxCancelPrintJobs ──────────────────────────────────────────────
 
-pub struct MacCancelPrintJobs;
+pub struct LinuxCancelPrintJobs;
 
 #[async_trait]
-impl Tool for MacCancelPrintJobs {
+impl Tool for LinuxCancelPrintJobs {
     fn name(&self) -> &str {
-        "mac_cancel_print_jobs"
+        "linux_cancel_print_jobs"
     }
 
     fn description(&self) -> &str {
-        "Cancel all pending print jobs. Requires user approval."
+        "Cancel all pending print jobs."
     }
 
     fn input_schema(&self) -> Value {
@@ -138,14 +150,14 @@ impl Tool for MacCancelPrintJobs {
                     "All print jobs cancelled successfully.".to_string()
                 } else {
                     let stderr = String::from_utf8_lossy(&o.stderr).to_string();
-                    format!("cancel command completed with errors: {}", stderr.trim())
+                    format!("Failed to cancel print jobs: {}", stderr.trim())
                 }
             })
             .unwrap_or_else(|e| format!("cancel failed: {}", e));
 
         Ok(ToolResult::with_changes(
             output.clone(),
-            json!({ "status": output }),
+            json!({}),
             vec![ChangeRecord {
                 description: "Cancelled all pending print jobs".to_string(),
                 undo_tool: String::new(),
@@ -155,18 +167,18 @@ impl Tool for MacCancelPrintJobs {
     }
 }
 
-// ── MacRestartCups ─────────────────────────────────────────────────────
+// ── LinuxRestartCups ──────────────────────────────────────────────────
 
-pub struct MacRestartCups;
+pub struct LinuxRestartCups;
 
 #[async_trait]
-impl Tool for MacRestartCups {
+impl Tool for LinuxRestartCups {
     fn name(&self) -> &str {
-        "mac_restart_cups"
+        "linux_restart_cups"
     }
 
     fn description(&self) -> &str {
-        "Restart the CUPS printing service. This can fix stuck print queues."
+        "Restart the CUPS print service using systemctl."
     }
 
     fn input_schema(&self) -> Value {
@@ -183,38 +195,31 @@ impl Tool for MacRestartCups {
     }
 
     async fn execute(&self, _input: &Value) -> Result<ToolResult> {
-        // Try to restart CUPS via launchctl
-        let stop = Command::new("launchctl")
-            .args(["unload", "/System/Library/LaunchDaemons/org.cups.cupsd.plist"])
-            .output();
-
-        let start = Command::new("launchctl")
-            .args(["load", "/System/Library/LaunchDaemons/org.cups.cupsd.plist"])
-            .output();
-
-        let msg = match (stop, start) {
-            (Ok(_), Ok(s)) if s.status.success() => {
-                "CUPS printing service restarted successfully.".to_string()
-            }
-            _ => {
-                // Fallback: try killall cupsd
-                let fallback = Command::new("killall")
-                    .arg("cupsd")
-                    .output();
-                match fallback {
-                    Ok(o) if o.status.success() => {
-                        "CUPS restarted via killall (it will auto-restart).".to_string()
+        let output = Command::new("systemctl")
+            .args(["restart", "cups"])
+            .output()
+            .map(|o| {
+                if o.status.success() {
+                    "CUPS print service restarted successfully.".to_string()
+                } else {
+                    let stderr = String::from_utf8_lossy(&o.stderr).to_string();
+                    if stderr.contains("Access denied") || stderr.contains("Permission denied") {
+                        format!(
+                            "Failed to restart CUPS — insufficient privileges.\n{}",
+                            stderr.trim()
+                        )
+                    } else {
+                        format!("Failed to restart CUPS: {}", stderr.trim())
                     }
-                    _ => "Failed to restart CUPS. You may need to restart manually via System Settings.".to_string(),
                 }
-            }
-        };
+            })
+            .unwrap_or_else(|e| format!("systemctl failed: {}", e));
 
         Ok(ToolResult::with_changes(
-            msg.clone(),
-            json!({ "status": msg }),
+            output.clone(),
+            json!({}),
             vec![ChangeRecord {
-                description: "Restarted CUPS printing service".to_string(),
+                description: "Restarted CUPS print service".to_string(),
                 undo_tool: String::new(),
                 undo_input: json!(null),
             }],

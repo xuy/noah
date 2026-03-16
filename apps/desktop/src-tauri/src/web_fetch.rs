@@ -18,7 +18,7 @@ impl Tool for WebFetchTool {
     }
 
     fn description(&self) -> &str {
-        "Fetch the content of a web page given its URL. Returns the page text (HTML is converted to readable text). Use this when the user provides a URL you need to read."
+        "Fetch the content of a web page given its URL. Returns the page text (HTML is converted to readable text). Only http/https URLs are supported. Output is truncated at 100 000 chars; request times out after 30 s."
     }
 
     fn input_schema(&self) -> Value {
@@ -27,10 +27,11 @@ impl Tool for WebFetchTool {
             "properties": {
                 "url": {
                     "type": "string",
-                    "description": "The URL to fetch"
+                    "description": "The URL to fetch (http:// or https:// only)"
                 }
             },
-            "required": ["url"]
+            "required": ["url"],
+            "additionalProperties": false
         })
     }
 

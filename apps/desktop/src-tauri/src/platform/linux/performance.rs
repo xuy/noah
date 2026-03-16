@@ -101,7 +101,8 @@ impl Tool for LinuxSystemInfo {
         json!({
             "type": "object",
             "properties": {},
-            "required": []
+            "required": [],
+            "additionalProperties": false
         })
     }
 
@@ -182,7 +183,8 @@ impl Tool for LinuxProcessList {
                     "default": "cpu"
                 }
             },
-            "required": []
+            "required": [],
+            "additionalProperties": false
         })
     }
 
@@ -237,7 +239,8 @@ impl Tool for LinuxDiskUsage {
         json!({
             "type": "object",
             "properties": {},
-            "required": []
+            "required": [],
+            "additionalProperties": false
         })
     }
 
@@ -288,7 +291,8 @@ impl Tool for LinuxKillProcess {
                     "default": 15
                 }
             },
-            "required": ["pid"]
+            "required": ["pid"],
+            "additionalProperties": false
         })
     }
 
@@ -331,6 +335,73 @@ impl Tool for LinuxKillProcess {
             json!({ "pid": pid, "signal": signal }),
             vec![ChangeRecord {
                 description: format!("Killed process {} with signal {}", pid, signal),
+                undo_tool: String::new(),
+                undo_input: json!(null),
+            }],
+        ))
+    }
+}
+
+// ── LinuxClearCaches ──────────────────────────────────────────────────
+
+pub struct LinuxClearCaches;
+
+#[async_trait]
+impl Tool for LinuxClearCaches {
+    fn name(&self) -> &str {
+        "linux_clear_caches"
+    }
+
+    fn description(&self) -> &str {
+        "Clear the user's ~/.cache/ directory to free disk space."
+    }
+
+    fn input_schema(&self) -> Value {
+        json!({
+            "type": "object",
+            "properties": {},
+            "required": [],
+            "additionalProperties": false
+        })
+    }
+
+    fn safety_tier(&self) -> SafetyTier {
+        SafetyTier::SafeAction
+    }
+
+    async fn execute(&self, _input: &Value) -> Result<ToolResult> {
+        let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
+        let cache_dir = format!("{}/.cache", home);
+
+        // Get size before clearing
+        let before_size = Command::new("du")
+            .args(["-sh", &cache_dir])
+            .output()
+            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+            .unwrap_or_else(|_| "unknown".to_string());
+
+        // Remove contents of .cache directory (not the directory itself)
+        let output = Command::new("find")
+            .args([&cache_dir, "-mindepth", "1", "-maxdepth", "1", "-exec", "rm", "-rf", "{}", ";"])
+            .output()
+            .map(|o| {
+                if o.status.success() {
+                    format!("Caches cleared successfully.\nBefore: {}", before_size)
+                } else {
+                    let stderr = String::from_utf8_lossy(&o.stderr).to_string();
+                    format!("Some caches cleared (some may be in use): {}", stderr.trim())
+                }
+            })
+            .unwrap_or_else(|e| format!("Failed to clear caches: {}", e));
+
+        Ok(ToolResult::with_changes(
+            output.clone(),
+            json!({
+                "cache_dir": cache_dir,
+                "before_size": before_size,
+            }),
+            vec![ChangeRecord {
+                description: format!("Cleared contents of {}", cache_dir),
                 undo_tool: String::new(),
                 undo_input: json!(null),
             }],

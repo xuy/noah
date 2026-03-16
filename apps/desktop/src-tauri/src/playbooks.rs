@@ -488,7 +488,8 @@ impl Tool for ActivatePlaybookTool {
                     "description": "The playbook name (e.g. 'network-diagnostics') or path for sub-modules (e.g. 'setup-openclaw/add-telegram')"
                 }
             },
-            "required": ["name"]
+            "required": ["name"],
+            "additionalProperties": false
         })
     }
 

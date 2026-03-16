@@ -23,7 +23,8 @@ impl Tool for MacAppList {
         json!({
             "type": "object",
             "properties": {},
-            "required": []
+            "required": [],
+            "additionalProperties": false
         })
     }
 
@@ -99,7 +100,8 @@ impl Tool for MacAppLogs {
                     "default": "1h"
                 }
             },
-            "required": ["app_name"]
+            "required": ["app_name"],
+            "additionalProperties": false
         })
     }
 
@@ -182,7 +184,8 @@ impl Tool for MacAppSupportLs {
                     "description": "Application name (subdirectory of Application Support)"
                 }
             },
-            "required": ["app_name"]
+            "required": ["app_name"],
+            "additionalProperties": false
         })
     }
 
@@ -246,7 +249,8 @@ impl Tool for MacClearAppCache {
                     "description": "Application name (or bundle identifier) whose caches to clear"
                 }
             },
-            "required": ["app_name"]
+            "required": ["app_name"],
+            "additionalProperties": false
         })
     }
 
@@ -352,7 +356,8 @@ impl Tool for MacMoveFile {
                     "default": "move"
                 }
             },
-            "required": ["source", "destination"]
+            "required": ["source", "destination"],
+            "additionalProperties": false
         })
     }
 

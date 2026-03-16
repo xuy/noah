@@ -249,7 +249,8 @@ impl Tool for DiskAudit {
                     "description": "Optional minimum size in MB to include in results. Default: 0 (show all)."
                 }
             },
-            "required": []
+            "required": [],
+            "additionalProperties": false
         })
     }
 

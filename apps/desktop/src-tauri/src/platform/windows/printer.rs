@@ -22,7 +22,8 @@ impl Tool for WinPrinterList {
         json!({
             "type": "object",
             "properties": {},
-            "required": []
+            "required": [],
+            "additionalProperties": false
         })
     }
 
@@ -72,7 +73,8 @@ impl Tool for WinPrintQueue {
         json!({
             "type": "object",
             "properties": {},
-            "required": []
+            "required": [],
+            "additionalProperties": false
         })
     }
 
@@ -126,7 +128,8 @@ impl Tool for WinCancelPrintJobs {
         json!({
             "type": "object",
             "properties": {},
-            "required": []
+            "required": [],
+            "additionalProperties": false
         })
     }
 
@@ -190,7 +193,8 @@ impl Tool for WinRestartSpooler {
         json!({
             "type": "object",
             "properties": {},
-            "required": []
+            "required": [],
+            "additionalProperties": false
         })
     }
 

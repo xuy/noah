@@ -22,7 +22,8 @@ impl Tool for WinSystemInfo {
         json!({
             "type": "object",
             "properties": {},
-            "required": []
+            "required": [],
+            "additionalProperties": false
         })
     }
 
@@ -85,7 +86,8 @@ impl Tool for WinProcessList {
                     "default": "cpu"
                 }
             },
-            "required": []
+            "required": [],
+            "additionalProperties": false
         })
     }
 
@@ -146,7 +148,8 @@ impl Tool for WinDiskUsage {
         json!({
             "type": "object",
             "properties": {},
-            "required": []
+            "required": [],
+            "additionalProperties": false
         })
     }
 
@@ -199,7 +202,8 @@ impl Tool for WinKillProcess {
                     "description": "Process ID to kill"
                 }
             },
-            "required": ["pid"]
+            "required": ["pid"],
+            "additionalProperties": false
         })
     }
 
@@ -277,7 +281,8 @@ impl Tool for WinClearCaches {
         json!({
             "type": "object",
             "properties": {},
-            "required": []
+            "required": [],
+            "additionalProperties": false
         })
     }
 

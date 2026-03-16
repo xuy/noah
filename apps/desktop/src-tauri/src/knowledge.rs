@@ -382,7 +382,8 @@ impl Tool for WriteKnowledgeTool {
             "properties": {
                 "category": {
                     "type": "string",
-                    "description": "Folder name: devices, issues, network, playbooks, preferences, software, or a new category name."
+                    "description": "Folder name for the knowledge file.",
+                    "enum": ["devices", "issues", "network", "playbooks", "preferences", "software"]
                 },
                 "filename": {
                     "type": "string",
@@ -393,7 +394,8 @@ impl Tool for WriteKnowledgeTool {
                     "description": "Full markdown content. Start with '# Title'."
                 }
             },
-            "required": ["category", "filename", "content"]
+            "required": ["category", "filename", "content"],
+            "additionalProperties": false
         })
     }
 
@@ -510,11 +512,12 @@ impl Tool for KnowledgeSearchTool {
                     "description": "Output mode: 'files' lists matching file paths with titles (default), 'content' shows matching lines with context."
                 },
                 "context": {
-                    "type": "number",
-                    "description": "Lines of context around each match (only for output_mode: 'content'). Default: 1."
+                    "type": "integer",
+                    "description": "Lines of context around each match (only for output_mode: 'content'). Default: 1. Max 3 snippets per file."
                 }
             },
-            "required": ["pattern"]
+            "required": ["pattern"],
+            "additionalProperties": false
         })
     }
 
@@ -729,15 +732,16 @@ impl Tool for KnowledgeReadTool {
                     "description": "Relative path, e.g. 'devices/hp-laserjet-pro-m404n.md' or 'playbooks/setup-openclaw/configure.md'."
                 },
                 "offset": {
-                    "type": "number",
+                    "type": "integer",
                     "description": "Line number to start reading from (0-based). Default: 0."
                 },
                 "limit": {
-                    "type": "number",
+                    "type": "integer",
                     "description": "Maximum number of lines to return. Default: all."
                 }
             },
-            "required": ["path"]
+            "required": ["path"],
+            "additionalProperties": false
         })
     }
 

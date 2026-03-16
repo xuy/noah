@@ -9,30 +9,14 @@ fn action_type_valid(v: &str) -> bool {
 }
 
 fn normalize_action_from_input(input: &Value) -> Result<(String, String)> {
-    // Prefer flat fields (action_label, action_type) — more reliable with LLMs.
-    // Fall back to nested action object for backwards compat.
+    // Use flat fields only (action_label, action_type) — matches the schema exactly.
     if let (Some(label), Some(action_type)) = (
         input.get("action_label").and_then(|v| v.as_str()),
         input.get("action_type").and_then(|v| v.as_str()),
     ) {
         return Ok((label.to_string(), action_type.to_string()));
     }
-    // Also accept top-level "label" (models sometimes hoist it)
-    if let Some(label) = input.get("label").and_then(|v| v.as_str()) {
-        let action_type = input.get("action_type")
-            .and_then(|v| v.as_str())
-            .unwrap_or("RUN_STEP");
-        return Ok((label.to_string(), action_type.to_string()));
-    }
-    // Legacy nested action object
-    if let Some(action) = input.get("action").and_then(|v| v.as_object()) {
-        let label = action.get("label").and_then(|v| v.as_str())
-            .ok_or_else(|| anyhow!("missing action.label"))?;
-        let action_type = action.get("type").and_then(|v| v.as_str())
-            .ok_or_else(|| anyhow!("missing action.type"))?;
-        return Ok((label.to_string(), action_type.to_string()));
-    }
-    Err(anyhow!("missing action_label/action_type"))
+    Err(anyhow!("missing action_label and/or action_type"))
 }
 
 pub fn ui_payload_from_tool_call(name: &str, input: &Value) -> Result<String> {
@@ -74,7 +58,6 @@ pub fn ui_payload_from_tool_call(name: &str, input: &Value) -> Result<String> {
             for q in questions {
                 let question = q
                     .get("question_md")
-                    .or_else(|| q.get("question"))
                     .and_then(|v| v.as_str())
                     .ok_or_else(|| anyhow!("question missing question_md"))?;
                 let header = q
@@ -159,7 +142,6 @@ pub fn ui_payload_from_tool_call(name: &str, input: &Value) -> Result<String> {
         "ui_info" => {
             let summary = input
                 .get("summary_md")
-                .or_else(|| input.get("summary"))
                 .and_then(|v| v.as_str())
                 .ok_or_else(|| anyhow!("missing summary_md"))?;
             Ok(json!({ "kind": "info", "summary": summary }).to_string())
@@ -167,7 +149,6 @@ pub fn ui_payload_from_tool_call(name: &str, input: &Value) -> Result<String> {
         "ui_done" => {
             let summary = input
                 .get("summary_md")
-                .or_else(|| input.get("summary"))
                 .and_then(|v| v.as_str())
                 .ok_or_else(|| anyhow!("missing summary_md"))?;
             Ok(json!({ "kind": "done", "summary": summary }).to_string())
@@ -223,11 +204,12 @@ impl Tool for UiUserQuestionTool {
               "minItems":1,
               "items":{
                 "type":"object",
+                "description":"Each question must include exactly ONE of: options, text_input, or secure_input.",
                 "properties":{
                   "id":{"type":"string"},
                   "header":{"type":"string"},
                   "question_md":{"type":"string","description":"Question prompt in Markdown format."},
-                  "multiSelect":{"type":"boolean"},
+                  "multiSelect":{"type":"boolean","description":"Allow multiple selections (only applies to options)."},
                   "options":{
                     "type":"array",
                     "minItems":2,
@@ -399,7 +381,8 @@ mod tests {
         let input = json!({
             "situation_md": "CPU is high",
             "plan_md": "Kill heavy process",
-            "action": {"label": "Fix it", "type": "RUN_STEP"}
+            "action_label": "Fix it",
+            "action_type": "RUN_STEP"
         });
         let result = ui_payload_from_tool_call("ui_spa", &input).unwrap();
         let v: Value = serde_json::from_str(&result).unwrap();
@@ -412,7 +395,8 @@ mod tests {
     fn valid_spa_wait_for_user() {
         let input = json!({
             "situation_md": "## Create a Bot\n\n1. Open Telegram\n2. Search @BotFather",
-            "action": {"label": "I've done this", "type": "WAIT_FOR_USER"}
+            "action_label": "I've done this",
+            "action_type": "WAIT_FOR_USER"
         });
         let result = ui_payload_from_tool_call("ui_spa", &input).unwrap();
         let v: Value = serde_json::from_str(&result).unwrap();
@@ -427,7 +411,8 @@ mod tests {
         let with_plan = json!({
             "situation_md": "Issue found",
             "plan_md": "Here's the fix",
-            "action": {"label": "Fix", "type": "RUN_STEP"}
+            "action_label": "Fix",
+            "action_type": "RUN_STEP"
         });
         let v: Value = serde_json::from_str(
             &ui_payload_from_tool_call("ui_spa", &with_plan).unwrap(),
@@ -437,7 +422,8 @@ mod tests {
         // Without plan_md
         let without_plan = json!({
             "situation_md": "Do this task",
-            "action": {"label": "Done", "type": "WAIT_FOR_USER"}
+            "action_label": "Done",
+            "action_type": "WAIT_FOR_USER"
         });
         let v: Value = serde_json::from_str(
             &ui_payload_from_tool_call("ui_spa", &without_plan).unwrap(),
@@ -450,7 +436,18 @@ mod tests {
         let input = json!({
             "situation_md": "X",
             "plan_md": "Y",
-            "action": {"label": "Go", "type": "INVALID"}
+            "action_label": "Go",
+            "action_type": "INVALID"
+        });
+        assert!(ui_payload_from_tool_call("ui_spa", &input).is_err());
+    }
+
+    #[test]
+    fn legacy_nested_action_rejected() {
+        // Legacy format should no longer work
+        let input = json!({
+            "situation_md": "X",
+            "action": {"label": "Go", "type": "RUN_STEP"}
         });
         assert!(ui_payload_from_tool_call("ui_spa", &input).is_err());
     }

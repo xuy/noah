@@ -130,7 +130,8 @@ impl Tool for CrashLogReader {
                     "description": "Specific log file path to read (e.g. '/var/log/cups/error_log'). If provided, reads this file directly instead of searching DiagnosticReports."
                 }
             },
-            "required": []
+            "required": [],
+            "additionalProperties": false
         })
     }
 

@@ -23,7 +23,8 @@ impl Tool for MacSystemInfo {
         json!({
             "type": "object",
             "properties": {},
-            "required": []
+            "required": [],
+            "additionalProperties": false
         })
     }
 
@@ -105,7 +106,8 @@ impl Tool for MacProcessList {
                     "default": "cpu"
                 }
             },
-            "required": []
+            "required": [],
+            "additionalProperties": false
         })
     }
 
@@ -176,7 +178,8 @@ impl Tool for MacDiskUsage {
         json!({
             "type": "object",
             "properties": {},
-            "required": []
+            "required": [],
+            "additionalProperties": false
         })
     }
 
@@ -226,7 +229,8 @@ impl Tool for MacKillProcess {
                     "default": 15
                 }
             },
-            "required": ["pid"]
+            "required": ["pid"],
+            "additionalProperties": false
         })
     }
 
@@ -293,7 +297,8 @@ impl Tool for MacClearCaches {
         json!({
             "type": "object",
             "properties": {},
-            "required": []
+            "required": [],
+            "additionalProperties": false
         })
     }
 

@@ -3,7 +3,9 @@ use async_trait::async_trait;
 use serde_json::{json, Value};
 use std::process::Command;
 
-use noah_tools::{ChangeRecord, SafetyTier, Tool, ToolResult};
+use noah_tools::{SafetyTier, Tool, ToolResult};
+
+use crate::platform::shell_helpers;
 
 // ── LinuxSystemSummary ────────────────────────────────────────────────
 
@@ -23,7 +25,8 @@ impl Tool for LinuxSystemSummary {
         json!({
             "type": "object",
             "properties": {},
-            "required": []
+            "required": [],
+            "additionalProperties": false
         })
     }
 
@@ -156,7 +159,7 @@ impl Tool for LinuxReadFile {
     }
 
     fn description(&self) -> &str {
-        "Read the contents of a file. The path must be under a user-accessible location (/home/*, /var/log/*, /etc/*, /tmp/*, /opt/*, etc.). System-protected paths are rejected."
+        "Read the contents of a file. The path must be under a user-accessible location (/home/*, /var/log/*, /etc/*, /tmp/*, /opt/*, etc.). System-protected paths are rejected. Output is truncated at 500 lines."
     }
 
     fn input_schema(&self) -> Value {
@@ -168,7 +171,8 @@ impl Tool for LinuxReadFile {
                     "description": "Absolute path to the file to read"
                 }
             },
-            "required": ["path"]
+            "required": ["path"],
+            "additionalProperties": false
         })
     }
 
@@ -236,7 +240,7 @@ impl Tool for LinuxReadLog {
     }
 
     fn description(&self) -> &str {
-        "Read system logs using journalctl. Supports filtering by unit, priority, and time."
+        "Read system logs using journalctl. Supports filtering by unit, priority, and time. Output is limited to the last 200 entries."
     }
 
     fn input_schema(&self) -> Value {
@@ -258,7 +262,8 @@ impl Tool for LinuxReadLog {
                     "default": "1h ago"
                 }
             },
-            "required": []
+            "required": [],
+            "additionalProperties": false
         })
     }
 
@@ -316,43 +321,6 @@ impl Tool for LinuxReadLog {
 
 pub struct ShellRun;
 
-const DANGEROUS_COMMAND_PATTERNS: &[&str] = &[
-    "rm ",
-    "rm\t",
-    "rmdir ",
-    "sudo ",
-    "dd ",
-    "mkfs",
-    "shutdown",
-    "reboot",
-    "halt",
-    "poweroff",
-    "> /dev/",
-    "chmod -R",
-    "chmod 777",
-    "chown -R",
-    "| sh",
-    "| bash",
-    "killall ",
-    "pkill ",
-    "truncate ",
-    "systemctl disable",
-    "systemctl mask",
-];
-
-pub fn is_dangerous_command(command: &str) -> bool {
-    let lower = command.to_lowercase();
-    if lower.starts_with("rm ") || lower.starts_with("rm\t") || lower == "rm" {
-        return true;
-    }
-    for pattern in DANGEROUS_COMMAND_PATTERNS {
-        if lower.contains(&pattern.to_lowercase()) {
-            return true;
-        }
-    }
-    false
-}
-
 #[async_trait]
 impl Tool for ShellRun {
     fn name(&self) -> &str {
@@ -360,7 +328,7 @@ impl Tool for ShellRun {
     }
 
     fn description(&self) -> &str {
-        "Execute a shell command via /bin/bash -c. Auto-approved for safe commands; dangerous commands (rm, sudo, dd, etc.) require user approval."
+        "Execute a shell command via /bin/bash -c. Auto-approved for safe commands; dangerous commands (rm, sudo, dd, etc.) require user approval. Output is truncated at 10 000 chars; commands time out after 60 s."
     }
 
     fn input_schema(&self) -> Value {
@@ -373,10 +341,11 @@ impl Tool for ShellRun {
                 },
                 "reason": {
                     "type": "string",
-                    "description": "Plain-language explanation of what this command does and why, written for a non-technical user."
+                    "description": "Plain-language explanation of what this command does and why, written for a non-technical user. Example: 'Delete old log files to free up disk space'"
                 }
             },
-            "required": ["command", "reason"]
+            "required": ["command", "reason"],
+            "additionalProperties": false
         })
     }
 
@@ -386,7 +355,7 @@ impl Tool for ShellRun {
 
     fn safety_tier_for_input(&self, input: &Value) -> SafetyTier {
         if let Some(command) = input.get("command").and_then(|v| v.as_str()) {
-            if is_dangerous_command(command) {
+            if shell_helpers::is_dangerous_command(command) {
                 return SafetyTier::NeedsApproval;
             }
         }
@@ -399,7 +368,7 @@ impl Tool for ShellRun {
             .ok_or_else(|| anyhow::anyhow!("Missing required parameter: command"))?;
 
         let output = match tokio::time::timeout(
-            std::time::Duration::from_secs(60),
+            std::time::Duration::from_secs(shell_helpers::TIMEOUT_SECS),
             tokio::process::Command::new("/bin/bash")
                 .args(["-c", command])
                 .output(),
@@ -410,42 +379,18 @@ impl Tool for ShellRun {
                 let stdout = String::from_utf8_lossy(&o.stdout).to_string();
                 let stderr = String::from_utf8_lossy(&o.stderr).to_string();
                 let exit_code = o.status.code().unwrap_or(-1);
-
-                let mut result = String::new();
-                if !stdout.is_empty() {
-                    result.push_str(&stdout);
-                }
-                if !stderr.is_empty() {
-                    if !result.is_empty() {
-                        result.push_str("\n--- stderr ---\n");
-                    }
-                    result.push_str(&stderr);
-                }
-                if result.is_empty() {
-                    result = format!("(no output, exit code: {})", exit_code);
-                } else {
-                    result.push_str(&format!("\n\n[exit code: {}]", exit_code));
-                }
-                result
+                shell_helpers::format_shell_output(&stdout, &stderr, exit_code)
             }
             Ok(Err(e)) => format!("Failed to execute command: {}", e),
-            Err(_) => "Command timed out after 60 seconds. The command was taking too long and has been stopped.".to_string(),
+            Err(_) => format!("Command timed out after {} seconds. The command was taking too long and has been stopped.", shell_helpers::TIMEOUT_SECS),
         };
 
-        let truncated = if output.len() > 10_000 {
-            format!("{}...\n\n(output truncated at 10000 chars)", &output[..10_000])
-        } else {
-            output.clone()
-        };
+        let truncated = shell_helpers::truncate_output(&output);
 
         Ok(ToolResult::with_changes(
             truncated,
             json!({ "command": command }),
-            vec![ChangeRecord {
-                description: format!("Executed shell command: {}", command),
-                undo_tool: String::new(),
-                undo_input: json!(null),
-            }],
+            shell_helpers::shell_change_record(command),
         ))
     }
 }

@@ -22,7 +22,8 @@ impl Tool for WinNetworkInfo {
         json!({
             "type": "object",
             "properties": {},
-            "required": []
+            "required": [],
+            "additionalProperties": false
         })
     }
 
@@ -87,7 +88,8 @@ impl Tool for WinPing {
                     "default": 4
                 }
             },
-            "required": ["host"]
+            "required": ["host"],
+            "additionalProperties": false
         })
     }
 
@@ -141,7 +143,8 @@ impl Tool for WinDnsCheck {
                     "description": "Domain name to look up"
                 }
             },
-            "required": ["domain"]
+            "required": ["domain"],
+            "additionalProperties": false
         })
     }
 
@@ -207,7 +210,8 @@ impl Tool for WinHttpCheck {
                     "description": "URL to test (e.g. https://example.com)"
                 }
             },
-            "required": ["url"]
+            "required": ["url"],
+            "additionalProperties": false
         })
     }
 
@@ -259,7 +263,8 @@ impl Tool for WinFlushDns {
         json!({
             "type": "object",
             "properties": {},
-            "required": []
+            "required": [],
+            "additionalProperties": false
         })
     }
 

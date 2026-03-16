@@ -1,3 +1,5 @@
+pub mod shell_helpers;
+
 #[cfg(target_os = "linux")]
 pub mod linux;
 #[cfg(any(test, target_os = "macos"))]

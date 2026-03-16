@@ -22,7 +22,8 @@ impl Tool for WinAppList {
         json!({
             "type": "object",
             "properties": {},
-            "required": []
+            "required": [],
+            "additionalProperties": false
         })
     }
 
@@ -89,7 +90,8 @@ impl Tool for WinAppLogs {
                     "default": "1h"
                 }
             },
-            "required": ["app_name"]
+            "required": ["app_name"],
+            "additionalProperties": false
         })
     }
 
@@ -173,7 +175,8 @@ impl Tool for WinAppDataLs {
                     "description": "Application name (subdirectory of AppData)"
                 }
             },
-            "required": ["app_name"]
+            "required": ["app_name"],
+            "additionalProperties": false
         })
     }
 
@@ -261,7 +264,8 @@ impl Tool for WinClearAppCache {
                     "description": "Application name whose local cache to clear"
                 }
             },
-            "required": ["app_name"]
+            "required": ["app_name"],
+            "additionalProperties": false
         })
     }
 
@@ -378,7 +382,8 @@ impl Tool for WinMoveFile {
                     "default": "move"
                 }
             },
-            "required": ["source", "destination"]
+            "required": ["source", "destination"],
+            "additionalProperties": false
         })
     }
 
