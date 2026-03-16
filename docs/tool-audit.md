@@ -254,16 +254,42 @@ The stdout/stderr/exit-code formatting in `shell_run` is identical across all th
 
 ---
 
-## 6. Priority Order
+## 6. Decisions
+
+### Considered but rejected: Collapsing tools into broader multi-function tools
+
+We evaluated collapsing `ping` + `dns_check` + `http_check` + `network_info` into a single
+`network_diagnose` tool (and similarly `system_info` into `system_summary`, etc.).
+
+**Decision: Keep tools as-is.** Rationale:
+- Each tool has a trivial schema the LLM handles reliably. A union schema (e.g. `checks` array
+  with per-check parameters) increases the risk of hallucinated or malformed inputs.
+- Tools are already compile-time scoped to one platform, so the LLM only sees one platform's
+  tools — the `mac_` / `win_` / `linux_` prefixes don't cause context bloat since the others
+  are never present.
+- The playbooks already reference specific tool names; changing them creates churn for no
+  functional gain.
+- KISS: the current approach works. Optimizing LLM tool-call round trips isn't worth the
+  schema complexity risk.
+
+### Considered but de-prioritized: Unified tool names across platforms
+
+Renaming `mac_ping` / `win_ping` / `linux_ping` → `ping` is clean but low-impact since
+tools are compile-time filtered per platform. The LLM never sees the other platform's names.
+The real value of unification is **code deduplication** (shared trait + platform dispatch),
+not LLM context savings.
+
+---
+
+## 7. Priority Order (Revised)
 
 | Priority | Change | Effort | Impact |
 |---|---|---|---|
-| P0 | Unify 11 identical-schema tools to platform-agnostic names | Medium | -22 tool defs from LLM context |
 | P0 | Extract `is_dangerous_command` + output formatting to shared module | Low | -500 lines of duplication |
 | P1 | Add `additionalProperties: false` everywhere | Low | Better schema hygiene |
-| P1 | Document hidden limits in descriptions | Low | Better LLM behavior |
+| P1 | Document hidden limits in descriptions (truncation, timeouts) | Low | Better LLM behavior |
 | P1 | Remove `ui_spa` legacy input fallbacks | Low | Schema honesty |
+| P2 | Unify identical-schema tools to shared trait + platform dispatch | Medium | Code maintainability |
 | P2 | Add Linux app/printer/cache tools | Medium | Platform parity |
-| P2 | Restructure into `tools/shared/` + `tools/platform_specific/` dirs | Medium | Maintainability |
 | P3 | Add `oneOf` constraints to `ui_user_question` | Low | Schema correctness |
 | P3 | Validate knowledge categories in schema | Low | Data hygiene |
