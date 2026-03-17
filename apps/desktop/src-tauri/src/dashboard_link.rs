@@ -117,7 +117,8 @@ pub async fn enroll_device(
 }
 
 /// Push a health checkin to the dashboard.
-pub async fn push_checkin(config: &DashboardConfig, score: i32, grade: &str, categories_json: &str) -> Result<Option<Vec<String>>> {
+/// Pass `app_dir` so we can auto-unlink if the device token has been revoked (admin removed device).
+pub async fn push_checkin(config: &DashboardConfig, score: i32, grade: &str, categories_json: &str, app_dir: Option<&Path>) -> Result<Option<Vec<String>>> {
     let url = format!("{}/dashboard/checkin", config.dashboard_url.trim_end_matches('/'));
 
     let body = serde_json::json!({
@@ -134,6 +135,15 @@ pub async fn push_checkin(config: &DashboardConfig, score: i32, grade: &str, cat
         .send()
         .await
         .context("Failed to push checkin")?;
+
+    if resp.status().as_u16() == 401 {
+        // Device token is invalid — admin removed this device from the fleet.
+        if let Some(dir) = app_dir {
+            eprintln!("[fleet] device token revoked, auto-unlinking");
+            DashboardConfig::remove(dir);
+        }
+        anyhow::bail!("Device removed from fleet");
+    }
 
     if !resp.status().is_success() {
         let text = resp.text().await.unwrap_or_default();
@@ -169,7 +179,8 @@ fn default_action_type() -> String {
 }
 
 /// Poll for pending remediation actions from the fleet.
-pub async fn poll_actions(config: &DashboardConfig) -> Result<Vec<FleetAction>> {
+/// Pass `app_dir` so we can auto-unlink if the device token has been revoked.
+pub async fn poll_actions(config: &DashboardConfig, app_dir: Option<&Path>) -> Result<Vec<FleetAction>> {
     let url = format!("{}/dashboard/actions/pending", config.dashboard_url.trim_end_matches('/'));
 
     let client = reqwest::Client::new();
@@ -179,6 +190,14 @@ pub async fn poll_actions(config: &DashboardConfig) -> Result<Vec<FleetAction>> 
         .send()
         .await
         .context("Failed to poll actions")?;
+
+    if resp.status().as_u16() == 401 {
+        if let Some(dir) = app_dir {
+            eprintln!("[fleet] device token revoked during action poll, auto-unlinking");
+            DashboardConfig::remove(dir);
+        }
+        return Ok(Vec::new());
+    }
 
     if !resp.status().is_success() {
         return Ok(Vec::new());

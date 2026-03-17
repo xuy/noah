@@ -481,7 +481,7 @@ pub fn run() {
                             let g = score.overall_grade.to_string();
                             let sync_app_dir = app_dir.clone();
                             tokio::spawn(async move {
-                                match crate::dashboard_link::push_checkin(&config, s, &g, &cats).await {
+                                match crate::dashboard_link::push_checkin(&config, s, &g, &cats, Some(&sync_app_dir)).await {
                                     Ok(Some(new_cats)) => {
                                         // Update enabled_categories from fleet policy.
                                         if let Some(mut cfg) = crate::dashboard_link::DashboardConfig::load(&sync_app_dir) {
@@ -596,7 +596,7 @@ pub fn run() {
                                 let g = score.overall_grade.to_string();
                                 let sync_app_dir = app_dir.clone();
                                 tokio::spawn(async move {
-                                    match crate::dashboard_link::push_checkin(&config, s, &g, &cats).await {
+                                    match crate::dashboard_link::push_checkin(&config, s, &g, &cats, Some(&sync_app_dir)).await {
                                         Ok(Some(new_cats)) => {
                                             if let Some(mut cfg) = crate::dashboard_link::DashboardConfig::load(&sync_app_dir) {
                                                 cfg.enabled_categories = Some(new_cats);

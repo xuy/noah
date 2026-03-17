@@ -187,7 +187,7 @@ pub async fn run_health_check(state: State<'_, AppState>) -> Result<String, Stri
                     let s = score.get("overall_score").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
                     let g = score.get("overall_grade").and_then(|v| v.as_str()).unwrap_or("F");
                     let cats = score.get("categories").map(|v| v.to_string()).unwrap_or_else(|| "[]".to_string());
-                    match crate::dashboard_link::push_checkin(&config, s, g, &cats).await {
+                    match crate::dashboard_link::push_checkin(&config, s, g, &cats, Some(&app_dir)).await {
                         Ok(Some(new_cats)) => {
                             // Update enabled_categories from fleet policy.
                             if let Some(mut cfg) = DashboardConfig::load(&app_dir) {
@@ -303,7 +303,7 @@ pub async fn get_fleet_actions(state: State<'_, AppState>) -> Result<String, Str
         return Ok("[]".to_string());
     };
 
-    match crate::dashboard_link::poll_actions(&config).await {
+    match crate::dashboard_link::poll_actions(&config, Some(&state.app_dir)).await {
         Ok(actions) => serde_json::to_string(&actions).map_err(|e| e.to_string()),
         Err(_) => Ok("[]".to_string()),
     }

@@ -508,27 +508,14 @@ function FleetCard({ fleetStatus, setFleetStatus, t }: {
     setLinking(false);
   };
 
-  const handleUnlink = async () => {
-    await commands.unlinkDashboard();
-    setFleetStatus({ linked: false });
-  };
-
   if (isLinked) {
     return (
-      <div className="bg-bg-secondary border border-accent-green/30 rounded-xl p-4 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <span className="text-accent-green text-sm">{"\u2713"}</span>
-          <div>
-            <p className="text-sm text-text-primary font-medium">{fleetStatus?.fleet_name || t("health.fleetConnected")}</p>
-            <p className="text-[10px] text-text-muted">{t("health.fleetSyncDesc")}</p>
-          </div>
+      <div className="bg-bg-secondary border border-accent-green/30 rounded-xl p-4 flex items-center gap-2">
+        <span className="text-accent-green text-sm">{"\u2713"}</span>
+        <div>
+          <p className="text-sm text-text-primary font-medium">{fleetStatus?.fleet_name || t("health.fleetConnected")}</p>
+          <p className="text-[10px] text-text-muted">{t("health.fleetSyncDesc")}</p>
         </div>
-        <button
-          onClick={handleUnlink}
-          className="text-xs text-text-muted hover:text-accent-red transition-colors cursor-pointer"
-        >
-          {t("health.disconnect")}
-        </button>
       </div>
     );
   }
