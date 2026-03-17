@@ -138,7 +138,10 @@
     "linkedTo": "Linked to",
     "unlink": "Unlink device",
     "dashboardDesc": "Link this device to a web dashboard to monitor health remotely. Get a code from your dashboard.",
-    "linkDevice": "Link Device"
+    "linkDevice": "Link Device",
+    "autoHeal": "Auto-Heal",
+    "autoHealDesc": "Let Noah automatically fix detected health issues",
+    "autoHealSafety": "Uses the same safety checks as manual fixes. Actions that need approval will still ask first."
   },
   "health": {
     "title": "Health Check",
@@ -163,7 +166,26 @@
     "openSettings": "Open Settings",
     "noData": "No health data yet",
     "noDataHint": "Click \"Run Health Check\" to scan your device.",
-    "footer": "Health data stays on your device. Scores are based on automated checks and may not reflect all security settings."
+    "fleetCta": "Monitor this device remotely",
+    "fleetCtaDesc": "Connect to a fleet dashboard to track health across all your devices.",
+    "fleetConnect": "Connect to Fleet",
+    "fleetDataDisclosure": "This will share your device name, OS, and health scores with your fleet dashboard. No personal files or browsing data.",
+    "fleetLinkBtn": "Connect",
+    "fleetConnected": "Connected to fleet",
+    "fleetSyncDesc": "Health scores sync automatically after each check.",
+    "disconnect": "Disconnect",
+    "export": "Export",
+    "exportReport": "Download health report as text file",
+    "adminRequest": "Your IT admin recommends",
+    "fix": "Fix Now",
+    "runFix": "Run Fix",
+    "dismiss": "Dismiss",
+    "footer": "Health data stays on your device unless connected to a fleet. Scores are based on automated checks and may not reflect all security settings.",
+    "autoHealInProgress": "Noah is fixing: {issue}...",
+    "autoHealComplete": "Fixed! Score improved from {before} to {after}",
+    "autoHealFailed": "Auto-heal encountered an issue. Check the session log for details.",
+    "autoHealAvailable": "Noah found issues it can fix",
+    "enableAutoHeal": "Enable Auto-Heal"
   },
   "diagnostics": {
     "title": "Actions",

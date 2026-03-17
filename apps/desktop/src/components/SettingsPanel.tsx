@@ -37,37 +37,25 @@ export function SettingsPanel() {
     }
   }, [proactiveEnabled]);
 
-  const { preference: themePref, setTheme } = useTheme();
-  const { t, preference: localePref, setLocale } = useLocale();
-
-  const [dashboardStatus, setDashboardStatus] = useState<commands.DashboardStatus | null>(null);
-  const [dashboardUrl, setDashboardUrl] = useState("https://noah-web.workers.dev");
-  const [linkCode, setLinkCode] = useState("");
-  const [linkError, setLinkError] = useState<string | null>(null);
-  const [linkLoading, setLinkLoading] = useState(false);
+  const [autoHealEnabled, setAutoHealEnabled] = useState(false);
 
   useEffect(() => {
-    commands.getDashboardStatus().then(setDashboardStatus).catch(() => {});
+    commands.getAutoHealEnabled().then(setAutoHealEnabled).catch(() => {});
   }, []);
 
-  const handleLink = async () => {
-    setLinkLoading(true);
-    setLinkError(null);
+  const handleToggleAutoHeal = useCallback(async () => {
+    const next = !autoHealEnabled;
+    setAutoHealEnabled(next);
     try {
-      await commands.linkDashboard(linkCode, dashboardUrl);
-      const status = await commands.getDashboardStatus();
-      setDashboardStatus(status);
-      setLinkCode("");
-    } catch (e) {
-      setLinkError(e instanceof Error ? e.message : String(e));
+      await commands.setAutoHealEnabled(next);
+    } catch (err) {
+      console.error("Failed to save auto-heal setting:", err);
+      setAutoHealEnabled(!next); // revert on error
     }
-    setLinkLoading(false);
-  };
+  }, [autoHealEnabled]);
 
-  const handleUnlink = async () => {
-    await commands.unlinkDashboard();
-    setDashboardStatus({ linked: false });
-  };
+  const { preference: themePref, setTheme } = useTheme();
+  const { t, preference: localePref, setLocale } = useLocale();
 
   const [reportingBug, setReportingBug] = useState(false);
 
@@ -236,6 +224,34 @@ export function SettingsPanel() {
 
           <section className="rounded-2xl border border-border-primary bg-bg-secondary p-5">
             <h2 className="text-xs font-semibold text-text-primary uppercase tracking-wider mb-3">
+              {t("settings.autoHeal")}
+            </h2>
+            <div className="flex items-center justify-between">
+              <div className="flex-1 min-w-0 mr-3">
+                <p className="text-sm text-text-secondary">
+                  {t("settings.autoHealDesc")}
+                </p>
+                <p className="text-xs text-text-muted mt-1">
+                  {t("settings.autoHealSafety")}
+                </p>
+              </div>
+              <button
+                onClick={handleToggleAutoHeal}
+                className={`relative w-9 h-5 rounded-full transition-colors cursor-pointer shrink-0 ${
+                  autoHealEnabled ? "bg-accent-green" : "bg-bg-tertiary"
+                }`}
+              >
+                <span
+                  className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform ${
+                    autoHealEnabled ? "translate-x-4" : "translate-x-0"
+                  }`}
+                />
+              </button>
+            </div>
+          </section>
+
+          <section className="rounded-2xl border border-border-primary bg-bg-secondary p-5">
+            <h2 className="text-xs font-semibold text-text-primary uppercase tracking-wider mb-3">
               {t("settings.appearance")}
             </h2>
             <div className="flex rounded-lg border border-border-primary overflow-hidden">
@@ -284,52 +300,6 @@ export function SettingsPanel() {
             <p className="text-xs text-text-muted mt-2">
               {t(LOCALE_OPTIONS.find((opt) => opt.value === localePref)?.descKey ?? "settings.langAutoDesc")}
             </p>
-          </section>
-
-          <section className="rounded-2xl border border-border-primary bg-bg-secondary p-5 lg:col-span-2">
-            <h2 className="text-xs font-semibold text-text-primary uppercase tracking-wider mb-3">
-              {t("settings.dashboard")}
-            </h2>
-            {dashboardStatus?.linked ? (
-              <>
-                <p className="text-sm text-text-secondary">
-                  {t("settings.linkedTo")} <span className="font-medium text-text-primary">{dashboardStatus.url}</span>
-                </p>
-                <button
-                  onClick={handleUnlink}
-                  className="mt-2 text-xs text-accent-red hover:underline cursor-pointer"
-                >
-                  {t("settings.unlink")}
-                </button>
-              </>
-            ) : (
-              <div className="space-y-3">
-                <p className="text-xs text-text-muted">{t("settings.dashboardDesc")}</p>
-                <input
-                  type="text"
-                  placeholder="https://noah-web.workers.dev"
-                  value={dashboardUrl}
-                  onChange={(e) => setDashboardUrl(e.target.value)}
-                  className="w-full px-3 py-2 text-sm bg-bg-primary border border-border-primary rounded-lg text-text-primary"
-                />
-                <input
-                  type="text"
-                  placeholder="ABC123"
-                  value={linkCode}
-                  onChange={(e) => setLinkCode(e.target.value.toUpperCase())}
-                  maxLength={6}
-                  className="w-full px-3 py-2 text-sm bg-bg-primary border border-border-primary rounded-lg text-text-primary font-mono tracking-widest"
-                />
-                {linkError && <p className="text-xs text-accent-red">{linkError}</p>}
-                <button
-                  onClick={handleLink}
-                  disabled={linkLoading || !linkCode.trim()}
-                  className="px-4 py-2 text-sm font-medium text-white bg-accent-blue rounded-lg hover:bg-accent-blue/90 disabled:opacity-50 cursor-pointer"
-                >
-                  {linkLoading ? "Linking..." : t("settings.linkDevice")}
-                </button>
-              </div>
-            )}
           </section>
 
           <section className="rounded-2xl border border-border-primary bg-bg-secondary p-5 lg:col-span-2">

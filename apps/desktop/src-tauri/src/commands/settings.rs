@@ -149,6 +149,25 @@ pub async fn set_proactive_enabled(
 }
 
 #[tauri::command]
+pub async fn get_auto_heal_enabled(state: State<'_, AppState>) -> Result<bool, String> {
+    let conn = state.db.lock().await;
+    let value = journal::get_setting(&conn, "auto_heal_enabled")
+        .map_err(|e| format!("Failed to get setting: {}", e))?;
+    // Default is disabled (None or "false" → false, "true" → true).
+    Ok(value.as_deref() == Some("true"))
+}
+
+#[tauri::command]
+pub async fn set_auto_heal_enabled(
+    state: State<'_, AppState>,
+    enabled: bool,
+) -> Result<(), String> {
+    let conn = state.db.lock().await;
+    journal::set_setting(&conn, "auto_heal_enabled", if enabled { "true" } else { "false" })
+        .map_err(|e| format!("Failed to save setting: {}", e))
+}
+
+#[tauri::command]
 pub async fn dismiss_proactive_suggestion(
     state: State<'_, AppState>,
     id: String,
@@ -226,19 +245,22 @@ pub async fn get_feedback_context(state: State<'_, AppState>) -> Result<Feedback
 #[tauri::command]
 pub async fn link_dashboard(
     state: State<'_, AppState>,
-    code: String,
-    url: String,
+    enrollment_url: String,
 ) -> Result<String, String> {
     use crate::dashboard_link::{self, DashboardConfig};
 
-    let (device_id, device_token) = dashboard_link::link_device(&url, &code)
+    let (base_url, token) = dashboard_link::parse_enrollment_url(&enrollment_url)
+        .map_err(|e| e.to_string())?;
+
+    let (device_id, device_token, fleet_name) = dashboard_link::enroll_device(&base_url, &token)
         .await
         .map_err(|e| e.to_string())?;
 
     let config = DashboardConfig {
-        dashboard_url: url,
+        dashboard_url: base_url,
         device_token,
         device_id: device_id.clone(),
+        fleet_name,
         linked_at: chrono::Utc::now().to_rfc3339(),
     };
     config.save(&state.app_dir).map_err(|e| e.to_string())?;
@@ -264,6 +286,7 @@ pub async fn get_dashboard_status(state: State<'_, AppState>) -> Result<String, 
                 "linked": true,
                 "url": config.dashboard_url,
                 "device_id": config.device_id,
+                "fleet_name": config.fleet_name,
                 "linked_at": config.linked_at,
             });
             serde_json::to_string(&status).map_err(|e| e.to_string())

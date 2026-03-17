@@ -57,7 +57,7 @@ pub struct SessionRecord {
 }
 
 /// Current schema version. Increment when adding migrations.
-const SCHEMA_VERSION: i32 = 9;
+const SCHEMA_VERSION: i32 = 11;
 
 /// Initialise the journal database, creating tables if they don't exist,
 /// then run any pending migrations.
@@ -367,6 +367,47 @@ fn apply_migrations(conn: &Connection, current: i32) -> Result<()> {
         )
         .context("Migration 9 failed")?;
         set_schema_version(conn, 9)?;
+    }
+
+    if current < 10 {
+        // Migration 10: Remediation runs table for tracking fleet playbook executions.
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS remediation_runs (
+                id            TEXT PRIMARY KEY,
+                action_id     TEXT,
+                playbook_slug TEXT,
+                status        TEXT NOT NULL DEFAULT 'pending',
+                score_before  TEXT,
+                score_after   TEXT,
+                started_at    TEXT,
+                completed_at  TEXT,
+                created_at    TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_rr_action ON remediation_runs(action_id);",
+        )
+        .context("Migration 10 failed")?;
+        set_schema_version(conn, 10)?;
+    }
+
+    if current < 11 {
+        // Migration 11: Auto-heal runs table for tracking autonomous remediation.
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS auto_heal_runs (
+                id            TEXT PRIMARY KEY,
+                check_id      TEXT NOT NULL,
+                playbook_slug TEXT NOT NULL,
+                session_id    TEXT,
+                triage_reason TEXT,
+                started_at    TEXT NOT NULL,
+                completed_at  TEXT,
+                success       INTEGER DEFAULT 0,
+                score_before  INTEGER,
+                score_after   INTEGER,
+                error_message TEXT
+            );",
+        )
+        .context("Migration 11 failed")?;
+        set_schema_version(conn, 11)?;
     }
 
     // ── Post-migration column checks ──
@@ -995,10 +1036,10 @@ mod tests {
     }
 
     #[test]
-    fn test_schema_version_is_9() {
+    fn test_schema_version_is_11() {
         let conn = test_db();
         let version = get_schema_version(&conn);
-        assert_eq!(version, 9);
+        assert_eq!(version, 11);
     }
 
     #[test]
@@ -1563,6 +1604,91 @@ pub fn list_health_scores(conn: &Connection, limit: usize) -> Result<Vec<HealthS
             categories: row.get(3)?,
             computed_at: row.get(4)?,
             device_id: row.get(5)?,
+        })
+    })?;
+
+    rows.collect::<std::result::Result<Vec<_>, _>>().map_err(Into::into)
+}
+
+// ── Auto-heal runs ──────────────────────────────────────────────────
+
+/// A persisted auto-heal run record.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AutoHealRun {
+    pub id: String,
+    pub check_id: String,
+    pub playbook_slug: String,
+    pub session_id: Option<String>,
+    pub triage_reason: Option<String>,
+    pub started_at: String,
+    pub completed_at: Option<String>,
+    pub success: bool,
+    pub score_before: Option<i32>,
+    pub score_after: Option<i32>,
+    pub error_message: Option<String>,
+}
+
+/// Insert a new auto-heal run.
+pub fn insert_auto_heal_run(conn: &Connection, run: &AutoHealRun) -> Result<()> {
+    conn.execute(
+        "INSERT INTO auto_heal_runs (id, check_id, playbook_slug, session_id, triage_reason, started_at, completed_at, success, score_before, score_after, error_message)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+        rusqlite::params![
+            run.id,
+            run.check_id,
+            run.playbook_slug,
+            run.session_id,
+            run.triage_reason,
+            run.started_at,
+            run.completed_at,
+            run.success as i32,
+            run.score_before,
+            run.score_after,
+            run.error_message,
+        ],
+    )
+    .context("Failed to insert auto-heal run")?;
+    Ok(())
+}
+
+/// Update an auto-heal run with completion results.
+pub fn update_auto_heal_run(
+    conn: &Connection,
+    id: &str,
+    session_id: Option<&str>,
+    completed_at: &str,
+    success: bool,
+    score_after: Option<i32>,
+    error_message: Option<&str>,
+) -> Result<()> {
+    conn.execute(
+        "UPDATE auto_heal_runs SET session_id = ?2, completed_at = ?3, success = ?4, score_after = ?5, error_message = ?6 WHERE id = ?1",
+        rusqlite::params![id, session_id, completed_at, success as i32, score_after, error_message],
+    )
+    .context("Failed to update auto-heal run")?;
+    Ok(())
+}
+
+/// List recent auto-heal runs.
+pub fn list_auto_heal_runs(conn: &Connection, limit: usize) -> Result<Vec<AutoHealRun>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, check_id, playbook_slug, session_id, triage_reason, started_at, completed_at, success, score_before, score_after, error_message
+         FROM auto_heal_runs ORDER BY started_at DESC LIMIT ?1",
+    )?;
+
+    let rows = stmt.query_map(rusqlite::params![limit as i64], |row| {
+        Ok(AutoHealRun {
+            id: row.get(0)?,
+            check_id: row.get(1)?,
+            playbook_slug: row.get(2)?,
+            session_id: row.get(3)?,
+            triage_reason: row.get(4)?,
+            started_at: row.get(5)?,
+            completed_at: row.get(6)?,
+            success: row.get::<_, i32>(7)? != 0,
+            score_before: row.get(8)?,
+            score_after: row.get(9)?,
+            error_message: row.get(10)?,
         })
     })?;
 

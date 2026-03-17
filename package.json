@@ -5,8 +5,6 @@
     "dev": "pnpm --filter @noah/desktop tauri dev",
     "build": "pnpm --filter @noah/desktop tauri build",
     "test": "cargo test && pnpm --filter @noah/desktop test",
-    "web:dev": "pnpm --filter @noah/web dev",
-    "web:deploy": "pnpm --filter @noah/web deploy",
     "release:build": "node ./scripts/release.mjs --build",
     "release:upload": "node ./scripts/release.mjs --upload"
   }

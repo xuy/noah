@@ -1,6 +1,6 @@
 [package]
 name = "noah-desktop"
-version = "0.15.0"
+version = "0.16.0"
 description = "Noah - AI-Powered IT Support"
 authors = ["Noah"]
 edition = "2021"

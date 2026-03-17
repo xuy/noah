@@ -1,4 +1,7 @@
+pub mod backups;
 pub mod disk;
+pub mod network;
+pub mod performance;
 pub mod security;
 pub mod updates;
 

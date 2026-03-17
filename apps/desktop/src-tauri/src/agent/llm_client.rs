@@ -48,6 +48,15 @@ pub struct DiagnosticAnalysis {
     pub detail: String,
 }
 
+/// Result of auto-heal triage — which playbook to run for which check.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TriageResult {
+    pub should_heal: bool,
+    pub playbook_slug: String,
+    pub check_id: String,
+    pub reason: String,
+}
+
 // ── Auth mode ─────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone)]
@@ -536,6 +545,80 @@ impl LlmClient {
             });
 
         Ok(analysis)
+    }
+
+    /// Triage failing health checks and pick the best playbook to run.
+    pub async fn triage_health_issues(
+        &self,
+        failing_checks_json: &str,
+        available_playbooks_json: &str,
+    ) -> Result<TriageResult> {
+        let system = "You are Noah's auto-heal triage. Given failing health checks and available playbooks, \
+            pick the single most impactful playbook to run. Only pick if you are confident the playbook \
+            will fix the issue. Prefer safe, reversible fixes. If no playbook is a confident match, \
+            set should_heal to false.\n\n\
+            Respond in exactly this JSON format (no markdown, no extra text):\n\
+            {\"should_heal\": true/false, \"playbook_slug\": \"slug-here\", \"check_id\": \"check.id.here\", \"reason\": \"why this playbook fixes this check\"}";
+
+        let user_msg = format!(
+            "Failing health checks:\n{}\n\nAvailable playbooks:\n{}",
+            failing_checks_json, available_playbooks_json,
+        );
+
+        let body = ApiRequest {
+            model: effective_model_or(TITLE_MODEL),
+            max_tokens: 300,
+            system: system_text(system),
+            messages: vec![Message {
+                role: "user".to_string(),
+                content: MessageContent::Text(user_msg),
+            }],
+            tools: vec![],
+        };
+
+        let builder = self
+            .client
+            .post(self.api_url())
+            .header("anthropic-version", API_VERSION)
+            .header("content-type", "application/json")
+            .json(&body);
+        let resp = self
+            .apply_auth(builder)
+            .send()
+            .await
+            .context("Triage request failed")?;
+
+        let status = resp.status();
+        if !status.is_success() {
+            let error_body = resp.text().await.unwrap_or_default();
+            anyhow::bail!("{}", friendly_api_error(status, &error_body));
+        }
+
+        let response: Response = resp
+            .json()
+            .await
+            .context("Failed to parse triage response")?;
+
+        let text = response
+            .content
+            .iter()
+            .find_map(|b| match b {
+                ResponseBlock::Text { text } => Some(text.trim().to_string()),
+                _ => None,
+            })
+            .unwrap_or_default();
+
+        let cleaned = strip_markdown_fences(&text);
+
+        let result: TriageResult =
+            serde_json::from_str(&cleaned).unwrap_or(TriageResult {
+                should_heal: false,
+                playbook_slug: String::new(),
+                check_id: String::new(),
+                reason: String::new(),
+            });
+
+        Ok(result)
     }
 
     pub async fn send_message(

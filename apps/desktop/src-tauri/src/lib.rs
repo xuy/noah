@@ -7,6 +7,7 @@ mod machine_context;
 mod system_snapshot;
 mod platform;
 mod playbooks;
+mod autoheal;
 mod proactive;
 mod safety;
 mod scanner;
@@ -298,6 +299,7 @@ pub fn run() {
             let auth = load_auth(&app_dir);
             let llm = LlmClient::with_auth(auth);
             let llm_for_monitor = llm.clone();
+            let llm_for_autoheal = llm.clone();
 
             let pending_approvals: PendingApprovals =
                 Arc::new(Mutex::new(HashMap::<String, oneshot::Sender<bool>>::new()));
@@ -326,12 +328,22 @@ pub fn run() {
             scanner_mgr.register(Box::new(scanner::security::SecurityScanner));
             #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
             scanner_mgr.register(Box::new(scanner::updates::UpdateScanner));
+            #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+            scanner_mgr.register(Box::new(scanner::backups::BackupScanner));
+            #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+            scanner_mgr.register(Box::new(scanner::performance::PerformanceScanner));
+            #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+            scanner_mgr.register(Box::new(scanner::network::NetworkScanner));
             let scanner_trigger = scanner_mgr.trigger_handle();
             let scanner_pause = scanner_mgr.pause_handle();
 
             // Clone app_dir before moving into AppState (needed for background refresh).
             let ctx_dir = app_dir.clone();
             let snap_dir = app_dir.clone();
+            let health_db = db_arc.clone();
+            let health_app_dir = app_dir.clone();
+            let autoheal_db = db_arc.clone();
+            let autoheal_app_dir = app_dir.clone();
 
             // Manage shared state.
             app.manage(AppState {
@@ -364,12 +376,88 @@ pub fn run() {
             );
             tauri::async_runtime::spawn(async move { monitor.run_forever().await });
 
+            // Spawn the auto-heal monitor in the background.
+            let autoheal_monitor = autoheal::AutoHealMonitor::new(
+                llm_for_autoheal, autoheal_db, app.handle().clone(), autoheal_app_dir,
+            );
+            tauri::async_runtime::spawn(async move { autoheal_monitor.run_forever().await });
+
             // Spawn the scanner manager: initial light scan after 5 min, then periodic.
             tauri::async_runtime::spawn(async move {
                 // Initial delay — let app finish starting.
                 tokio::time::sleep(std::time::Duration::from_secs(300)).await;
                 eprintln!("[scanner] starting initial scan");
                 scanner_mgr.run_cycle(std::time::Duration::from_secs(30)).await;
+
+                // Run health scanners and auto-sync to fleet.
+                {
+                    let db_for_health = health_db.clone();
+                    let dir_for_health = health_app_dir.clone();
+                    let _ = tokio::task::spawn_blocking(move || {
+                        let conn = db_for_health.blocking_lock();
+                        let budget = std::time::Duration::from_secs(120);
+
+                        use crate::scanner::Scanner;
+                        let _ = crate::scanner::security::SecurityScanner.tick(budget, &conn);
+                        let _ = crate::scanner::updates::UpdateScanner.tick(budget, &conn);
+                        let _ = crate::scanner::backups::BackupScanner.tick(budget, &conn);
+                        let _ = crate::scanner::performance::PerformanceScanner.tick(budget, &conn);
+                        let _ = crate::scanner::network::NetworkScanner.tick(budget, &conn);
+
+                        // Compute and persist health score.
+                        let mut all_checks = Vec::new();
+                        let scan_types = [("security", noah_health::Category::Security), ("updates", noah_health::Category::Updates), ("backups", noah_health::Category::Backups), ("performance", noah_health::Category::Performance), ("network", noah_health::Category::Network)];
+                        for (scan_type, category) in &scan_types {
+                            if let Ok(results) = crate::safety::journal::query_scan_results(&conn, scan_type, None, None, None, 100) {
+                                for r in &results {
+                                    let status = match r.value_text.as_deref() {
+                                        Some("pass") => noah_health::CheckStatus::Pass,
+                                        Some("warn") => noah_health::CheckStatus::Warn,
+                                        _ => noah_health::CheckStatus::Fail,
+                                    };
+                                    all_checks.push(noah_health::CheckResult {
+                                        id: r.path.clone().unwrap_or_default(),
+                                        category: *category,
+                                        label: r.key.clone().unwrap_or_default(),
+                                        status,
+                                        detail: r.metadata.clone().unwrap_or_default(),
+                                    });
+                                }
+                            }
+                        }
+
+                        if !all_checks.is_empty() {
+                            let score = noah_health::compute_score(all_checks, None);
+                            let record = journal::HealthScoreRecord {
+                                id: uuid::Uuid::new_v4().to_string(),
+                                score: score.overall_score as i32,
+                                grade: score.overall_grade.to_string(),
+                                categories: serde_json::to_string(&score.categories).unwrap_or_default(),
+                                computed_at: score.computed_at.clone(),
+                                device_id: score.device_id.clone(),
+                            };
+                            let _ = journal::insert_health_score(&conn, &record);
+
+                            // Return score + dir for async fleet sync.
+                            Some((score, dir_for_health))
+                        } else {
+                            None
+                        }
+                    }).await.ok().flatten().map(|(score, app_dir)| {
+                        // Auto-sync to fleet if linked.
+                        if let Some(config) = crate::dashboard_link::DashboardConfig::load(&app_dir) {
+                            let cats = serde_json::to_string(&score.categories).unwrap_or_else(|_| "[]".to_string());
+                            let s = score.overall_score as i32;
+                            let g = score.overall_grade.to_string();
+                            tokio::spawn(async move {
+                                if let Err(e) = crate::dashboard_link::push_checkin(&config, s, &g, &cats).await {
+                                    eprintln!("[health] auto fleet sync failed: {}", e);
+                                }
+                            });
+                        }
+                    });
+                }
+                eprintln!("[health] auto health check complete");
 
                 // Then run every 6 hours alongside proactive monitor.
                 loop {
@@ -378,6 +466,74 @@ pub fn run() {
                     scanner_mgr.run_triggered().await;
                     // Regular cycle.
                     scanner_mgr.run_cycle(std::time::Duration::from_secs(60)).await;
+
+                    // Run health scanners and auto-sync to fleet.
+                    {
+                        let db_for_health = health_db.clone();
+                        let dir_for_health = health_app_dir.clone();
+                        let _ = tokio::task::spawn_blocking(move || {
+                            let conn = db_for_health.blocking_lock();
+                            let budget = std::time::Duration::from_secs(120);
+
+                            use crate::scanner::Scanner;
+                            let _ = crate::scanner::security::SecurityScanner.tick(budget, &conn);
+                            let _ = crate::scanner::updates::UpdateScanner.tick(budget, &conn);
+                            let _ = crate::scanner::backups::BackupScanner.tick(budget, &conn);
+                            let _ = crate::scanner::performance::PerformanceScanner.tick(budget, &conn);
+                            let _ = crate::scanner::network::NetworkScanner.tick(budget, &conn);
+
+                            // Compute and persist health score.
+                            let mut all_checks = Vec::new();
+                            let scan_types = [("security", noah_health::Category::Security), ("updates", noah_health::Category::Updates), ("backups", noah_health::Category::Backups), ("performance", noah_health::Category::Performance), ("network", noah_health::Category::Network)];
+                            for (scan_type, category) in &scan_types {
+                                if let Ok(results) = crate::safety::journal::query_scan_results(&conn, scan_type, None, None, None, 100) {
+                                    for r in &results {
+                                        let status = match r.value_text.as_deref() {
+                                            Some("pass") => noah_health::CheckStatus::Pass,
+                                            Some("warn") => noah_health::CheckStatus::Warn,
+                                            _ => noah_health::CheckStatus::Fail,
+                                        };
+                                        all_checks.push(noah_health::CheckResult {
+                                            id: r.path.clone().unwrap_or_default(),
+                                            category: *category,
+                                            label: r.key.clone().unwrap_or_default(),
+                                            status,
+                                            detail: r.metadata.clone().unwrap_or_default(),
+                                        });
+                                    }
+                                }
+                            }
+
+                            if !all_checks.is_empty() {
+                                let score = noah_health::compute_score(all_checks, None);
+                                let record = journal::HealthScoreRecord {
+                                    id: uuid::Uuid::new_v4().to_string(),
+                                    score: score.overall_score as i32,
+                                    grade: score.overall_grade.to_string(),
+                                    categories: serde_json::to_string(&score.categories).unwrap_or_default(),
+                                    computed_at: score.computed_at.clone(),
+                                    device_id: score.device_id.clone(),
+                                };
+                                let _ = journal::insert_health_score(&conn, &record);
+
+                                Some((score, dir_for_health))
+                            } else {
+                                None
+                            }
+                        }).await.ok().flatten().map(|(score, app_dir)| {
+                            if let Some(config) = crate::dashboard_link::DashboardConfig::load(&app_dir) {
+                                let cats = serde_json::to_string(&score.categories).unwrap_or_else(|_| "[]".to_string());
+                                let s = score.overall_score as i32;
+                                let g = score.overall_grade.to_string();
+                                tokio::spawn(async move {
+                                    if let Err(e) = crate::dashboard_link::push_checkin(&config, s, &g, &cats).await {
+                                        eprintln!("[health] auto fleet sync failed: {}", e);
+                                    }
+                                });
+                            }
+                        });
+                    }
+                    eprintln!("[health] auto health check complete");
                 }
             });
 
@@ -416,6 +572,8 @@ pub fn run() {
             commands::settings::get_feedback_context,
             commands::settings::get_proactive_enabled,
             commands::settings::set_proactive_enabled,
+            commands::settings::get_auto_heal_enabled,
+            commands::settings::set_auto_heal_enabled,
             commands::settings::dismiss_proactive_suggestion,
             commands::settings::act_on_proactive_suggestion,
             commands::settings::set_locale,
@@ -433,7 +591,12 @@ pub fn run() {
             commands::health::get_health_score,
             commands::health::run_health_check,
             commands::health::get_health_history,
+            commands::health::export_health_report,
             commands::health::open_health_fix,
+            commands::health::get_fleet_actions,
+            commands::health::resolve_fleet_action,
+            commands::health::start_fleet_playbook,
+            commands::health::verify_remediation,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

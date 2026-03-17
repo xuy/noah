@@ -295,6 +295,16 @@ export async function actOnProactiveSuggestion(id: string): Promise<void> {
   await invoke<void>("act_on_proactive_suggestion", { id });
 }
 
+// ── Auto-Heal ──
+
+export async function getAutoHealEnabled(): Promise<boolean> {
+  return await invoke<boolean>("get_auto_heal_enabled");
+}
+
+export async function setAutoHealEnabled(enabled: boolean): Promise<void> {
+  await invoke<void>("set_auto_heal_enabled", { enabled });
+}
+
 // ── Scanner / Diagnostics ──
 
 export interface ScanJobRecord {
@@ -379,17 +389,22 @@ export async function getHealthHistory(limit?: number): Promise<HealthScoreRecor
   return JSON.parse(json);
 }
 
+export async function exportHealthReport(): Promise<string> {
+  return await invoke<string>("export_health_report");
+}
+
 // ── Dashboard Link ──
 
 export interface DashboardStatus {
   linked: boolean;
   url?: string;
   device_id?: string;
+  fleet_name?: string;
   linked_at?: string;
 }
 
-export async function linkDashboard(code: string, url: string): Promise<string> {
-  return await invoke<string>("link_dashboard", { code, url });
+export async function linkDashboard(enrollmentUrl: string): Promise<string> {
+  return await invoke<string>("link_dashboard", { enrollmentUrl });
 }
 
 export async function unlinkDashboard(): Promise<void> {
@@ -399,6 +414,37 @@ export async function unlinkDashboard(): Promise<void> {
 export async function getDashboardStatus(): Promise<DashboardStatus> {
   const json = await invoke<string>("get_dashboard_status");
   return JSON.parse(json);
+}
+
+// ── Fleet Actions ──
+
+export interface FleetAction {
+  id: string;
+  check_id: string;
+  check_label: string;
+  action_hint: string;
+  created_at: string;
+  action_type: "hint" | "playbook";
+  playbook_slug?: string;
+  playbook_content?: string;
+  issue_id?: string;
+}
+
+export async function getFleetActions(): Promise<FleetAction[]> {
+  const json = await invoke<string>("get_fleet_actions");
+  return JSON.parse(json);
+}
+
+export async function resolveFleetAction(actionId: string, status: "completed" | "dismissed"): Promise<void> {
+  await invoke<void>("resolve_fleet_action", { actionId, status });
+}
+
+export async function startFleetPlaybook(actionId: string, playbookSlug: string): Promise<string> {
+  return await invoke<string>("start_fleet_playbook", { actionId, playbookSlug });
+}
+
+export async function verifyRemediation(actionId: string): Promise<string> {
+  return await invoke<string>("verify_remediation", { actionId });
 }
 
 // ── V2 Agent Commands ──

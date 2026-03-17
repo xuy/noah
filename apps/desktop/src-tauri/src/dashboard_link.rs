@@ -4,11 +4,17 @@ use std::path::Path;
 
 const CONFIG_FILE: &str = "dashboard.json";
 
+fn default_fleet_name() -> String {
+    "My Fleet".to_string()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DashboardConfig {
     pub dashboard_url: String,
     pub device_token: String,
     pub device_id: String,
+    #[serde(default = "default_fleet_name")]
+    pub fleet_name: String,
     pub linked_at: String,
 }
 
@@ -35,12 +41,33 @@ impl DashboardConfig {
     }
 }
 
-/// Exchange a link code with the dashboard API to get a device token.
-pub async fn link_device(
-    dashboard_url: &str,
-    code: &str,
-) -> Result<(String, String)> {
-    let url = format!("{}/devices/link", dashboard_url.trim_end_matches('/'));
+/// Parse an enrollment URL into (base_url, token).
+/// Accepts formats:
+///   https://dashboard.example.com/enroll/abc123
+///   https://dashboard.example.com/enroll/abc123/
+/// Returns (https://dashboard.example.com, abc123)
+pub fn parse_enrollment_url(input: &str) -> Result<(String, String)> {
+    let trimmed = input.trim().trim_end_matches('/');
+
+    // Find /enroll/ in the URL
+    if let Some(pos) = trimmed.find("/enroll/") {
+        let base_url = trimmed[..pos].to_string();
+        let token = trimmed[pos + 8..].to_string(); // skip "/enroll/"
+        if base_url.is_empty() || token.is_empty() {
+            anyhow::bail!("Invalid enrollment URL — expected format: https://your-dashboard/enroll/TOKEN");
+        }
+        return Ok((base_url, token));
+    }
+
+    anyhow::bail!("Invalid enrollment URL — expected format: https://your-dashboard/enroll/TOKEN")
+}
+
+/// Enroll this device with the fleet dashboard using an enrollment token.
+pub async fn enroll_device(
+    base_url: &str,
+    enrollment_token: &str,
+) -> Result<(String, String, String)> {
+    let url = format!("{}/devices/enroll", base_url.trim_end_matches('/'));
 
     let os_name = if cfg!(target_os = "macos") {
         "macOS"
@@ -56,7 +83,7 @@ pub async fn link_device(
         .unwrap_or_else(|| "Unknown Device".to_string());
 
     let body = serde_json::json!({
-        "code": code,
+        "token": enrollment_token,
         "device_name": hostname,
         "device_os": os_name,
     });
@@ -67,22 +94,23 @@ pub async fn link_device(
         .json(&body)
         .send()
         .await
-        .context("Failed to connect to dashboard")?;
+        .context("Failed to connect to fleet dashboard")?;
 
     if !resp.status().is_success() {
         let status = resp.status();
         let text = resp.text().await.unwrap_or_default();
-        anyhow::bail!("Link failed ({}): {}", status, text);
+        anyhow::bail!("Enrollment failed ({}): {}", status, text);
     }
 
     #[derive(Deserialize)]
-    struct LinkResponse {
+    struct EnrollResponse {
         device_id: String,
         device_token: String,
+        fleet_name: Option<String>,
     }
 
-    let data: LinkResponse = resp.json().await.context("Invalid response from dashboard")?;
-    Ok((data.device_id, data.device_token))
+    let data: EnrollResponse = resp.json().await.context("Invalid response from fleet dashboard")?;
+    Ok((data.device_id, data.device_token, data.fleet_name.unwrap_or_else(|| "My Fleet".to_string())))
 }
 
 /// Push a health checkin to the dashboard.
@@ -110,4 +138,164 @@ pub async fn push_checkin(config: &DashboardConfig, score: i32, grade: &str, cat
     }
 
     Ok(())
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FleetAction {
+    pub id: String,
+    pub check_id: String,
+    pub check_label: String,
+    pub action_hint: String,
+    pub created_at: String,
+    #[serde(default = "default_action_type")]
+    pub action_type: String,
+    pub playbook_slug: Option<String>,
+    pub playbook_content: Option<String>,
+    pub issue_id: Option<String>,
+}
+
+fn default_action_type() -> String {
+    "hint".to_string()
+}
+
+/// Poll for pending remediation actions from the fleet.
+pub async fn poll_actions(config: &DashboardConfig) -> Result<Vec<FleetAction>> {
+    let url = format!("{}/dashboard/actions/pending", config.dashboard_url.trim_end_matches('/'));
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", config.device_token))
+        .send()
+        .await
+        .context("Failed to poll actions")?;
+
+    if !resp.status().is_success() {
+        return Ok(Vec::new());
+    }
+
+    #[derive(Deserialize)]
+    struct PollResponse {
+        actions: Vec<FleetAction>,
+    }
+
+    let data: PollResponse = resp.json().await.unwrap_or(PollResponse { actions: Vec::new() });
+    Ok(data.actions)
+}
+
+/// Report action status back to the fleet.
+pub async fn report_action_status(config: &DashboardConfig, action_id: &str, status: &str) -> Result<()> {
+    let url = format!("{}/dashboard/actions/{}/status", config.dashboard_url.trim_end_matches('/'), action_id);
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", config.device_token))
+        .json(&serde_json::json!({ "status": status }))
+        .send()
+        .await
+        .context("Failed to report action status")?;
+
+    if !resp.status().is_success() {
+        let text = resp.text().await.unwrap_or_default();
+        anyhow::bail!("Report action failed: {}", text);
+    }
+
+    Ok(())
+}
+
+/// Push verification results after a remediation.
+pub async fn push_verification(
+    config: &DashboardConfig,
+    action_id: &str,
+    score_after: i32,
+) -> Result<()> {
+    let url = format!(
+        "{}/dashboard/actions/{}/verify",
+        config.dashboard_url.trim_end_matches('/'),
+        action_id,
+    );
+
+    let body = serde_json::json!({
+        "score_after": score_after,
+    });
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", config.device_token))
+        .json(&body)
+        .send()
+        .await
+        .context("Failed to push verification")?;
+
+    if !resp.status().is_success() {
+        let text = resp.text().await.unwrap_or_default();
+        anyhow::bail!("Verification push failed: {}", text);
+    }
+
+    Ok(())
+}
+
+/// Push an auto-heal event to the fleet dashboard.
+pub async fn push_auto_heal_event(
+    config: &DashboardConfig,
+    check_id: &str,
+    playbook_slug: &str,
+    score_before: i32,
+    score_after: i32,
+) -> Result<()> {
+    let url = format!(
+        "{}/dashboard/auto-heal",
+        config.dashboard_url.trim_end_matches('/'),
+    );
+
+    let body = serde_json::json!({
+        "check_id": check_id,
+        "playbook_slug": playbook_slug,
+        "score_before": score_before,
+        "score_after": score_after,
+    });
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", config.device_token))
+        .json(&body)
+        .send()
+        .await
+        .context("Failed to push auto-heal event")?;
+
+    if !resp.status().is_success() {
+        let text = resp.text().await.unwrap_or_default();
+        anyhow::bail!("Auto-heal event push failed: {}", text);
+    }
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_enrollment_url_valid() {
+        let (base, token) = parse_enrollment_url("https://dash.onnoah.app/enroll/abc123def456").unwrap();
+        assert_eq!(base, "https://dash.onnoah.app");
+        assert_eq!(token, "abc123def456");
+    }
+
+    #[test]
+    fn parse_enrollment_url_trailing_slash() {
+        let (base, token) = parse_enrollment_url("https://example.com/enroll/tok123/").unwrap();
+        assert_eq!(base, "https://example.com");
+        assert_eq!(token, "tok123");
+    }
+
+    #[test]
+    fn parse_enrollment_url_invalid() {
+        assert!(parse_enrollment_url("https://example.com").is_err());
+        assert!(parse_enrollment_url("not-a-url").is_err());
+        assert!(parse_enrollment_url("https://example.com/enroll/").is_err());
+    }
 }

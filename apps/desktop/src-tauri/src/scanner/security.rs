@@ -132,17 +132,36 @@ fn run_macos_checks() -> Vec<RawCheck> {
         detail: gk,
     });
 
-    // Screen Lock
+    // Screen Lock — parse delay from sysadminctl output.
+    // Output format: "screenLock delay is 900 seconds" or "screenLock is off"
     let sl = run_cmd("sysadminctl", &["-screenLock", "status"], "");
+    let sl_lower = sl.to_lowercase();
+    let delay_secs = sl_lower
+        .split("delay is ")
+        .nth(1)
+        .and_then(|s| s.split_whitespace().next())
+        .and_then(|s| s.parse::<u32>().ok());
+
+    let (sl_status, sl_detail) = if sl_lower.contains("off") || sl_lower.contains("not") {
+        ("fail", "Screen lock is not enabled".to_string())
+    } else if let Some(secs) = delay_secs {
+        if secs <= 300 {
+            ("pass", format!("Requires password after {} seconds", secs))
+        } else {
+            let mins = secs / 60;
+            ("warn", format!("Requires password after {} minutes — consider reducing to 5 minutes or less", mins))
+        }
+    } else if sl_lower.contains("immediate") {
+        ("pass", "Requires password immediately".to_string())
+    } else {
+        ("pass", sl.clone())
+    };
+
     checks.push(RawCheck {
         id: "security.screen_lock",
         label: "Screen Lock",
-        status: if sl.to_lowercase().contains("enabled") || sl.to_lowercase().contains("on") {
-            "pass"
-        } else {
-            "warn"
-        },
-        detail: sl,
+        status: sl_status,
+        detail: sl_detail,
     });
 
     // XProtect

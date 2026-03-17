@@ -1,7 +1,5 @@
 packages:
   - apps/desktop
-  - apps/web
-  - packages/shared-types
 
 ignoredBuiltDependencies:
   - esbuild

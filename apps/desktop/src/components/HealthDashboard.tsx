@@ -1,9 +1,11 @@
 import { useState, useEffect, useCallback } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { useHealthStore } from "../stores/healthStore";
+import { useSessionStore } from "../stores/sessionStore";
+import { useChatStore } from "../stores/chatStore";
 import { useLocale } from "../i18n";
 import * as commands from "../lib/tauri-commands";
-import type { CategoryScore, CheckResult, HealthScore, ScanJobRecord } from "../lib/tauri-commands";
+import type { CategoryScore, CheckResult, DashboardStatus, FleetAction, HealthScore, ScanJobRecord } from "../lib/tauri-commands";
 
 // ── Grade colors ────────────────────────────────────────────────────
 
@@ -99,7 +101,7 @@ function actionInfo(check: CheckResult): ActionInfo | null {
     case "security.gatekeeper":
       return { hint: "Re-enable Gatekeeper in Security settings", canOpen: true };
     case "security.screen_lock":
-      return { hint: "Set a screen lock timeout", canOpen: true };
+      return { hint: "Set \"Require password\" to 5 minutes or less in Lock Screen settings", canOpen: true };
     case "security.xprotect":
       return { hint: "Install macOS updates to restore XProtect", canOpen: true };
     case "security.defender":
@@ -113,6 +115,31 @@ function actionInfo(check: CheckResult): ActionInfo | null {
       return { hint: "Install available system updates", canOpen: true };
     case "updates.brew":
       return { hint: "Run: brew upgrade", canOpen: false };
+    // Backups
+    case "backups.timemachine":
+      return { hint: "Set up Time Machine in System Settings", canOpen: true };
+    case "backups.timemachine_dest":
+      return { hint: "Connect a backup drive or configure a network backup destination", canOpen: true };
+    case "backups.filehistory":
+      return { hint: "Turn on File History in Windows Settings", canOpen: true };
+    case "backups.restore_points":
+      return { hint: "Enable System Protection in System Properties", canOpen: true };
+    // Performance
+    case "performance.uptime":
+      return { hint: "Restart your computer to apply pending updates and free memory", canOpen: false };
+    case "performance.disk_free":
+      return { hint: "Free up disk space by removing unused files and apps", canOpen: false };
+    case "performance.startup_items":
+      return { hint: "Reduce startup items to speed up boot time", canOpen: false };
+    case "performance.memory":
+      return { hint: "Close unused applications to free memory", canOpen: false };
+    // Network
+    case "network.dns":
+      return { hint: "Check your DNS settings or try switching to 1.1.1.1 or 8.8.8.8", canOpen: false };
+    case "network.internet":
+      return { hint: "Check your internet connection and router", canOpen: false };
+    case "network.gateway":
+      return { hint: "Check your network adapter settings", canOpen: false };
     default:
       return null;
   }
@@ -355,11 +382,213 @@ function DiskScanCard({ t }: { t: (key: string) => string }) {
   );
 }
 
+// ── Playbook preview card (for fleet-dispatched playbooks) ──────────
+
+function PlaybookPreviewCard({ action, t, onDismiss, onRemove }: {
+  action: FleetAction;
+  t: (key: string, params?: Record<string, string | number>) => string;
+  onDismiss: () => void;
+  onRemove: () => void;
+}) {
+  const [starting, setStarting] = useState(false);
+  const setActiveView = useSessionStore((s) => s.setActiveView);
+  const setSession = useSessionStore((s) => s.setSession);
+  const clearMessages = useChatStore((s) => s.clearMessages);
+
+  // Parse playbook steps from markdown headers
+  const steps = (action.playbook_content || "")
+    .split("\n")
+    .filter((line) => /^#{1,3}\s+\d+[\.\)]\s/.test(line))
+    .map((line) => line.replace(/^#{1,3}\s+/, "").trim());
+
+  const handleRunFix = async () => {
+    if (starting) return;
+    setStarting(true);
+    try {
+      const resultJson = await commands.startFleetPlaybook(action.id, action.playbook_slug!);
+      const result = JSON.parse(resultJson);
+
+      // Navigate to chat with the new session
+      clearMessages();
+      setSession(result.session_id);
+      setActiveView("chat");
+
+      // Send activate_playbook as first message after a brief delay
+      setTimeout(async () => {
+        try {
+          await commands.sendMessageV2(result.session_id, `activate_playbook ${result.playbook_slug}`);
+        } catch (err) {
+          console.error("Failed to activate playbook:", err);
+        }
+      }, 500);
+
+      onRemove();
+    } catch (err) {
+      console.error("Failed to start playbook:", err);
+      setStarting(false);
+    }
+  };
+
+  return (
+    <div className="bg-accent-green/5 border border-accent-green/20 rounded-xl p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex-1">
+          <p className="text-xs text-accent-green font-medium mb-0.5">{t("health.adminRequest")}</p>
+          <p className="text-sm text-text-primary font-medium">{action.check_label}</p>
+          <p className="text-xs text-text-muted mt-0.5">{action.action_hint}</p>
+          {steps.length > 0 && (
+            <div className="mt-2 space-y-0.5">
+              {steps.slice(0, 5).map((step, i) => (
+                <p key={i} className="text-[10px] text-text-muted">{step}</p>
+              ))}
+              {steps.length > 5 && (
+                <p className="text-[10px] text-text-muted">+ {steps.length - 5} more steps</p>
+              )}
+            </div>
+          )}
+        </div>
+        <div className="flex gap-2 flex-shrink-0">
+          <button
+            onClick={handleRunFix}
+            disabled={starting}
+            className="px-3 py-1 text-xs font-medium text-white bg-accent-green rounded-md hover:bg-accent-green/90 cursor-pointer disabled:opacity-50"
+          >
+            {starting ? "Starting..." : t("health.runFix")}
+          </button>
+          <button
+            onClick={onDismiss}
+            className="px-3 py-1 text-xs text-text-muted border border-border-primary rounded-md hover:bg-bg-tertiary cursor-pointer"
+          >
+            {t("health.dismiss")}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Fleet connection card ────────────────────────────────────────────
+
+function FleetCard({ fleetStatus, setFleetStatus, t }: {
+  fleetStatus: DashboardStatus | null;
+  setFleetStatus: (s: DashboardStatus) => void;
+  t: (key: string) => string;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const [enrollUrl, setEnrollUrl] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [linking, setLinking] = useState(false);
+
+  const isLinked = fleetStatus?.linked === true;
+
+  const handleLink = async () => {
+    setLinking(true);
+    setError(null);
+    try {
+      await commands.linkDashboard(enrollUrl);
+      const status = await commands.getDashboardStatus();
+      setFleetStatus(status);
+      setEnrollUrl("");
+      setExpanded(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+    setLinking(false);
+  };
+
+  const handleUnlink = async () => {
+    await commands.unlinkDashboard();
+    setFleetStatus({ linked: false });
+  };
+
+  if (isLinked) {
+    return (
+      <div className="bg-bg-secondary border border-accent-green/30 rounded-xl p-4 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="text-accent-green text-sm">{"\u2713"}</span>
+          <div>
+            <p className="text-sm text-text-primary font-medium">{fleetStatus?.fleet_name || t("health.fleetConnected")}</p>
+            <p className="text-[10px] text-text-muted">{t("health.fleetSyncDesc")}</p>
+          </div>
+        </div>
+        <button
+          onClick={handleUnlink}
+          className="text-xs text-text-muted hover:text-accent-red transition-colors cursor-pointer"
+        >
+          {t("health.disconnect")}
+        </button>
+      </div>
+    );
+  }
+
+  if (!expanded) {
+    return (
+      <button
+        onClick={() => setExpanded(true)}
+        className="w-full bg-bg-secondary border border-border-primary rounded-xl p-4 text-left hover:border-accent-blue/30 transition-colors cursor-pointer"
+      >
+        <p className="text-sm text-text-primary font-medium">{t("health.fleetCta")}</p>
+        <p className="text-xs text-text-muted mt-0.5">{t("health.fleetCtaDesc")}</p>
+      </button>
+    );
+  }
+
+  return (
+    <div className="bg-bg-secondary border border-accent-blue/30 rounded-xl p-5 space-y-3">
+      <div className="flex items-start justify-between">
+        <div>
+          <p className="text-sm text-text-primary font-medium">{t("health.fleetConnect")}</p>
+          <p className="text-xs text-text-muted mt-0.5">{t("health.fleetDataDisclosure")}</p>
+        </div>
+        <button onClick={() => setExpanded(false)} className="text-text-muted hover:text-text-primary text-lg leading-none cursor-pointer">&times;</button>
+      </div>
+      <input
+        type="text"
+        placeholder="https://your-dashboard.com/enroll/abc123..."
+        value={enrollUrl}
+        onChange={(e) => setEnrollUrl(e.target.value)}
+        className="w-full px-3 py-2 text-sm bg-bg-primary border border-border-primary rounded-lg text-text-primary"
+      />
+      {error && <p className="text-xs text-accent-red">{error}</p>}
+      <button
+        onClick={handleLink}
+        disabled={linking || !enrollUrl.trim()}
+        className="px-4 py-2 text-sm font-medium text-white bg-accent-blue rounded-lg hover:bg-accent-blue/90 disabled:opacity-50 cursor-pointer"
+      >
+        {linking ? "..." : t("health.fleetLinkBtn")}
+      </button>
+    </div>
+  );
+}
+
 // ── Main dashboard ──────────────────────────────────────────────────
 
 export function HealthDashboard() {
   const { score, history, loading, error, setScore, setHistory, setLoading, setError } = useHealthStore();
   const { t } = useLocale();
+  const [fleetStatus, setFleetStatus] = useState<DashboardStatus | null>(null);
+  const [fleetActions, setFleetActions] = useState<commands.FleetAction[]>([]);
+  const [autoHealActive, setAutoHealActive] = useState<{ check_id: string; playbook_slug: string } | null>(null);
+  const [autoHealResult, setAutoHealResult] = useState<{ check_id: string; playbook_slug: string; success: boolean; score_before: number | null; score_after: number | null } | null>(null);
+  const [autoHealAvailable, setAutoHealAvailable] = useState<{ check_id: string; playbook_slug: string; reason: string } | null>(null);
+
+  useEffect(() => {
+    commands.getDashboardStatus().then(setFleetStatus).catch(() => {});
+  }, []);
+
+  const loadFleetActions = useCallback(async () => {
+    try {
+      const actions = await commands.getFleetActions();
+      setFleetActions(actions);
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    loadFleetActions();
+    // Poll every 5 minutes
+    const timer = setInterval(loadFleetActions, 5 * 60 * 1000);
+    return () => clearInterval(timer);
+  }, [loadFleetActions]);
 
   const loadScore = useCallback(async () => {
     try {
@@ -388,6 +617,30 @@ export function HealthDashboard() {
     loadHistory();
   }, [loadScore, loadHistory]);
 
+  useEffect(() => {
+    const unlistenStarted = listen<{ check_id: string; playbook_slug: string; reason: string }>("auto-heal-started", (e) => {
+      setAutoHealActive(e.payload);
+      setAutoHealResult(null);
+    });
+    const unlistenCompleted = listen<{ check_id: string; playbook_slug: string; success: boolean; score_before: number | null; score_after: number | null }>("auto-heal-completed", (e) => {
+      setAutoHealActive(null);
+      setAutoHealResult(e.payload);
+      // Refresh health score after auto-heal
+      loadScore();
+      loadHistory();
+      // Clear result after 30 seconds
+      setTimeout(() => setAutoHealResult(null), 30000);
+    });
+    const unlistenAvailable = listen<{ check_id: string; playbook_slug: string; reason: string }>("auto-heal-available", (e) => {
+      setAutoHealAvailable(e.payload);
+    });
+    return () => {
+      unlistenStarted.then((fn) => fn());
+      unlistenCompleted.then((fn) => fn());
+      unlistenAvailable.then((fn) => fn());
+    };
+  }, [loadScore, loadHistory]);
+
   const handleRunCheck = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -395,11 +648,30 @@ export function HealthDashboard() {
       const s = await commands.runHealthCheck();
       setScore(s);
       await loadHistory();
+      loadFleetActions();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
     setLoading(false);
-  }, [setScore, setLoading, setError, loadHistory]);
+  }, [setScore, setLoading, setError, loadHistory, loadFleetActions]);
+
+  const handleExport = useCallback(async () => {
+    try {
+      const report = await commands.exportHealthReport();
+      const blob = new Blob([report], { type: "text/plain" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const date = new Date().toISOString().slice(0, 10);
+      a.download = `noah-health-report-${date}.txt`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error("Export failed:", e);
+    }
+  }, []);
 
   const hasResults = score !== null && score.categories.length > 0;
 
@@ -412,6 +684,56 @@ export function HealthDashboard() {
           <p className="text-sm text-text-muted mt-1">{t("health.subtitle")}</p>
         </div>
 
+        {/* Auto-heal activity */}
+        {autoHealActive && (
+          <div className="mb-4 bg-accent-blue/10 border border-accent-blue/20 rounded-xl p-4 flex items-center gap-3">
+            <div className="w-4 h-4 border-2 border-accent-blue border-t-transparent rounded-full animate-spin" />
+            <p className="text-sm text-text-primary">
+              {t("health.autoHealInProgress", { issue: autoHealActive.playbook_slug.replace(/-/g, " ") })}
+            </p>
+          </div>
+        )}
+
+        {autoHealResult && (
+          <div className={`mb-4 rounded-xl p-4 flex items-center gap-3 ${
+            autoHealResult.success
+              ? "bg-accent-green/10 border border-accent-green/20"
+              : "bg-accent-red/10 border border-accent-red/20"
+          }`}>
+            <span className={autoHealResult.success ? "text-accent-green" : "text-accent-red"}>
+              {autoHealResult.success ? "\u2713" : "\u2717"}
+            </span>
+            <p className="text-sm text-text-primary">
+              {autoHealResult.success
+                ? t("health.autoHealComplete", {
+                    before: autoHealResult.score_before ?? "?",
+                    after: autoHealResult.score_after ?? "?",
+                  })
+                : t("health.autoHealFailed")}
+            </p>
+          </div>
+        )}
+
+        {autoHealAvailable && (
+          <div className="mb-4 bg-accent-yellow/10 border border-accent-yellow/20 rounded-xl p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-text-primary font-medium">{t("health.autoHealAvailable")}</p>
+                <p className="text-xs text-text-muted mt-0.5">{autoHealAvailable.reason}</p>
+              </div>
+              <button
+                onClick={() => {
+                  // Navigate to settings to enable auto-heal
+                  setAutoHealAvailable(null);
+                }}
+                className="px-3 py-1.5 text-xs font-medium text-white bg-accent-green rounded-lg hover:bg-accent-green/90 cursor-pointer"
+              >
+                {t("health.enableAutoHeal")}
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Score + action area */}
         <div className="flex items-start gap-6 mb-6">
           {hasResults ? (
@@ -423,13 +745,24 @@ export function HealthDashboard() {
           )}
 
           <div className="flex-1 space-y-3 pt-2">
-            <button
-              onClick={handleRunCheck}
-              disabled={loading}
-              className="px-4 py-2 rounded-lg bg-accent-blue text-white text-sm font-medium hover:bg-accent-blue/90 transition-colors disabled:opacity-50 cursor-pointer"
-            >
-              {loading ? t("health.running") : hasResults ? t("health.runAgain") : t("health.runCheck")}
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleRunCheck}
+                disabled={loading}
+                className="px-4 py-2 rounded-lg bg-accent-blue text-white text-sm font-medium hover:bg-accent-blue/90 transition-colors disabled:opacity-50 cursor-pointer"
+              >
+                {loading ? t("health.running") : hasResults ? t("health.runAgain") : t("health.runCheck")}
+              </button>
+              {hasResults && (
+                <button
+                  onClick={handleExport}
+                  className="px-3 py-2 rounded-lg border border-border-primary text-text-secondary text-sm hover:bg-bg-tertiary transition-colors cursor-pointer"
+                  title={t("health.exportReport")}
+                >
+                  {t("health.export")}
+                </button>
+              )}
+            </div>
             <p className="text-xs text-text-muted">{t("health.runCheckDesc")}</p>
 
             {hasResults && (
@@ -467,6 +800,62 @@ export function HealthDashboard() {
         <div className="mt-6">
           <DiskScanCard t={t} />
         </div>
+
+        {/* Fleet connection */}
+        <div className="mt-6">
+          <FleetCard fleetStatus={fleetStatus} setFleetStatus={setFleetStatus} t={t} />
+        </div>
+
+        {/* Fleet admin requests */}
+        {fleetActions.length > 0 && (
+          <div className="mt-4 space-y-2">
+            {fleetActions.map((action) =>
+              action.action_type === "playbook" && action.playbook_slug ? (
+                <PlaybookPreviewCard
+                  key={action.id}
+                  action={action}
+                  t={t}
+                  onDismiss={async () => {
+                    await commands.resolveFleetAction(action.id, "dismissed");
+                    setFleetActions((prev) => prev.filter((a) => a.id !== action.id));
+                  }}
+                  onRemove={() => setFleetActions((prev) => prev.filter((a) => a.id !== action.id))}
+                />
+              ) : (
+                <div key={action.id} className="bg-accent-blue/5 border border-accent-blue/20 rounded-xl p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1">
+                      <p className="text-xs text-accent-blue font-medium mb-0.5">{t("health.adminRequest")}</p>
+                      <p className="text-sm text-text-primary font-medium">{action.check_label}</p>
+                      <p className="text-xs text-text-muted mt-0.5">{action.action_hint}</p>
+                    </div>
+                    <div className="flex gap-2 flex-shrink-0">
+                      <button
+                        onClick={async () => {
+                          commands.openHealthFix(action.check_id).catch(() => {});
+                          await commands.resolveFleetAction(action.id, "completed");
+                          setFleetActions((prev) => prev.filter((a) => a.id !== action.id));
+                        }}
+                        className="px-3 py-1 text-xs font-medium text-white bg-accent-blue rounded-md hover:bg-accent-blue/90 cursor-pointer"
+                      >
+                        {t("health.fix")}
+                      </button>
+                      <button
+                        onClick={async () => {
+                          await commands.resolveFleetAction(action.id, "dismissed");
+                          setFleetActions((prev) => prev.filter((a) => a.id !== action.id));
+                        }}
+                        className="px-3 py-1 text-xs text-text-muted border border-border-primary rounded-md hover:bg-bg-tertiary cursor-pointer"
+                      >
+                        {t("health.dismiss")}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ),
+            )}
+          </div>
+        )}
 
         {/* Footer */}
         <p className="text-[10px] text-text-muted text-center mt-8">{t("health.footer")}</p>
