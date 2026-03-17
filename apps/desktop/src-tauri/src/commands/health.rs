@@ -14,7 +14,7 @@ use crate::scanner::Scanner;
 use noah_health::{Category, CheckResult, CheckStatus, compute_score};
 
 /// Convert stored category strings to Category enums, respecting fleet policy.
-fn enabled_categories_from_config(app_dir: &std::path::Path) -> Option<Vec<Category>> {
+pub(crate) fn enabled_categories_from_config(app_dir: &std::path::Path) -> Option<Vec<Category>> {
     let config = DashboardConfig::load(app_dir)?;
     let cats = config.enabled_categories?;
     let parsed: Vec<Category> = cats.iter().filter_map(|s| match s.as_str() {
@@ -29,7 +29,7 @@ fn enabled_categories_from_config(app_dir: &std::path::Path) -> Option<Vec<Categ
 }
 
 /// Check whether a category should be scanned given the enabled filter.
-fn should_scan(enabled: &Option<Vec<Category>>, cat: Category) -> bool {
+pub(crate) fn should_scan(enabled: &Option<Vec<Category>>, cat: Category) -> bool {
     match enabled {
         None => true,
         Some(cats) => cats.contains(&cat),
@@ -37,7 +37,7 @@ fn should_scan(enabled: &Option<Vec<Category>>, cat: Category) -> bool {
 }
 
 /// Build CheckResults from the latest security scan results stored in the DB.
-fn checks_from_scan_results(
+pub(crate) fn checks_from_scan_results(
     conn: &rusqlite::Connection,
     scan_type: &str,
     category: Category,

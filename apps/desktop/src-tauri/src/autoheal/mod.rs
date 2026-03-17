@@ -286,24 +286,69 @@ impl AutoHealMonitor {
             )?;
         }
 
+        // Rescan health to get real score_after.
+        let score_after: Option<i32> = if success {
+            let rescan_db = self.db.clone();
+            let rescan_app_dir = self.app_dir.clone();
+            match tokio::task::spawn_blocking(move || -> Option<i32> {
+                let conn = rescan_db.blocking_lock();
+                let enabled = crate::commands::health::enabled_categories_from_config(&rescan_app_dir);
+                let budget = std::time::Duration::from_secs(30);
+
+                // Re-run scanners to get fresh results.
+                use crate::scanner::security::SecurityScanner;
+                use crate::scanner::updates::UpdateScanner;
+                use crate::scanner::backups::BackupScanner;
+                use crate::scanner::performance::PerformanceScanner;
+                use crate::scanner::network::NetworkScanner;
+                use crate::scanner::Scanner;
+                use noah_health::Category;
+                use crate::commands::health::should_scan;
+
+                if should_scan(&enabled, Category::Security) { let _ = SecurityScanner.tick(budget, &conn); }
+                if should_scan(&enabled, Category::Updates) { let _ = UpdateScanner.tick(budget, &conn); }
+                if should_scan(&enabled, Category::Backups) { let _ = BackupScanner.tick(budget, &conn); }
+                if should_scan(&enabled, Category::Performance) { let _ = PerformanceScanner.tick(budget, &conn); }
+                if should_scan(&enabled, Category::Network) { let _ = NetworkScanner.tick(budget, &conn); }
+
+                let mut all_checks = Vec::new();
+                all_checks.extend(crate::commands::health::checks_from_scan_results(&conn, "security", Category::Security));
+                all_checks.extend(crate::commands::health::checks_from_scan_results(&conn, "updates", Category::Updates));
+                all_checks.extend(crate::commands::health::checks_from_scan_results(&conn, "backups", Category::Backups));
+                all_checks.extend(crate::commands::health::checks_from_scan_results(&conn, "performance", Category::Performance));
+                all_checks.extend(crate::commands::health::checks_from_scan_results(&conn, "network", Category::Network));
+
+                if all_checks.is_empty() { return None; }
+                let score = noah_health::compute_score(all_checks, None, enabled.as_deref());
+                Some(score.overall_score as i32)
+            }).await {
+                Ok(s) => s,
+                Err(_) => None,
+            }
+        } else {
+            None
+        };
+
         // Emit completed event.
         let _ = self.app_handle.emit("auto-heal-completed", AutoHealCompletePayload {
             check_id: check_id.to_string(),
             playbook_slug: slug.to_string(),
             success,
             score_before,
-            score_after: None,
+            score_after,
             error: error_message,
         });
 
         // Push auto-heal event to fleet if linked.
         if let Some(config) = crate::dashboard_link::DashboardConfig::load(&self.app_dir) {
             let sb = score_before.unwrap_or(0);
+            let sa = score_after.unwrap_or(sb);
             let slug_owned = slug.to_string();
             let check_id_owned = check_id.to_string();
+            let push_app_dir = self.app_dir.clone();
             tokio::spawn(async move {
                 if let Err(e) = crate::dashboard_link::push_auto_heal_event(
-                    &config, &check_id_owned, &slug_owned, sb, 0,
+                    &config, &check_id_owned, &slug_owned, sb, sa,
                 ).await {
                     eprintln!("[autoheal] fleet push failed: {}", e);
                 }
