@@ -252,7 +252,7 @@ pub async fn link_dashboard(
     let (base_url, token) = dashboard_link::parse_enrollment_url(&enrollment_url)
         .map_err(|e| e.to_string())?;
 
-    let (device_id, device_token, fleet_name) = dashboard_link::enroll_device(&base_url, &token)
+    let (device_id, device_token, fleet_name, enabled_categories) = dashboard_link::enroll_device(&base_url, &token)
         .await
         .map_err(|e| e.to_string())?;
 
@@ -262,6 +262,7 @@ pub async fn link_dashboard(
         device_id: device_id.clone(),
         fleet_name,
         linked_at: chrono::Utc::now().to_rfc3339(),
+        enabled_categories,
     };
     config.save(&state.app_dir).map_err(|e| e.to_string())?;
 

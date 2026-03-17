@@ -397,12 +397,42 @@ pub fn run() {
                         let conn = db_for_health.blocking_lock();
                         let budget = std::time::Duration::from_secs(120);
 
+                        let enabled = {
+                            crate::dashboard_link::DashboardConfig::load(&dir_for_health)
+                                .and_then(|c| c.enabled_categories)
+                                .map(|cats| cats.iter().filter_map(|s| match s.as_str() {
+                                    "security" => Some(noah_health::Category::Security),
+                                    "updates" => Some(noah_health::Category::Updates),
+                                    "performance" => Some(noah_health::Category::Performance),
+                                    "backups" => Some(noah_health::Category::Backups),
+                                    "network" => Some(noah_health::Category::Network),
+                                    _ => None,
+                                }).collect::<Vec<_>>())
+                        };
+
+                        let should_scan = |cat: noah_health::Category| -> bool {
+                            match &enabled {
+                                None => true,
+                                Some(cats) => cats.contains(&cat),
+                            }
+                        };
+
                         use crate::scanner::Scanner;
-                        let _ = crate::scanner::security::SecurityScanner.tick(budget, &conn);
-                        let _ = crate::scanner::updates::UpdateScanner.tick(budget, &conn);
-                        let _ = crate::scanner::backups::BackupScanner.tick(budget, &conn);
-                        let _ = crate::scanner::performance::PerformanceScanner.tick(budget, &conn);
-                        let _ = crate::scanner::network::NetworkScanner.tick(budget, &conn);
+                        if should_scan(noah_health::Category::Security) {
+                            let _ = crate::scanner::security::SecurityScanner.tick(budget, &conn);
+                        }
+                        if should_scan(noah_health::Category::Updates) {
+                            let _ = crate::scanner::updates::UpdateScanner.tick(budget, &conn);
+                        }
+                        if should_scan(noah_health::Category::Backups) {
+                            let _ = crate::scanner::backups::BackupScanner.tick(budget, &conn);
+                        }
+                        if should_scan(noah_health::Category::Performance) {
+                            let _ = crate::scanner::performance::PerformanceScanner.tick(budget, &conn);
+                        }
+                        if should_scan(noah_health::Category::Network) {
+                            let _ = crate::scanner::network::NetworkScanner.tick(budget, &conn);
+                        }
 
                         // Compute and persist health score.
                         let mut all_checks = Vec::new();
@@ -427,7 +457,7 @@ pub fn run() {
                         }
 
                         if !all_checks.is_empty() {
-                            let score = noah_health::compute_score(all_checks, None);
+                            let score = noah_health::compute_score(all_checks, None, enabled.as_deref());
                             let record = journal::HealthScoreRecord {
                                 id: uuid::Uuid::new_v4().to_string(),
                                 score: score.overall_score as i32,
@@ -449,9 +479,18 @@ pub fn run() {
                             let cats = serde_json::to_string(&score.categories).unwrap_or_else(|_| "[]".to_string());
                             let s = score.overall_score as i32;
                             let g = score.overall_grade.to_string();
+                            let sync_app_dir = app_dir.clone();
                             tokio::spawn(async move {
-                                if let Err(e) = crate::dashboard_link::push_checkin(&config, s, &g, &cats).await {
-                                    eprintln!("[health] auto fleet sync failed: {}", e);
+                                match crate::dashboard_link::push_checkin(&config, s, &g, &cats).await {
+                                    Ok(Some(new_cats)) => {
+                                        // Update enabled_categories from fleet policy.
+                                        if let Some(mut cfg) = crate::dashboard_link::DashboardConfig::load(&sync_app_dir) {
+                                            cfg.enabled_categories = Some(new_cats);
+                                            let _ = cfg.save(&sync_app_dir);
+                                        }
+                                    }
+                                    Ok(None) => {}
+                                    Err(e) => eprintln!("[health] auto fleet sync failed: {}", e),
                                 }
                             });
                         }
@@ -475,12 +514,42 @@ pub fn run() {
                             let conn = db_for_health.blocking_lock();
                             let budget = std::time::Duration::from_secs(120);
 
+                            let enabled = {
+                                crate::dashboard_link::DashboardConfig::load(&dir_for_health)
+                                    .and_then(|c| c.enabled_categories)
+                                    .map(|cats| cats.iter().filter_map(|s| match s.as_str() {
+                                        "security" => Some(noah_health::Category::Security),
+                                        "updates" => Some(noah_health::Category::Updates),
+                                        "performance" => Some(noah_health::Category::Performance),
+                                        "backups" => Some(noah_health::Category::Backups),
+                                        "network" => Some(noah_health::Category::Network),
+                                        _ => None,
+                                    }).collect::<Vec<_>>())
+                            };
+
+                            let should_scan = |cat: noah_health::Category| -> bool {
+                                match &enabled {
+                                    None => true,
+                                    Some(cats) => cats.contains(&cat),
+                                }
+                            };
+
                             use crate::scanner::Scanner;
-                            let _ = crate::scanner::security::SecurityScanner.tick(budget, &conn);
-                            let _ = crate::scanner::updates::UpdateScanner.tick(budget, &conn);
-                            let _ = crate::scanner::backups::BackupScanner.tick(budget, &conn);
-                            let _ = crate::scanner::performance::PerformanceScanner.tick(budget, &conn);
-                            let _ = crate::scanner::network::NetworkScanner.tick(budget, &conn);
+                            if should_scan(noah_health::Category::Security) {
+                                let _ = crate::scanner::security::SecurityScanner.tick(budget, &conn);
+                            }
+                            if should_scan(noah_health::Category::Updates) {
+                                let _ = crate::scanner::updates::UpdateScanner.tick(budget, &conn);
+                            }
+                            if should_scan(noah_health::Category::Backups) {
+                                let _ = crate::scanner::backups::BackupScanner.tick(budget, &conn);
+                            }
+                            if should_scan(noah_health::Category::Performance) {
+                                let _ = crate::scanner::performance::PerformanceScanner.tick(budget, &conn);
+                            }
+                            if should_scan(noah_health::Category::Network) {
+                                let _ = crate::scanner::network::NetworkScanner.tick(budget, &conn);
+                            }
 
                             // Compute and persist health score.
                             let mut all_checks = Vec::new();
@@ -505,7 +574,7 @@ pub fn run() {
                             }
 
                             if !all_checks.is_empty() {
-                                let score = noah_health::compute_score(all_checks, None);
+                                let score = noah_health::compute_score(all_checks, None, enabled.as_deref());
                                 let record = journal::HealthScoreRecord {
                                     id: uuid::Uuid::new_v4().to_string(),
                                     score: score.overall_score as i32,
@@ -525,9 +594,17 @@ pub fn run() {
                                 let cats = serde_json::to_string(&score.categories).unwrap_or_else(|_| "[]".to_string());
                                 let s = score.overall_score as i32;
                                 let g = score.overall_grade.to_string();
+                                let sync_app_dir = app_dir.clone();
                                 tokio::spawn(async move {
-                                    if let Err(e) = crate::dashboard_link::push_checkin(&config, s, &g, &cats).await {
-                                        eprintln!("[health] auto fleet sync failed: {}", e);
+                                    match crate::dashboard_link::push_checkin(&config, s, &g, &cats).await {
+                                        Ok(Some(new_cats)) => {
+                                            if let Some(mut cfg) = crate::dashboard_link::DashboardConfig::load(&sync_app_dir) {
+                                                cfg.enabled_categories = Some(new_cats);
+                                                let _ = cfg.save(&sync_app_dir);
+                                            }
+                                        }
+                                        Ok(None) => {}
+                                        Err(e) => eprintln!("[health] auto fleet sync failed: {}", e),
                                     }
                                 });
                             }

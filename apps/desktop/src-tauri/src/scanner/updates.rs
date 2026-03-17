@@ -237,21 +237,39 @@ fn run_windows_checks(_budget: Duration) -> Vec<RawCheck> {
 
 #[cfg(target_os = "linux")]
 fn run_linux_checks(_budget: Duration) -> Vec<RawCheck> {
-    // Basic: check if apt or dnf has pending updates
     let mut checks = Vec::new();
 
-    let apt_count = run_cmd("sh", &["-c", "apt list --upgradable 2>/dev/null | grep -c upgradable"], "");
-    let count: i32 = apt_count.trim().parse().unwrap_or(-1);
+    // Try apt (Debian/Ubuntu), then dnf (Fedora/RHEL), then pacman (Arch)
+    let (count, pkg_mgr) = if std::path::Path::new("/usr/bin/apt").exists() {
+        let out = run_cmd("sh", &["-c", "apt list --upgradable 2>/dev/null | grep -c upgradable"], "");
+        (out.trim().parse::<i32>().unwrap_or(-1), "apt")
+    } else if std::path::Path::new("/usr/bin/dnf").exists() {
+        let out = run_cmd("sh", &["-c", "dnf check-update --quiet 2>/dev/null | grep -cE '^[a-zA-Z]' || echo 0"], "0");
+        (out.trim().parse::<i32>().unwrap_or(-1), "dnf")
+    } else if std::path::Path::new("/usr/bin/pacman").exists() {
+        let out = run_cmd("sh", &["-c", "pacman -Qu 2>/dev/null | wc -l"], "");
+        (out.trim().parse::<i32>().unwrap_or(-1), "pacman")
+    } else {
+        (-1, "unknown")
+    };
+
     if count >= 0 {
         checks.push(RawCheck {
             id: "updates.os",
             label: "System Updates",
             status: if count == 0 { "pass" } else if count < 10 { "warn" } else { "fail" },
             detail: if count == 0 {
-                "Up to date".to_string()
+                format!("Up to date ({})", pkg_mgr)
             } else {
-                format!("{} updates available", count)
+                format!("{} updates available ({})", count, pkg_mgr)
             },
+        });
+    } else {
+        checks.push(RawCheck {
+            id: "updates.os",
+            label: "System Updates",
+            status: "warn",
+            detail: "Could not detect package manager (apt/dnf/pacman)".to_string(),
         });
     }
 

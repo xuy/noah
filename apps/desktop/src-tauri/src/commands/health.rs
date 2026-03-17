@@ -13,6 +13,29 @@ use crate::scanner::Scanner;
 
 use noah_health::{Category, CheckResult, CheckStatus, compute_score};
 
+/// Convert stored category strings to Category enums, respecting fleet policy.
+fn enabled_categories_from_config(app_dir: &std::path::Path) -> Option<Vec<Category>> {
+    let config = DashboardConfig::load(app_dir)?;
+    let cats = config.enabled_categories?;
+    let parsed: Vec<Category> = cats.iter().filter_map(|s| match s.as_str() {
+        "security" => Some(Category::Security),
+        "updates" => Some(Category::Updates),
+        "performance" => Some(Category::Performance),
+        "backups" => Some(Category::Backups),
+        "network" => Some(Category::Network),
+        _ => None,
+    }).collect();
+    if parsed.is_empty() { None } else { Some(parsed) }
+}
+
+/// Check whether a category should be scanned given the enabled filter.
+fn should_scan(enabled: &Option<Vec<Category>>, cat: Category) -> bool {
+    match enabled {
+        None => true,
+        Some(cats) => cats.contains(&cat),
+    }
+}
+
 /// Build CheckResults from the latest security scan results stored in the DB.
 fn checks_from_scan_results(
     conn: &rusqlite::Connection,
@@ -46,6 +69,7 @@ fn checks_from_scan_results(
 #[tauri::command]
 pub async fn get_health_score(state: State<'_, AppState>) -> Result<String, String> {
     let conn = state.db.lock().await;
+    let enabled = enabled_categories_from_config(&state.app_dir);
 
     let mut all_checks = Vec::new();
     all_checks.extend(checks_from_scan_results(&conn, "security", Category::Security));
@@ -59,7 +83,7 @@ pub async fn get_health_score(state: State<'_, AppState>) -> Result<String, Stri
         return Ok("null".to_string());
     }
 
-    let score = compute_score(all_checks, None);
+    let score = compute_score(all_checks, None, enabled.as_deref());
 
     // Persist the score.
     let record = journal::HealthScoreRecord {
@@ -81,34 +105,46 @@ pub async fn run_health_check(state: State<'_, AppState>) -> Result<String, Stri
     // Run security + update scanners on a blocking thread, then read results
     // from the DB within the same function to avoid any stale-read issues.
     let db = state.db.clone();
+    let health_app_dir = state.app_dir.clone();
     let result_json = tokio::task::spawn_blocking(move || -> Result<String, String> {
         let conn = db.blocking_lock();
         let budget = std::time::Duration::from_secs(60);
+        let enabled = enabled_categories_from_config(&health_app_dir);
 
         // Run scanners — these write fresh results to the DB.
-        let security = SecurityScanner;
-        if let Err(e) = security.tick(budget, &conn) {
-            eprintln!("[health] security scan failed: {}", e);
+        if should_scan(&enabled, Category::Security) {
+            let security = SecurityScanner;
+            if let Err(e) = security.tick(budget, &conn) {
+                eprintln!("[health] security scan failed: {}", e);
+            }
         }
 
-        let updates = UpdateScanner;
-        if let Err(e) = updates.tick(budget, &conn) {
-            eprintln!("[health] update scan failed: {}", e);
+        if should_scan(&enabled, Category::Updates) {
+            let updates = UpdateScanner;
+            if let Err(e) = updates.tick(budget, &conn) {
+                eprintln!("[health] update scan failed: {}", e);
+            }
         }
 
-        let backups = BackupScanner;
-        if let Err(e) = backups.tick(budget, &conn) {
-            eprintln!("[health] backup scan failed: {}", e);
+        if should_scan(&enabled, Category::Backups) {
+            let backups = BackupScanner;
+            if let Err(e) = backups.tick(budget, &conn) {
+                eprintln!("[health] backup scan failed: {}", e);
+            }
         }
 
-        let perf = PerformanceScanner;
-        if let Err(e) = perf.tick(budget, &conn) {
-            eprintln!("[health] performance scan failed: {}", e);
+        if should_scan(&enabled, Category::Performance) {
+            let perf = PerformanceScanner;
+            if let Err(e) = perf.tick(budget, &conn) {
+                eprintln!("[health] performance scan failed: {}", e);
+            }
         }
 
-        let net = NetworkScanner;
-        if let Err(e) = net.tick(budget, &conn) {
-            eprintln!("[health] network scan failed: {}", e);
+        if should_scan(&enabled, Category::Network) {
+            let net = NetworkScanner;
+            if let Err(e) = net.tick(budget, &conn) {
+                eprintln!("[health] network scan failed: {}", e);
+            }
         }
 
         // Read back results from DB immediately (same connection, guaranteed fresh).
@@ -123,7 +159,7 @@ pub async fn run_health_check(state: State<'_, AppState>) -> Result<String, Stri
             return Ok("null".to_string());
         }
 
-        let score = compute_score(all_checks, None);
+        let score = compute_score(all_checks, None, enabled.as_deref());
 
         // Persist the score.
         let record = journal::HealthScoreRecord {
@@ -151,10 +187,21 @@ pub async fn run_health_check(state: State<'_, AppState>) -> Result<String, Stri
                     let s = score.get("overall_score").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
                     let g = score.get("overall_grade").and_then(|v| v.as_str()).unwrap_or("F");
                     let cats = score.get("categories").map(|v| v.to_string()).unwrap_or_else(|| "[]".to_string());
-                    if let Err(e) = crate::dashboard_link::push_checkin(&config, s, g, &cats).await {
-                        eprintln!("[health] fleet sync failed: {}", e);
-                    } else {
-                        eprintln!("[health] fleet sync ok");
+                    match crate::dashboard_link::push_checkin(&config, s, g, &cats).await {
+                        Ok(Some(new_cats)) => {
+                            // Update enabled_categories from fleet policy.
+                            if let Some(mut cfg) = DashboardConfig::load(&app_dir) {
+                                cfg.enabled_categories = Some(new_cats);
+                                let _ = cfg.save(&app_dir);
+                            }
+                            eprintln!("[health] fleet sync ok (policy updated)");
+                        }
+                        Ok(None) => {
+                            eprintln!("[health] fleet sync ok");
+                        }
+                        Err(e) => {
+                            eprintln!("[health] fleet sync failed: {}", e);
+                        }
                     }
                 }
             }
@@ -338,6 +385,7 @@ pub async fn start_fleet_playbook(
 #[tauri::command]
 pub async fn export_health_report(state: State<'_, AppState>) -> Result<String, String> {
     let conn = state.db.lock().await;
+    let enabled = enabled_categories_from_config(&state.app_dir);
 
     let mut all_checks = Vec::new();
     all_checks.extend(checks_from_scan_results(&conn, "security", Category::Security));
@@ -350,7 +398,7 @@ pub async fn export_health_report(state: State<'_, AppState>) -> Result<String, 
         return Err("No health data available. Run a health check first.".to_string());
     }
 
-    let score = compute_score(all_checks, None);
+    let score = compute_score(all_checks, None, enabled.as_deref());
 
     let hostname = hostname::get()
         .ok()

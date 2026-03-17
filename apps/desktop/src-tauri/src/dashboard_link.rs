@@ -16,6 +16,8 @@ pub struct DashboardConfig {
     #[serde(default = "default_fleet_name")]
     pub fleet_name: String,
     pub linked_at: String,
+    #[serde(default)]
+    pub enabled_categories: Option<Vec<String>>,
 }
 
 impl DashboardConfig {
@@ -66,7 +68,7 @@ pub fn parse_enrollment_url(input: &str) -> Result<(String, String)> {
 pub async fn enroll_device(
     base_url: &str,
     enrollment_token: &str,
-) -> Result<(String, String, String)> {
+) -> Result<(String, String, String, Option<Vec<String>>)> {
     let url = format!("{}/devices/enroll", base_url.trim_end_matches('/'));
 
     let os_name = if cfg!(target_os = "macos") {
@@ -107,14 +109,15 @@ pub async fn enroll_device(
         device_id: String,
         device_token: String,
         fleet_name: Option<String>,
+        enabled_categories: Option<Vec<String>>,
     }
 
     let data: EnrollResponse = resp.json().await.context("Invalid response from fleet dashboard")?;
-    Ok((data.device_id, data.device_token, data.fleet_name.unwrap_or_else(|| "My Fleet".to_string())))
+    Ok((data.device_id, data.device_token, data.fleet_name.unwrap_or_else(|| "My Fleet".to_string()), data.enabled_categories))
 }
 
 /// Push a health checkin to the dashboard.
-pub async fn push_checkin(config: &DashboardConfig, score: i32, grade: &str, categories_json: &str) -> Result<()> {
+pub async fn push_checkin(config: &DashboardConfig, score: i32, grade: &str, categories_json: &str) -> Result<Option<Vec<String>>> {
     let url = format!("{}/dashboard/checkin", config.dashboard_url.trim_end_matches('/'));
 
     let body = serde_json::json!({
@@ -137,7 +140,14 @@ pub async fn push_checkin(config: &DashboardConfig, score: i32, grade: &str, cat
         anyhow::bail!("Checkin failed: {}", text);
     }
 
-    Ok(())
+    // Parse optional policy update from checkin response.
+    #[derive(Deserialize)]
+    struct CheckinResponse {
+        enabled_categories: Option<Vec<String>>,
+    }
+
+    let data: CheckinResponse = resp.json().await.unwrap_or(CheckinResponse { enabled_categories: None });
+    Ok(data.enabled_categories)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

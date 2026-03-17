@@ -340,6 +340,52 @@ fn run_linux_checks() -> Vec<RawCheck> {
         }
     }
 
+    // Startup items — count enabled systemd user services
+    let user_units = run_cmd("sh", &["-c", "systemctl --user list-unit-files --state=enabled --no-pager 2>/dev/null | grep -c enabled || echo 0"], "0");
+    let system_units = run_cmd("sh", &["-c", "systemctl list-unit-files --state=enabled --no-pager 2>/dev/null | grep -c enabled || echo 0"], "0");
+    let user_count: u32 = user_units.trim().parse().unwrap_or(0);
+    let sys_count: u32 = system_units.trim().parse().unwrap_or(0);
+    let total = user_count + sys_count;
+    if total > 0 {
+        let status = if total < 60 {
+            "pass"
+        } else if total < 100 {
+            "warn"
+        } else {
+            "fail"
+        };
+        checks.push(RawCheck {
+            id: "performance.startup_items",
+            label: "Startup Services",
+            status,
+            detail: format!("{} enabled services ({} system, {} user)", total, sys_count, user_count),
+        });
+    }
+
+    // Memory (total RAM)
+    let meminfo = run_cmd("sh", &["-c", "grep MemTotal /proc/meminfo 2>/dev/null"], "");
+    let mem_kb: u64 = meminfo
+        .split_whitespace()
+        .nth(1)
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0);
+    if mem_kb > 0 {
+        let gb = mem_kb / (1024 * 1024);
+        let status = if gb >= 8 {
+            "pass"
+        } else if gb >= 4 {
+            "warn"
+        } else {
+            "fail"
+        };
+        checks.push(RawCheck {
+            id: "performance.memory",
+            label: "System Memory",
+            status,
+            detail: format!("{} GB RAM", gb),
+        });
+    }
+
     checks
 }
 

@@ -110,6 +110,13 @@ function actionInfo(check: CheckResult): ActionInfo | null {
       return { hint: "Enable BitLocker drive encryption", canOpen: true };
     case "security.uac":
       return { hint: "Raise UAC level in User Account Control settings", canOpen: true };
+    // Security — Linux
+    case "security.mac":
+      return { hint: "Enable AppArmor or SELinux for mandatory access control", canOpen: false };
+    case "security.ssh_root":
+      return { hint: "Set PermitRootLogin to \"no\" in /etc/ssh/sshd_config", canOpen: false };
+    case "security.auto_updates":
+      return { hint: "Enable unattended-upgrades for automatic security patches", canOpen: false };
     // Updates
     case "updates.os":
       return { hint: "Install available system updates", canOpen: true };
@@ -124,6 +131,11 @@ function actionInfo(check: CheckResult): ActionInfo | null {
       return { hint: "Turn on File History in Windows Settings", canOpen: true };
     case "backups.restore_points":
       return { hint: "Enable System Protection in System Properties", canOpen: true };
+    // Backups — Linux
+    case "backups.snapshots":
+      return { hint: "Create a Timeshift snapshot to protect against system changes", canOpen: false };
+    case "backups.tool":
+      return { hint: "Install a backup tool like Timeshift, Borg, or Deja Dup", canOpen: false };
     // Performance
     case "performance.uptime":
       return { hint: "Restart your computer to apply pending updates and free memory", canOpen: false };

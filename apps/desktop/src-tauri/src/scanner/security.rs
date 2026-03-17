@@ -246,24 +246,120 @@ fn run_windows_checks() -> Vec<RawCheck> {
     checks
 }
 
-// ── Linux checks (basic) ────────────────────────────────────────────
+// ── Linux checks ────────────────────────────────────────────────────
 
 #[cfg(target_os = "linux")]
 fn run_linux_checks() -> Vec<RawCheck> {
     let mut checks = Vec::new();
 
-    // UFW firewall
-    let fw = run_cmd("ufw", &["status"], "inactive");
-    checks.push(RawCheck {
-        id: "security.firewall",
-        label: "Firewall (UFW)",
-        status: if fw.to_lowercase().contains("active") && !fw.to_lowercase().contains("inactive") {
+    // Firewall — try UFW first, fall back to iptables/nftables
+    let fw = run_cmd("ufw", &["status"], "");
+    if !fw.is_empty() {
+        checks.push(RawCheck {
+            id: "security.firewall",
+            label: "Firewall (UFW)",
+            status: if fw.to_lowercase().contains("active") && !fw.to_lowercase().contains("inactive") {
+                "pass"
+            } else {
+                "fail"
+            },
+            detail: fw,
+        });
+    } else {
+        // Check iptables — if there are rules beyond the default ACCEPT policies, firewall is active
+        let ipt = run_cmd("sh", &["-c", "iptables -L -n 2>/dev/null | grep -cE '^(ACCEPT|DROP|REJECT|LOG)' || echo 0"], "0");
+        let rule_count: i32 = ipt.trim().parse().unwrap_or(0);
+        checks.push(RawCheck {
+            id: "security.firewall",
+            label: "Firewall",
+            status: if rule_count > 3 { "pass" } else { "fail" },
+            detail: if rule_count > 3 {
+                format!("iptables: {} rules active", rule_count)
+            } else {
+                "No firewall detected (UFW/iptables)".to_string()
+            },
+        });
+    }
+
+    // AppArmor or SELinux
+    let aa = run_cmd("sh", &["-c", "cat /sys/module/apparmor/parameters/enabled 2>/dev/null"], "");
+    let se = run_cmd("sh", &["-c", "getenforce 2>/dev/null"], "");
+    if aa.trim() == "Y" {
+        checks.push(RawCheck {
+            id: "security.mac",
+            label: "AppArmor",
+            status: "pass",
+            detail: "AppArmor is enabled".to_string(),
+        });
+    } else if se.trim().eq_ignore_ascii_case("enforcing") {
+        checks.push(RawCheck {
+            id: "security.mac",
+            label: "SELinux",
+            status: "pass",
+            detail: "SELinux is enforcing".to_string(),
+        });
+    } else if se.trim().eq_ignore_ascii_case("permissive") {
+        checks.push(RawCheck {
+            id: "security.mac",
+            label: "SELinux",
+            status: "warn",
+            detail: "SELinux is permissive (not enforcing)".to_string(),
+        });
+    } else {
+        checks.push(RawCheck {
+            id: "security.mac",
+            label: "Mandatory Access Control",
+            status: "fail",
+            detail: "Neither AppArmor nor SELinux detected".to_string(),
+        });
+    }
+
+    // SSH root login
+    let sshd_config = run_cmd("sh", &["-c", "grep -i '^PermitRootLogin' /etc/ssh/sshd_config 2>/dev/null"], "");
+    let sshd_running = run_cmd("sh", &["-c", "systemctl is-active sshd 2>/dev/null || systemctl is-active ssh 2>/dev/null"], "");
+    if sshd_running.trim() == "active" {
+        let root_ok = sshd_config.to_lowercase();
+        let status = if root_ok.contains("no") || root_ok.contains("prohibit-password") {
             "pass"
+        } else if root_ok.is_empty() {
+            // Default varies by distro but is often prohibit-password
+            "warn"
         } else {
             "fail"
-        },
-        detail: fw,
-    });
+        };
+        checks.push(RawCheck {
+            id: "security.ssh_root",
+            label: "SSH Root Login",
+            status,
+            detail: if sshd_config.is_empty() {
+                "SSH active, PermitRootLogin using default".to_string()
+            } else {
+                sshd_config
+            },
+        });
+    }
+
+    // Unattended upgrades (Debian/Ubuntu)
+    let ua = std::path::Path::new("/etc/apt/apt.conf.d/20auto-upgrades").exists();
+    let ua_enabled = if ua {
+        let content = run_cmd("sh", &["-c", "grep -i 'Unattended-Upgrade.*1' /etc/apt/apt.conf.d/20auto-upgrades 2>/dev/null"], "");
+        !content.is_empty()
+    } else {
+        false
+    };
+    // Only show this check on apt-based systems
+    if std::path::Path::new("/usr/bin/apt").exists() {
+        checks.push(RawCheck {
+            id: "security.auto_updates",
+            label: "Automatic Security Updates",
+            status: if ua_enabled { "pass" } else { "warn" },
+            detail: if ua_enabled {
+                "Unattended-upgrades enabled".to_string()
+            } else {
+                "Automatic security updates not configured".to_string()
+            },
+        });
+    }
 
     checks
 }

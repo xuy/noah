@@ -212,12 +212,59 @@ fn run_windows_checks() -> Vec<RawCheck> {
 
 #[cfg(target_os = "linux")]
 fn run_linux_checks() -> Vec<RawCheck> {
-    vec![RawCheck {
-        id: "backups.status",
-        label: "Backup Status",
-        status: "warn",
-        detail: "Backup status cannot be checked automatically on Linux".to_string(),
-    }]
+    let mut checks = Vec::new();
+
+    // Check for common backup tools: Timeshift, restic, borg, rsnapshot, duplicity
+    let timeshift = run_cmd("sh", &["-c", "timeshift --list 2>/dev/null | head -5"], "");
+    let has_timeshift = timeshift.contains("Snapshot") || timeshift.contains("snapshot");
+
+    if has_timeshift {
+        // Count snapshots
+        let snap_count = run_cmd("sh", &["-c", "timeshift --list 2>/dev/null | grep -cE '^[0-9]' || echo 0"], "0");
+        let count: i32 = snap_count.trim().parse().unwrap_or(0);
+        checks.push(RawCheck {
+            id: "backups.snapshots",
+            label: "Timeshift Snapshots",
+            status: if count > 0 { "pass" } else { "warn" },
+            detail: if count > 0 {
+                format!("{} snapshot(s) available", count)
+            } else {
+                "Timeshift installed but no snapshots found".to_string()
+            },
+        });
+    } else {
+        // Check if any common backup tool is installed
+        let has_restic = std::path::Path::new("/usr/bin/restic").exists()
+            || std::path::Path::new("/usr/local/bin/restic").exists();
+        let has_borg = std::path::Path::new("/usr/bin/borg").exists()
+            || std::path::Path::new("/usr/local/bin/borg").exists();
+        let has_duplicity = std::path::Path::new("/usr/bin/duplicity").exists();
+        let has_rsnapshot = std::path::Path::new("/usr/bin/rsnapshot").exists();
+        let has_deja_dup = std::path::Path::new("/usr/bin/deja-dup").exists();
+
+        if has_restic || has_borg || has_duplicity || has_rsnapshot || has_deja_dup {
+            let tool = if has_borg { "Borg" }
+                else if has_restic { "Restic" }
+                else if has_deja_dup { "Deja Dup" }
+                else if has_duplicity { "Duplicity" }
+                else { "rsnapshot" };
+            checks.push(RawCheck {
+                id: "backups.tool",
+                label: "Backup Tool",
+                status: "pass",
+                detail: format!("{} is installed", tool),
+            });
+        } else {
+            checks.push(RawCheck {
+                id: "backups.tool",
+                label: "Backup Tool",
+                status: "warn",
+                detail: "No backup tool detected (Timeshift, Borg, Restic, Deja Dup)".to_string(),
+            });
+        }
+    }
+
+    checks
 }
 
 // ── BackupScanner ───────────────────────────────────────────────────

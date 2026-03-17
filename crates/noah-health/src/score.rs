@@ -58,7 +58,17 @@ fn grade_for(score: u8) -> char {
 ///
 /// Categories with no checks are omitted from the result and do not
 /// contribute to the overall weighted score.
-pub fn compute_score(checks: Vec<CheckResult>, device_id: Option<String>) -> HealthScore {
+pub fn compute_score(
+    checks: Vec<CheckResult>,
+    device_id: Option<String>,
+    enabled_categories: Option<&[Category]>,
+) -> HealthScore {
+    let checks = if let Some(enabled) = enabled_categories {
+        checks.into_iter().filter(|c| enabled.contains(&c.category)).collect()
+    } else {
+        checks
+    };
+
     let mut category_scores: Vec<CategoryScore> = Vec::new();
 
     for &cat in Category::all() {
@@ -120,7 +130,7 @@ mod tests {
             check("sec.fv", Category::Security, CheckStatus::Pass),
             check("upd.os", Category::Updates, CheckStatus::Pass),
         ];
-        let score = compute_score(checks, None);
+        let score = compute_score(checks, None, None);
         assert_eq!(score.overall_grade, 'A');
         assert!(score.overall_score >= 90);
     }
@@ -131,7 +141,7 @@ mod tests {
             check("sec.fw", Category::Security, CheckStatus::Fail),
             check("upd.os", Category::Updates, CheckStatus::Fail),
         ];
-        let score = compute_score(checks, None);
+        let score = compute_score(checks, None, None);
         assert_eq!(score.overall_grade, 'F');
         assert_eq!(score.overall_score, 0);
     }
@@ -145,7 +155,7 @@ mod tests {
             check("upd.os", Category::Updates, CheckStatus::Warn),   // 50
             // Updates avg = 50, weight 25
         ];
-        let score = compute_score(checks, None);
+        let score = compute_score(checks, None, None);
         // weighted = (50*30 + 50*25) / (30+25) = 2750/55 = 50
         assert_eq!(score.overall_score, 50);
         assert_eq!(score.overall_grade, 'D');
@@ -153,7 +163,7 @@ mod tests {
 
     #[test]
     fn empty_checks_gives_zero() {
-        let score = compute_score(vec![], None);
+        let score = compute_score(vec![], None, None);
         assert_eq!(score.overall_score, 0);
         assert_eq!(score.overall_grade, 'F');
         assert!(score.categories.is_empty());
