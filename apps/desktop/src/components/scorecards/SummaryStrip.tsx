@@ -1,4 +1,4 @@
-import { gradeColor, gradeBg, timeAgo } from "./shared";
+import { gradeColor, gradeBg, gradeRing, timeAgo } from "./shared";
 import type { HealthScore } from "../../lib/tauri-commands";
 
 function Sparkline({ history }: { history: { score: number }[] }) {
@@ -67,30 +67,36 @@ export function SummaryStrip({ score, history, loading, error, onRunCheck, onExp
   const failed = total - passed;
 
   return (
-    <div className="bg-bg-secondary border border-border-primary rounded-xl p-4">
-      <div className="flex items-center gap-4 flex-wrap">
-        {/* Grade pill + score + counts */}
-        <div className="flex items-center gap-3">
-          <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full ${gradeBg(score.overall_grade)}`}>
-            <span className={`text-base font-bold ${gradeColor(score.overall_grade)}`}>{score.overall_grade}</span>
-            <span className="text-sm text-text-secondary font-medium">{score.overall_score}</span>
+    <div className="bg-bg-secondary border border-border-primary rounded-xl p-5">
+      <div className="flex items-center gap-5">
+        {/* Score + grade badge — mirrors fleet dashboard layout */}
+        <div className="flex items-center gap-4 flex-shrink-0">
+          <div>
+            <span className="text-3xl font-bold text-text-primary">{score.overall_score}</span>
+            <span className="text-base text-text-muted font-medium">/100</span>
           </div>
+          <div className={`flex items-center justify-center w-10 h-10 rounded-full border-2 ${gradeRing(score.overall_grade)} ${gradeBg(score.overall_grade)}`}>
+            <span className={`text-lg font-bold ${gradeColor(score.overall_grade)}`}>{score.overall_grade}</span>
+          </div>
+        </div>
+
+        {/* Stats + sparkline */}
+        <div className="flex-1 min-w-0">
           <div className="flex items-center gap-3 text-xs text-text-muted">
             <span className="text-accent-green">{t("health.passed", { count: passed })}</span>
             {failed > 0 && (
               <span className="text-accent-red">{t("health.needsAttention", { count: failed })}</span>
             )}
+            <span className="text-text-muted">&middot;</span>
+            <span className="text-text-muted whitespace-nowrap">
+              {t("health.lastChecked", { time: timeAgo(score.computed_at, t) })}
+            </span>
           </div>
-        </div>
-
-        {/* Sparkline + last checked */}
-        <div className="flex items-center gap-3 flex-1 justify-center">
           {history.length >= 2 && (
-            <Sparkline history={history.map((h) => ({ score: h.overall_score }))} />
+            <div className="mt-2">
+              <Sparkline history={history.map((h) => ({ score: h.overall_score }))} />
+            </div>
           )}
-          <span className="text-[11px] text-text-muted whitespace-nowrap">
-            {t("health.lastChecked", { time: timeAgo(score.computed_at, t) })}
-          </span>
         </div>
 
         {/* Buttons */}
