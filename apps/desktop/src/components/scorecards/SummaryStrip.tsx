@@ -68,39 +68,16 @@ export function SummaryStrip({ score, history, loading, error, onRunCheck, onExp
 
   return (
     <div className="bg-bg-secondary border border-border-primary rounded-xl p-5">
-      <div className="flex items-center gap-5">
-        {/* Score + grade badge — mirrors fleet dashboard layout */}
-        <div className="flex items-center gap-4 flex-shrink-0">
-          <div>
-            <span className="text-3xl font-bold text-text-primary">{score.overall_score}</span>
-            <span className="text-base text-text-muted font-medium">/100</span>
-          </div>
-          <div className={`flex items-center justify-center w-10 h-10 rounded-full border-2 ${gradeRing(score.overall_grade)} ${gradeBg(score.overall_grade)}`}>
-            <span className={`text-lg font-bold ${gradeColor(score.overall_grade)}`}>{score.overall_grade}</span>
+      {/* Row 1: Score + grade on left, actions on right */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <span className="text-3xl font-bold text-text-primary">{score.overall_score}</span>
+          <span className="text-sm text-text-muted">/100</span>
+          <div className={`flex items-center justify-center w-9 h-9 rounded-full border-2 ${gradeRing(score.overall_grade)} ${gradeBg(score.overall_grade)}`}>
+            <span className={`text-base font-bold ${gradeColor(score.overall_grade)}`}>{score.overall_grade}</span>
           </div>
         </div>
-
-        {/* Stats + sparkline */}
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-3 text-xs text-text-muted">
-            <span className="text-accent-green">{t("health.passed", { count: passed })}</span>
-            {failed > 0 && (
-              <span className="text-accent-red">{t("health.needsAttention", { count: failed })}</span>
-            )}
-            <span className="text-text-muted">&middot;</span>
-            <span className="text-text-muted whitespace-nowrap">
-              {t("health.lastChecked", { time: timeAgo(score.computed_at, t) })}
-            </span>
-          </div>
-          {history.length >= 2 && (
-            <div className="mt-2">
-              <Sparkline history={history.map((h) => ({ score: h.overall_score }))} />
-            </div>
-          )}
-        </div>
-
-        {/* Buttons */}
-        <div className="flex items-center gap-2 flex-shrink-0">
+        <div className="flex items-center gap-2">
           <button
             onClick={onRunCheck}
             disabled={loading}
@@ -117,7 +94,26 @@ export function SummaryStrip({ score, history, loading, error, onRunCheck, onExp
           </button>
         </div>
       </div>
-      {error && <p className="text-xs text-accent-red mt-2">{error}</p>}
+
+      {/* Row 2: Secondary metadata */}
+      <div className="flex items-center gap-2 mt-3 text-xs text-text-muted">
+        <span className="text-accent-green">{t("health.passed", { count: passed })}</span>
+        {failed > 0 && (
+          <>
+            <span>&middot;</span>
+            <span className="text-accent-red">{t("health.needsAttention", { count: failed })}</span>
+          </>
+        )}
+        <span>&middot;</span>
+        <span>{t("health.lastChecked", { time: timeAgo(score.computed_at, t) })}</span>
+        {history.length >= 2 && (
+          <div className="ml-auto">
+            <Sparkline history={history.map((h) => ({ score: h.overall_score }))} />
+          </div>
+        )}
+      </div>
+
+      {error && <p className="text-xs text-accent-red mt-3">{error}</p>}
     </div>
   );
 }
