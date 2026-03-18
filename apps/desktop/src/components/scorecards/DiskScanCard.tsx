@@ -1,0 +1,94 @@
+import { useState, useEffect } from "react";
+import { listen } from "@tauri-apps/api/event";
+import { formatRelativeTime } from "./shared";
+import type { ScanProgressEvent } from "./shared";
+import * as commands from "../../lib/tauri-commands";
+import type { ScanJobRecord } from "../../lib/tauri-commands";
+
+export function DiskScanCard({ t }: { t: (key: string) => string }) {
+  const [job, setJob] = useState<ScanJobRecord | null>(null);
+  const [live, setLive] = useState<ScanProgressEvent | null>(null);
+
+  useEffect(() => {
+    commands.getScanJobs().then((jobs) => {
+      const disk = jobs.find((j) => j.scan_type === "disk");
+      if (disk) setJob(disk);
+    }).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    const unlisten = listen<ScanProgressEvent>("scanner-progress", (e) => {
+      if (e.payload.scan_type === "disk") {
+        setLive(e.payload);
+        if (e.payload.status === "completed" || e.payload.status === "failed") {
+          commands.getScanJobs().then((jobs) => {
+            const disk = jobs.find((j) => j.scan_type === "disk");
+            if (disk) setJob(disk);
+          }).catch(() => {});
+        }
+      }
+    });
+    return () => { unlisten.then((fn) => fn()); };
+  }, []);
+
+  const status = live?.status || job?.status || "queued";
+  const pct = live?.progress_pct ?? job?.progress_pct ?? 0;
+  const detail = live?.progress_detail || job?.progress_detail || "";
+  const isRunning = status === "running";
+  const isPaused = status === "paused";
+
+  const statusText = isRunning ? (detail || t("diagnostics.starting"))
+    : isPaused ? (detail || t("diagnostics.paused"))
+    : status === "completed" ? t("diagnostics.complete")
+    : status === "failed" ? t("diagnostics.failed")
+    : t("diagnostics.waitingFirstScan");
+
+  const statusClr = isRunning ? "text-accent-blue"
+    : status === "completed" ? "text-accent-green"
+    : status === "failed" ? "text-accent-red"
+    : isPaused ? "text-accent-yellow"
+    : "text-text-muted";
+
+  const handleAction = async () => {
+    if (isRunning) {
+      await commands.pauseScan("disk").catch(() => {});
+    } else if (isPaused) {
+      await commands.resumeScan("disk").catch(() => {});
+    } else {
+      await commands.triggerScan("disk").catch(() => {});
+    }
+  };
+
+  const btnLabel = isRunning ? t("diagnostics.pause")
+    : isPaused ? t("diagnostics.resume")
+    : status === "completed" ? t("diagnostics.rescan")
+    : t("diagnostics.scanNow");
+
+  const ts = job?.completed_at || job?.updated_at;
+
+  return (
+    <div className="bg-bg-secondary border border-border-primary border-l-4 border-l-accent-blue rounded-xl p-5">
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="text-sm font-semibold text-text-primary">{t("diagnostics.diskAnalysis")}</h3>
+        <button
+          onClick={handleAction}
+          className="text-xs px-2.5 py-1 rounded-md bg-bg-tertiary text-text-secondary hover:text-text-primary transition-colors cursor-pointer"
+        >
+          {btnLabel}
+        </button>
+      </div>
+      {(isRunning || isPaused) && (
+        <div className="w-full h-1.5 bg-bg-tertiary rounded-full overflow-hidden mb-2">
+          <div
+            className={`h-full rounded-full transition-all duration-500 ${isRunning ? "bg-accent-blue" : "bg-accent-yellow"}`}
+            style={{ width: `${Math.max(pct, 2)}%` }}
+          />
+        </div>
+      )}
+      <div className="flex items-center justify-between text-xs">
+        <span className={`truncate ${statusClr}`}>{statusText}</span>
+        {ts && <span className="text-text-muted flex-shrink-0 ml-3">{formatRelativeTime(ts)}</span>}
+      </div>
+    </div>
+  );
+}

@@ -49,7 +49,7 @@
   "sidebar": {
     "newChat": "New chat",
     "knowledge": "Knowledge",
-    "health": "Health",
+    "health": "Scorecards",
     "actions": "Actions",
     "untitledSession": "Untitled session",
     "sessionsEmpty": "Sessions will appear here as you use the app.",
@@ -144,8 +144,8 @@
     "autoHealSafety": "Uses the same safety checks as manual fixes. Actions that need approval will still ask first."
   },
   "health": {
-    "title": "Health Check",
-    "subtitle": "A quick look at your device's security, updates, and overall health.",
+    "title": "Scorecards",
+    "subtitle": "How your device scores across security, updates, and maintenance.",
     "runCheck": "Run Health Check",
     "runAgain": "Run Again",
     "runCheckDesc": "Checks your firewall, disk encryption, system integrity, and other security settings. Takes a few seconds. Nothing is changed on your device.",
@@ -180,7 +180,9 @@
     "fix": "Fix Now",
     "runFix": "Run Fix",
     "dismiss": "Dismiss",
-    "footer": "Health data stays on your device unless connected to a fleet. Scores are based on automated checks and may not reflect all security settings.",
+    "footer": "Scorecard data stays on your device unless connected to a fleet. Scores are based on automated checks and may not reflect all security settings.",
+    "allPassing": "All checks passing",
+    "passingCount": "{count} passing",
     "autoHealInProgress": "Noah is fixing: {issue}...",
     "autoHealComplete": "Fixed! Score improved from {before} to {after}",
     "autoHealFailed": "Auto-heal encountered an issue. Check the session log for details.",
