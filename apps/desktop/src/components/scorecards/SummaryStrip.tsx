@@ -1,25 +1,5 @@
-import { gradeColor, gradeBg, gradeRing, timeAgo } from "./shared";
+import { gradeColor, timeAgo } from "./shared";
 import type { HealthScore } from "../../lib/tauri-commands";
-
-function Sparkline({ history }: { history: { score: number }[] }) {
-  if (history.length < 2) return null;
-  const points = history.slice(0, 7).reverse();
-  const w = 140;
-  const h = 32;
-  const step = w / (points.length - 1);
-  const pathData = points
-    .map((p, i) => {
-      const x = i * step;
-      const y = h - (p.score / 100) * h;
-      return `${i === 0 ? "M" : "L"} ${x} ${y}`;
-    })
-    .join(" ");
-  return (
-    <svg width={w} height={h} className="opacity-60">
-      <path d={pathData} fill="none" stroke="currentColor" strokeWidth="1.5" className="text-accent-blue" />
-    </svg>
-  );
-}
 
 interface SummaryStripProps {
   score: HealthScore | null;
@@ -31,31 +11,24 @@ interface SummaryStripProps {
   t: (key: string, params?: Record<string, string | number>) => string;
 }
 
-export function SummaryStrip({ score, history, loading, error, onRunCheck, onExport, t }: SummaryStripProps) {
+export function SummaryStrip({ score, loading, error, onRunCheck, onExport, t }: SummaryStripProps) {
   const hasResults = score !== null && score.categories.length > 0;
 
   if (!hasResults) {
     return (
-      <div className="bg-bg-secondary border border-border-primary rounded-xl p-5">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="flex items-center justify-center w-10 h-10 rounded-full border-2 border-border-primary bg-bg-tertiary">
-              <span className="text-sm text-text-muted font-bold">--</span>
-            </div>
-            <div>
-              <p className="text-sm text-text-primary font-medium">{t("health.title")}</p>
-              <p className="text-xs text-text-muted">{t("health.runCheckDesc")}</p>
-            </div>
-          </div>
-          <button
-            onClick={onRunCheck}
-            disabled={loading}
-            className="px-4 py-2 rounded-lg bg-accent-blue text-white text-sm font-medium hover:bg-accent-blue/90 transition-colors disabled:opacity-50 cursor-pointer"
-          >
-            {loading ? t("health.running") : t("health.runCheck")}
-          </button>
+      <div className="py-6">
+        <div className="flex items-baseline gap-3 mb-1">
+          <span className="text-4xl font-bold text-text-muted tracking-tight">--</span>
         </div>
-        {error && <p className="text-xs text-accent-red mt-2">{error}</p>}
+        <p className="text-sm text-text-muted mb-5">{t("health.runCheckDesc")}</p>
+        <button
+          onClick={onRunCheck}
+          disabled={loading}
+          className="px-4 py-2 rounded-lg bg-accent-blue text-white text-sm font-medium hover:bg-accent-blue/90 transition-colors disabled:opacity-50 cursor-pointer"
+        >
+          {loading ? t("health.running") : t("health.runCheck")}
+        </button>
+        {error && <p className="text-xs text-accent-red mt-3">{error}</p>}
       </div>
     );
   }
@@ -67,27 +40,27 @@ export function SummaryStrip({ score, history, loading, error, onRunCheck, onExp
   const failed = total - passed;
 
   return (
-    <div className="bg-bg-secondary border border-border-primary rounded-xl p-5">
-      {/* Row 1: Score + grade on left, actions on right */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <span className="text-3xl font-bold text-text-primary">{score.overall_score}</span>
-          <span className="text-sm text-text-muted">/100</span>
-          <div className={`flex items-center justify-center w-9 h-9 rounded-full border-2 ${gradeRing(score.overall_grade)} ${gradeBg(score.overall_grade)}`}>
-            <span className={`text-base font-bold ${gradeColor(score.overall_grade)}`}>{score.overall_grade}</span>
-          </div>
+    <div className="py-4">
+      {/* Hero: score + grade */}
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-baseline gap-2">
+          <span className="text-4xl font-bold text-text-primary tracking-tight">{score.overall_score}</span>
+          <span className={`text-2xl font-bold ${gradeColor(score.overall_grade)}`}>{score.overall_grade}</span>
         </div>
         <div className="flex items-center gap-2">
           <button
             onClick={onRunCheck}
             disabled={loading}
-            className="px-3 py-1.5 rounded-lg bg-accent-blue text-white text-xs font-medium hover:bg-accent-blue/90 transition-colors disabled:opacity-50 cursor-pointer"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-text-secondary text-xs font-medium border border-border-primary hover:bg-bg-tertiary active:bg-bg-tertiary active:scale-95 transition-all disabled:opacity-50 cursor-pointer"
           >
+            {loading && (
+              <div className="w-3 h-3 border-[1.5px] border-text-muted border-t-transparent rounded-full animate-spin" />
+            )}
             {loading ? t("health.running") : t("health.runAgain")}
           </button>
           <button
             onClick={onExport}
-            className="px-2.5 py-1.5 rounded-lg border border-border-primary text-text-secondary text-xs hover:bg-bg-tertiary transition-colors cursor-pointer"
+            className="px-3 py-1.5 rounded-lg text-text-muted text-xs border border-border-primary hover:bg-bg-tertiary hover:text-text-secondary active:scale-95 transition-all cursor-pointer"
             title={t("health.exportReport")}
           >
             {t("health.export")}
@@ -95,25 +68,15 @@ export function SummaryStrip({ score, history, loading, error, onRunCheck, onExp
         </div>
       </div>
 
-      {/* Row 2: Secondary metadata */}
-      <div className="flex items-center gap-2 mt-3 text-xs text-text-muted">
+      {/* Subtitle: stats */}
+      <p className="text-xs text-text-muted">
         <span className="text-accent-green">{t("health.passed", { count: passed })}</span>
         {failed > 0 && (
-          <>
-            <span>&middot;</span>
-            <span className="text-accent-red">{t("health.needsAttention", { count: failed })}</span>
-          </>
+          <span className="text-accent-red"> &middot; {t("health.needsAttention", { count: failed })}</span>
         )}
-        <span>&middot;</span>
-        <span>{t("health.lastChecked", { time: timeAgo(score.computed_at, t) })}</span>
-        {history.length >= 2 && (
-          <div className="ml-auto">
-            <Sparkline history={history.map((h) => ({ score: h.overall_score }))} />
-          </div>
-        )}
-      </div>
-
-      {error && <p className="text-xs text-accent-red mt-3">{error}</p>}
+        <span> &middot; {t("health.lastChecked", { time: timeAgo(score.computed_at, t) })}</span>
+      </p>
+      {error && <p className="text-xs text-accent-red mt-2">{error}</p>}
     </div>
   );
 }

@@ -66,29 +66,44 @@ export function DiskScanCard({ t }: { t: (key: string) => string }) {
 
   const ts = job?.completed_at || job?.updated_at;
 
-  return (
-    <div className="bg-bg-secondary border border-border-primary border-l-4 border-l-accent-blue rounded-xl p-5">
-      <div className="flex items-center justify-between mb-2">
-        <h3 className="text-sm font-semibold text-text-primary">{t("diagnostics.diskAnalysis")}</h3>
-        <button
-          onClick={handleAction}
-          className="text-xs px-2.5 py-1 rounded-md bg-bg-tertiary text-text-secondary hover:text-text-primary transition-colors cursor-pointer"
-        >
-          {btnLabel}
-        </button>
-      </div>
-      {(isRunning || isPaused) && (
-        <div className="w-full h-1.5 bg-bg-tertiary rounded-full overflow-hidden mb-2">
+  // Active state: full card with progress
+  if (isRunning || isPaused) {
+    return (
+      <div className="bg-bg-secondary border border-border-primary rounded-xl p-4">
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="text-sm font-medium text-text-primary">{t("diagnostics.diskAnalysis")}</h3>
+          <button
+            onClick={handleAction}
+            className="text-xs text-text-muted hover:text-text-secondary cursor-pointer"
+          >
+            {btnLabel}
+          </button>
+        </div>
+        <div className="w-full h-1 bg-bg-tertiary rounded-full overflow-hidden mb-2">
           <div
             className={`h-full rounded-full transition-all duration-500 ${isRunning ? "bg-accent-blue" : "bg-accent-yellow"}`}
             style={{ width: `${Math.max(pct, 2)}%` }}
           />
         </div>
-      )}
-      <div className="flex items-center justify-between text-xs">
-        <span className={`truncate ${statusClr}`}>{statusText}</span>
-        {ts && <span className="text-text-muted flex-shrink-0 ml-3">{formatRelativeTime(ts)}</span>}
+        <span className={`text-xs ${statusClr}`}>{statusText}</span>
       </div>
+    );
+  }
+
+  // Idle state: compact inline row (matches all-passing scorecard style)
+  return (
+    <div className="flex items-center justify-between py-3 px-1">
+      <div className="flex items-center gap-2.5">
+        <span className={`text-sm ${statusClr}`}>{status === "completed" ? "\u2713" : "\u25CB"}</span>
+        <span className="text-sm text-text-primary font-medium">{t("diagnostics.diskAnalysis")}</span>
+        {ts && <span className="text-xs text-text-muted">{formatRelativeTime(ts)}</span>}
+      </div>
+      <button
+        onClick={handleAction}
+        className="text-xs text-text-muted hover:text-text-secondary cursor-pointer"
+      >
+        {btnLabel}
+      </button>
     </div>
   );
 }

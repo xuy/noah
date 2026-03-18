@@ -97,6 +97,8 @@ export function formatRelativeTime(iso: string | null): string {
 export interface ActionInfo {
   hint: string;
   canOpen: boolean;
+  /** If set, Noah can fix this directly via chat. Value is the message to send. */
+  noahCanFix?: string;
 }
 
 export function actionInfo(check: CheckResult): ActionInfo | null {
@@ -132,7 +134,7 @@ export function actionInfo(check: CheckResult): ActionInfo | null {
     case "updates.os":
       return { hint: "Install available system updates", canOpen: true };
     case "updates.brew":
-      return { hint: "Run: brew upgrade", canOpen: false };
+      return { hint: "Outdated packages found", canOpen: false, noahCanFix: "Run brew upgrade to update my Homebrew packages" };
     // Backups
     case "backups.timemachine":
       return { hint: "Set up Time Machine in System Settings", canOpen: true };
@@ -151,14 +153,14 @@ export function actionInfo(check: CheckResult): ActionInfo | null {
     case "performance.uptime":
       return { hint: "Restart your computer to apply pending updates and free memory", canOpen: false };
     case "performance.disk_free":
-      return { hint: "Free up disk space by removing unused files and apps", canOpen: false };
+      return { hint: "Free up disk space", canOpen: false, noahCanFix: "Help me free up disk space by finding large or unused files" };
     case "performance.startup_items":
-      return { hint: "Reduce startup items to speed up boot time", canOpen: false };
+      return { hint: "Too many startup items", canOpen: false, noahCanFix: "Show me my startup items and help reduce them to speed up boot time" };
     case "performance.memory":
       return { hint: "Close unused applications to free memory", canOpen: false };
     // Network
     case "network.dns":
-      return { hint: "Check your DNS settings or try switching to 1.1.1.1 or 8.8.8.8", canOpen: false };
+      return { hint: "DNS issues detected", canOpen: false, noahCanFix: "Check my DNS settings and fix any issues — try switching to 1.1.1.1 or 8.8.8.8 if needed" };
     case "network.internet":
       return { hint: "Check your internet connection and router", canOpen: false };
     case "network.gateway":
