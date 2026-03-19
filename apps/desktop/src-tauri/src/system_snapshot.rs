@@ -136,9 +136,12 @@ fn gather_security() -> String {
 
 #[cfg(target_os = "macos")]
 fn gather_disk_free() -> String {
-    let df_output = run_cmd("df", &["-Ph"], "");
-    let mut volumes = Vec::new();
+    let df_output = run_cmd("df", &["-Ph", "/"], "");
+    format_macos_main_disk_free(&df_output)
+}
 
+#[cfg(target_os = "macos")]
+fn format_macos_main_disk_free(df_output: &str) -> String {
     for line in df_output.lines().skip(1) {
         let cols: Vec<&str> = line.split_whitespace().collect();
         // df -Ph: Filesystem Size Used Avail Capacity Mounted
@@ -149,44 +152,18 @@ fn gather_disk_free() -> String {
         let capacity_str = cols[4].trim_end_matches('%');
         let avail = cols[3];
 
-        // Skip virtual/system filesystems.
-        if mount.starts_with("/System")
-            || mount == "/dev"
-            || mount.starts_with("/private")
-            || mount.contains("/TimeMachine.localsnapshots")
-        {
-            continue;
-        }
-
-        // Only show root and /Volumes/* mounts.
-        if mount != "/" && !mount.starts_with("/Volumes") {
-            continue;
-        }
-
-        // Skip small disk images (< 10 GB) — these are typically mounted app DMGs.
-        let size_str = cols[1];
-        let is_small = size_str.ends_with("Mi")
-            || size_str.ends_with("Ki")
-            || size_str
-                .trim_end_matches("Gi")
-                .parse::<f64>()
-                .map_or(false, |g| g < 10.0);
-        if mount.starts_with("/Volumes") && is_small {
+        // The proactive snapshot should only reflect the boot volume.
+        if mount != "/" {
             continue;
         }
 
         if let Ok(used_pct) = capacity_str.parse::<u32>() {
             let free_pct = 100u32.saturating_sub(used_pct);
-            let label = if mount == "/" {
-                "Macintosh HD"
-            } else {
-                mount.rsplit('/').next().unwrap_or(&mount)
-            };
-            volumes.push(format!("{} {}% free ({} avail)", label, free_pct, avail));
+            return format!("Macintosh HD {}% free ({} avail)", free_pct, avail);
         }
     }
 
-    volumes.join(", ")
+    String::new()
 }
 
 #[cfg(target_os = "macos")]
@@ -592,5 +569,32 @@ mod tests {
         eprintln!("\n=== LIVE SNAPSHOT PROMPT ===\n{}\n===========================\n", prompt);
         // Just ensure it doesn't panic and produces some output on a real system.
         assert!(!snap.gathered_at.is_empty());
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn macos_disk_summary_only_reports_root_volume() {
+        let df_output = "\
+Filesystem        Size    Used   Avail Capacity  Mounted on
+/dev/disk3s1s1   460Gi    15Gi    79Gi    17%    /
+/dev/disk3s5     460Gi   347Gi    79Gi    82%    /System/Volumes/Data
+/dev/disk4s1     749Mi   744Mi   5.1Mi   100%    /Volumes/Antigravity
+";
+
+        assert_eq!(
+            format_macos_main_disk_free(df_output),
+            "Macintosh HD 83% free (79Gi avail)"
+        );
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn macos_disk_summary_ignores_non_root_only_output() {
+        let df_output = "\
+Filesystem        Size    Used   Avail Capacity  Mounted on
+/dev/disk4s1     749Mi   744Mi   5.1Mi   100%    /Volumes/Antigravity
+";
+
+        assert!(format_macos_main_disk_free(df_output).is_empty());
     }
 }
