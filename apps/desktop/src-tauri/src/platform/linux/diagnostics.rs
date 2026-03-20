@@ -398,10 +398,39 @@ impl Tool for ShellRun {
             .as_str()
             .ok_or_else(|| anyhow::anyhow!("Missing required parameter: command"))?;
 
+        // Detect sudo commands and rewrite to use pkexec (PolicyKit) for a native GUI auth dialog.
+        // This avoids blocking on stdin for a password that will never arrive.
+        let needs_admin = command.trim_start().starts_with("sudo ");
+        let (exec_program, exec_args) = if needs_admin {
+            // Strip "sudo " and any flags to get the inner command
+            let inner = command.trim_start()
+                .strip_prefix("sudo").unwrap()
+                .trim_start()
+                .trim_start_matches(|c: char| c == '-' || c.is_alphanumeric())
+                .trim_start();
+            let inner = if inner.is_empty() {
+                command.trim_start().strip_prefix("sudo ").unwrap_or(command).trim()
+            } else {
+                inner
+            };
+            // pkexec runs a single command with args, so wrap in bash -c
+            (
+                "pkexec".to_string(),
+                vec!["bash".to_string(), "-c".to_string(), inner.to_string()],
+            )
+        } else {
+            (
+                "/bin/bash".to_string(),
+                vec!["-c".to_string(), command.to_string()],
+            )
+        };
+
+        let timeout_secs = if needs_admin { 120 } else { 60 };
+
         let output = match tokio::time::timeout(
-            std::time::Duration::from_secs(60),
-            tokio::process::Command::new("/bin/bash")
-                .args(["-c", command])
+            std::time::Duration::from_secs(timeout_secs),
+            tokio::process::Command::new(&exec_program)
+                .args(&exec_args)
                 .output(),
         )
         .await
@@ -411,25 +440,30 @@ impl Tool for ShellRun {
                 let stderr = String::from_utf8_lossy(&o.stderr).to_string();
                 let exit_code = o.status.code().unwrap_or(-1);
 
-                let mut result = String::new();
-                if !stdout.is_empty() {
-                    result.push_str(&stdout);
-                }
-                if !stderr.is_empty() {
-                    if !result.is_empty() {
-                        result.push_str("\n--- stderr ---\n");
-                    }
-                    result.push_str(&stderr);
-                }
-                if result.is_empty() {
-                    result = format!("(no output, exit code: {})", exit_code);
+                // Handle user cancellation of the pkexec dialog (exit code 126)
+                if needs_admin && exit_code == 126 {
+                    "User declined administrator access. The command was not executed.".to_string()
                 } else {
-                    result.push_str(&format!("\n\n[exit code: {}]", exit_code));
+                    let mut result = String::new();
+                    if !stdout.is_empty() {
+                        result.push_str(&stdout);
+                    }
+                    if !stderr.is_empty() {
+                        if !result.is_empty() {
+                            result.push_str("\n--- stderr ---\n");
+                        }
+                        result.push_str(&stderr);
+                    }
+                    if result.is_empty() {
+                        result = format!("(no output, exit code: {})", exit_code);
+                    } else {
+                        result.push_str(&format!("\n\n[exit code: {}]", exit_code));
+                    }
+                    result
                 }
-                result
             }
             Ok(Err(e)) => format!("Failed to execute command: {}", e),
-            Err(_) => "Command timed out after 60 seconds. The command was taking too long and has been stopped.".to_string(),
+            Err(_) => format!("Command timed out after {} seconds. The command was taking too long and has been stopped.", timeout_secs),
         };
 
         let truncated = if output.len() > 10_000 {

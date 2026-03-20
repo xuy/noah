@@ -150,14 +150,35 @@ pub async fn push_checkin(config: &DashboardConfig, score: i32, grade: &str, cat
         anyhow::bail!("Checkin failed: {}", text);
     }
 
-    // Parse optional policy update from checkin response.
+    // Parse policy + assigned playbooks from checkin response.
     #[derive(Deserialize)]
     struct CheckinResponse {
         enabled_categories: Option<Vec<String>>,
+        #[serde(default)]
+        assigned_playbooks: Option<Vec<AssignedPlaybook>>,
     }
 
-    let data: CheckinResponse = resp.json().await.unwrap_or(CheckinResponse { enabled_categories: None });
+    let data: CheckinResponse = resp.json().await.unwrap_or(CheckinResponse { enabled_categories: None, assigned_playbooks: None });
+
+    // Persist assigned playbooks to disk so they're available for auto-heal and manual runs
+    if let Some(ref playbooks) = data.assigned_playbooks {
+        if !playbooks.is_empty() {
+            if let Some(dir) = app_dir {
+                let pb_path = dir.join("fleet_playbooks.json");
+                let _ = std::fs::write(&pb_path, serde_json::to_string_pretty(playbooks).unwrap_or_default());
+            }
+        }
+    }
+
     Ok(data.enabled_categories)
+}
+
+/// A playbook assigned to this device via fleet (from group or direct assignment).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AssignedPlaybook {
+    pub slug: String,
+    pub name: String,
+    pub content: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

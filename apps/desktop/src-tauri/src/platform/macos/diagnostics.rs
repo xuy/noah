@@ -420,10 +420,45 @@ impl Tool for ShellRun {
             .as_str()
             .ok_or_else(|| anyhow::anyhow!("Missing required parameter: command"))?;
 
+        // Detect sudo commands and rewrite to use osascript with administrator privileges.
+        // This triggers the native macOS auth dialog (supports Touch ID) instead of
+        // blocking on stdin for a password that will never arrive.
+        let needs_admin = command.trim_start().starts_with("sudo ");
+        let (exec_program, exec_args, effective_command) = if needs_admin {
+            // Strip "sudo " (and any sudo flags like -S, -n) to get the underlying command
+            let inner = command.trim_start()
+                .strip_prefix("sudo").unwrap()
+                .trim_start()
+                .trim_start_matches(|c: char| c == '-' || c.is_alphanumeric())
+                .trim_start();
+            // If stripping flags ate everything, use the part after "sudo "
+            let inner = if inner.is_empty() {
+                command.trim_start().strip_prefix("sudo ").unwrap_or(command).trim()
+            } else {
+                inner
+            };
+            // Escape single quotes for AppleScript string
+            let escaped = inner.replace('\\', "\\\\").replace('\'', "'\\''");
+            let osascript_cmd = format!("do shell script '{}' with administrator privileges", escaped);
+            (
+                "/usr/bin/osascript".to_string(),
+                vec!["-e".to_string(), osascript_cmd],
+                command.to_string(),
+            )
+        } else {
+            (
+                "/bin/zsh".to_string(),
+                vec!["-c".to_string(), command.to_string()],
+                command.to_string(),
+            )
+        };
+
+        let timeout_secs = if needs_admin { 120 } else { 60 }; // longer timeout for admin prompt
+
         let output = match tokio::time::timeout(
-            std::time::Duration::from_secs(60),
-            tokio::process::Command::new("/bin/zsh")
-                .args(["-c", command])
+            std::time::Duration::from_secs(timeout_secs),
+            tokio::process::Command::new(&exec_program)
+                .args(&exec_args)
                 .output(),
         )
         .await
@@ -433,25 +468,30 @@ impl Tool for ShellRun {
                 let stderr = String::from_utf8_lossy(&o.stderr).to_string();
                 let exit_code = o.status.code().unwrap_or(-1);
 
-                let mut result = String::new();
-                if !stdout.is_empty() {
-                    result.push_str(&stdout);
-                }
-                if !stderr.is_empty() {
-                    if !result.is_empty() {
-                        result.push_str("\n--- stderr ---\n");
-                    }
-                    result.push_str(&stderr);
-                }
-                if result.is_empty() {
-                    result = format!("(no output, exit code: {})", exit_code);
+                // Handle user cancellation of the admin dialog
+                if needs_admin && exit_code != 0 && stderr.contains("User canceled") {
+                    "User declined administrator access. The command was not executed.".to_string()
                 } else {
-                    result.push_str(&format!("\n\n[exit code: {}]", exit_code));
+                    let mut result = String::new();
+                    if !stdout.is_empty() {
+                        result.push_str(&stdout);
+                    }
+                    if !stderr.is_empty() {
+                        if !result.is_empty() {
+                            result.push_str("\n--- stderr ---\n");
+                        }
+                        result.push_str(&stderr);
+                    }
+                    if result.is_empty() {
+                        result = format!("(no output, exit code: {})", exit_code);
+                    } else {
+                        result.push_str(&format!("\n\n[exit code: {}]", exit_code));
+                    }
+                    result
                 }
-                result
             }
             Ok(Err(e)) => format!("Failed to execute command: {}", e),
-            Err(_) => "Command timed out after 60 seconds. The command was taking too long and has been stopped.".to_string(),
+            Err(_) => format!("Command timed out after {} seconds. The command was taking too long and has been stopped.", timeout_secs),
         };
 
         // Limit output length
