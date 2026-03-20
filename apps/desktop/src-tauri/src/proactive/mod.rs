@@ -108,6 +108,7 @@ impl ProactiveMonitor {
         #[cfg(target_os = "windows")]
         {
             use crate::platform::windows::performance::{WinDiskUsage, WinProcessList};
+            use crate::platform::windows::diagnostics::WinReadLog;
 
             pipelines.push(Pipeline {
                 category: "disk",
@@ -118,6 +119,11 @@ impl ProactiveMonitor {
                 category: "performance",
                 tool: Box::new(WinProcessList),
                 input: serde_json::json!({"sort_by": "cpu"}),
+            });
+            pipelines.push(Pipeline {
+                category: "crash",
+                tool: Box::new(WinReadLog),
+                input: serde_json::json!({"log_name": "System", "level": "Error", "duration": "6h"}),
             });
         }
 

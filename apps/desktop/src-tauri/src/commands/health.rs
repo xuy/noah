@@ -241,11 +241,24 @@ pub async fn open_health_fix(check_id: String) -> Result<(), String> {
         #[cfg(target_os = "windows")]
         "security.defender" => "ms-settings:windowsdefender",
         #[cfg(target_os = "windows")]
-        "security.bitlocker" => "ms-settings:about", // BitLocker is in Control Panel
+        "security.bitlocker" => {
+            // BitLocker lives in Control Panel, not ms-settings.
+            std::process::Command::new("control")
+                .args(["/name", "Microsoft.BitLockerDriveEncryption"])
+                .spawn()
+                .map_err(|e| format!("Failed to open BitLocker settings: {}", e))?;
+            return Ok(());
+        }
         #[cfg(target_os = "windows")]
         "security.firewall" => "ms-settings:windowsdefender",
         #[cfg(target_os = "windows")]
-        "security.uac" => "ms-settings:signinoptions",
+        "security.uac" => {
+            // UAC settings have their own executable, not an ms-settings URI.
+            std::process::Command::new("UserAccountControlSettings.exe")
+                .spawn()
+                .map_err(|e| format!("Failed to open UAC settings: {}", e))?;
+            return Ok(());
+        }
         #[cfg(target_os = "windows")]
         "security.screen_lock" => "ms-settings:lockscreen",
         #[cfg(target_os = "windows")]
@@ -269,7 +282,7 @@ pub async fn open_health_fix(check_id: String) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
         std::process::Command::new("cmd")
-            .args(["/C", "start", target])
+            .args(["/C", "start", "", target])
             .spawn()
             .map_err(|e| format!("Failed to open settings: {}", e))?;
     }

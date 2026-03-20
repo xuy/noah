@@ -245,11 +245,16 @@ impl AutoHealMonitor {
             let mut orch = state.orchestrator.lock().await;
             session_id = orch.create_session();
 
+            let os_name = if cfg!(target_os = "macos") { "macOS" }
+                else if cfg!(target_os = "windows") { "Windows" }
+                else { "Linux" };
+
             let message = format!(
                 "activate_playbook {}\n\nRun all steps autonomously. The health check '{}' is failing. \
+                This device is running {}. Use platform-appropriate commands only. \
                 Execute the playbook without asking questions — just run each step. \
                 If a step requires user approval, present it normally.",
-                slug, check_id,
+                slug, check_id, os_name,
             );
 
             orch.send_message(&session_id, &message, &self.app_handle, &self.db).await

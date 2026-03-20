@@ -560,9 +560,13 @@ impl LlmClient {
             Respond in exactly this JSON format (no markdown, no extra text):\n\
             {\"should_heal\": true/false, \"playbook_slug\": \"slug-here\", \"check_id\": \"check.id.here\", \"reason\": \"why this playbook fixes this check\"}";
 
+        let os_name = if cfg!(target_os = "macos") { "macOS" }
+            else if cfg!(target_os = "windows") { "Windows" }
+            else { "Linux" };
+
         let user_msg = format!(
-            "Failing health checks:\n{}\n\nAvailable playbooks:\n{}",
-            failing_checks_json, available_playbooks_json,
+            "Device OS: {}\n\nFailing health checks:\n{}\n\nAvailable playbooks:\n{}",
+            os_name, failing_checks_json, available_playbooks_json,
         );
 
         let body = ApiRequest {
