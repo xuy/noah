@@ -14,7 +14,7 @@ import { FleetConnectionCard } from "./FleetConnectionCard";
 import { DiskScanCard } from "./DiskScanCard";
 
 export function ScorecardPage() {
-  const { score, history, loading, error, setScore, setHistory, setLoading, setError } = useHealthStore();
+  const { score, history, error, setScore, setHistory, setError } = useHealthStore();
   const { t } = useLocale();
   const [fleetStatus, setFleetStatus] = useState<DashboardStatus | null>(null);
   const [fleetActions, setFleetActions] = useState<FleetAction[]>([]);
@@ -23,9 +23,16 @@ export function ScorecardPage() {
   const [autoHealAvailable, setAutoHealAvailable] = useState<{ check_id: string; playbook_slug: string; reason: string } | null>(null);
   const [fleetDisconnected, setFleetDisconnected] = useState<string | null>(null);
 
-  useEffect(() => {
-    commands.getDashboardStatus().then(setFleetStatus).catch(() => {});
+  const loadFleetStatus = useCallback(async () => {
+    try {
+      const status = await commands.getDashboardStatus();
+      setFleetStatus(status);
+    } catch {}
   }, []);
+
+  useEffect(() => {
+    loadFleetStatus();
+  }, [loadFleetStatus]);
 
   const loadFleetActions = useCallback(async () => {
     try {
@@ -94,19 +101,28 @@ export function ScorecardPage() {
     };
   }, [loadScore, loadHistory]);
 
+  const [checkState, setCheckState] = useState<"idle" | "checking" | "done">("idle");
+
   const handleRunCheck = useCallback(async () => {
-    setLoading(true);
+    setCheckState("checking");
     setError(null);
+    await new Promise((r) => setTimeout(r, 16)); // yield for React to paint
     try {
-      const s = await commands.runHealthCheck();
+      const [s] = await Promise.all([
+        commands.runHealthCheck(),
+        new Promise((r) => setTimeout(r, 800)), // min visible duration
+      ]);
       setScore(s);
       await loadHistory();
       loadFleetActions();
+      loadFleetStatus();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
-    setLoading(false);
-  }, [setScore, setLoading, setError, loadHistory, loadFleetActions]);
+    setCheckState("done");
+    // Return to idle after 2 minutes
+    setTimeout(() => setCheckState("idle"), 2 * 60 * 1000);
+  }, [setScore, setError, loadHistory, loadFleetActions, loadFleetStatus]);
 
   const handleExport = useCallback(async () => {
     try {
@@ -253,16 +269,24 @@ export function ScorecardPage() {
         <SummaryStrip
           score={score}
           history={history}
-          loading={loading}
+          checkState={checkState}
           error={error}
           onRunCheck={handleRunCheck}
           onExport={handleExport}
           t={t}
         />
 
-        {/* Divider */}
-        <div className="border-t border-border-primary mb-4" />
+        {/* Progress bar — visible while checking */}
+        {checkState === "checking" && hasResults ? (
+          <div className="h-1 bg-bg-tertiary rounded-full overflow-hidden mb-4">
+            <div className="h-full bg-accent-blue rounded-full animate-[indeterminate_1.5s_ease-in-out_infinite]" style={{ width: "30%" }} />
+          </div>
+        ) : (
+          <div className="border-t border-border-primary mb-4" />
+        )}
 
+        {/* Dim stale results while checking */}
+        <div className={checkState === "checking" && hasResults ? "opacity-50 pointer-events-none transition-opacity duration-200" : "transition-opacity duration-200"}>
         {hasResults ? (
           <>
             {/* Failing categories: full card treatment */}
@@ -299,6 +323,7 @@ export function ScorecardPage() {
             ))}
           </div>
         )}
+        </div>{/* end dimming wrapper */}
 
         {/* Fleet connection */}
         <div className="mt-8">

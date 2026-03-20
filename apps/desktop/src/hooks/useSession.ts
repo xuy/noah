@@ -1,7 +1,7 @@
 import { useEffect, useCallback } from "react";
 import { useSessionStore, type SessionMode } from "../stores/sessionStore";
 import { useChatStore } from "../stores/chatStore";
-import { currentLocale, t as i18nT } from "../i18n";
+import { currentLocale } from "../i18n";
 import * as commands from "../lib/tauri-commands";
 
 // Re-export from store so consumers can use either import path.
@@ -56,10 +56,7 @@ export function useSession(): UseSessionReturn {
         setSessionMode("learn");
       }
 
-      const greeting = mode === "learn"
-        ? `${i18nT("welcome.learnGreeting")} ${i18nT("welcome.learnSubtitle")}`
-        : "Hey! I'm Noah, your computer helper. Just tell me what's going on and I'll take care of it.";
-      addMessage({ role: "system", content: greeting });
+      // No greeting message — the welcome screen shows when messages is empty.
     } catch (err) {
       console.error("Failed to create session:", err);
       addMessage({

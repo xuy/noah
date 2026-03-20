@@ -158,6 +158,11 @@ body,
 }
 
 /* ── Animations ── */
+@keyframes indeterminate {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(350%); }
+}
+
 @keyframes pulse-recording {
   0%,
   100% {

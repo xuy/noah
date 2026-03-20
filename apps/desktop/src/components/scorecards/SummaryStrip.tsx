@@ -1,32 +1,32 @@
 import { gradeColor, timeAgo } from "./shared";
 import type { HealthScore } from "../../lib/tauri-commands";
 
+type CheckState = "idle" | "checking" | "done";
+
 interface SummaryStripProps {
   score: HealthScore | null;
   history: HealthScore[];
-  loading: boolean;
+  checkState: CheckState;
   error: string | null;
   onRunCheck: () => void;
   onExport: () => void;
   t: (key: string, params?: Record<string, string | number>) => string;
 }
 
-export function SummaryStrip({ score, loading, error, onRunCheck, onExport, t }: SummaryStripProps) {
+export function SummaryStrip({ score, checkState, error, onRunCheck, onExport, t }: SummaryStripProps) {
   const hasResults = score !== null && score.categories.length > 0;
 
   if (!hasResults) {
     return (
       <div className="py-6">
-        <div className="flex items-baseline gap-3 mb-1">
-          <span className="text-4xl font-bold text-text-muted tracking-tight">--</span>
-        </div>
-        <p className="text-sm text-text-muted mb-5">{t("health.runCheckDesc")}</p>
+        <span className="text-4xl font-bold text-text-muted tracking-tight">--</span>
+        <p className="text-sm text-text-muted mt-1 mb-5">{t("health.runCheckDesc")}</p>
         <button
           onClick={onRunCheck}
-          disabled={loading}
+          disabled={checkState === "checking"}
           className="px-4 py-2 rounded-lg bg-accent-blue text-white text-sm font-medium hover:bg-accent-blue/90 transition-colors disabled:opacity-50 cursor-pointer"
         >
-          {loading ? t("health.running") : t("health.runCheck")}
+          {checkState === "checking" ? t("health.running") : t("health.runCheck")}
         </button>
         {error && <p className="text-xs text-accent-red mt-3">{error}</p>}
       </div>
@@ -39,24 +39,35 @@ export function SummaryStrip({ score, loading, error, onRunCheck, onExport, t }:
   );
   const failed = total - passed;
 
+  const buttonLabel = checkState === "checking" ? t("health.running")
+    : checkState === "done" ? t("health.done")
+    : t("health.runAgain");
+
   return (
     <div className="py-4">
-      {/* Hero: score + grade */}
+      {/* Score + actions */}
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-baseline gap-2">
-          <span className="text-4xl font-bold text-text-primary tracking-tight">{score.overall_score}</span>
+          <span className={`text-4xl font-bold tracking-tight transition-colors duration-500 ${checkState === "done" ? "text-accent-blue" : "text-text-primary"}`}>
+            {score.overall_score}
+          </span>
           <span className={`text-2xl font-bold ${gradeColor(score.overall_grade)}`}>{score.overall_grade}</span>
         </div>
         <div className="flex items-center gap-2">
           <button
             onClick={onRunCheck}
-            disabled={loading}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-text-secondary text-xs font-medium border border-border-primary hover:bg-bg-tertiary active:bg-bg-tertiary active:scale-95 transition-all disabled:opacity-50 cursor-pointer"
+            disabled={checkState === "checking"}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-all active:scale-95 cursor-pointer disabled:cursor-default ${
+              checkState === "done"
+                ? "border-accent-green/30 text-accent-green"
+                : "border-border-primary text-text-secondary hover:bg-bg-tertiary disabled:opacity-50"
+            }`}
           >
-            {loading && (
+            {checkState === "checking" && (
               <div className="w-3 h-3 border-[1.5px] border-text-muted border-t-transparent rounded-full animate-spin" />
             )}
-            {loading ? t("health.running") : t("health.runAgain")}
+            {checkState === "done" && <span className="text-sm leading-none">{"\u2713"}</span>}
+            {buttonLabel}
           </button>
           <button
             onClick={onExport}
@@ -68,7 +79,7 @@ export function SummaryStrip({ score, loading, error, onRunCheck, onExport, t }:
         </div>
       </div>
 
-      {/* Subtitle: stats */}
+      {/* Stats */}
       <p className="text-xs text-text-muted">
         <span className="text-accent-green">{t("health.passed", { count: passed })}</span>
         {failed > 0 && (

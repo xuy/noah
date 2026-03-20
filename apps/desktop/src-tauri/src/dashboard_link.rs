@@ -154,11 +154,22 @@ pub async fn push_checkin(config: &DashboardConfig, score: i32, grade: &str, cat
     #[derive(Deserialize)]
     struct CheckinResponse {
         enabled_categories: Option<Vec<String>>,
+        fleet_name: Option<String>,
         #[serde(default)]
         assigned_playbooks: Option<Vec<AssignedPlaybook>>,
     }
 
-    let data: CheckinResponse = resp.json().await.unwrap_or(CheckinResponse { enabled_categories: None, assigned_playbooks: None });
+    let data: CheckinResponse = resp.json().await.unwrap_or(CheckinResponse { enabled_categories: None, fleet_name: None, assigned_playbooks: None });
+
+    // Update fleet name from server (handles admin renames)
+    if let (Some(ref name), Some(dir)) = (&data.fleet_name, app_dir) {
+        if let Some(mut cfg) = DashboardConfig::load(dir) {
+            if cfg.fleet_name != *name {
+                cfg.fleet_name = name.clone();
+                let _ = cfg.save(dir);
+            }
+        }
+    }
 
     // Persist assigned playbooks to disk so they're available for auto-heal and manual runs
     if let Some(ref playbooks) = data.assigned_playbooks {

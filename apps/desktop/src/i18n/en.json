@@ -148,6 +148,7 @@
     "subtitle": "How your device scores across security, updates, and maintenance.",
     "runCheck": "Run Health Check",
     "runAgain": "Run Again",
+    "done": "Done",
     "runCheckDesc": "Checks your firewall, disk encryption, system integrity, and other security settings. Takes a few seconds. Nothing is changed on your device.",
     "running": "Checking...",
     "lastChecked": "Last checked: {time}",
