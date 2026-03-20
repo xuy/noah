@@ -314,6 +314,22 @@ impl Tool for LinuxReadLog {
 
 // ── ShellRun (Linux) ──────────────────────────────────────────────────
 
+/// Check if a program exists on PATH.
+fn which_exists(program: &str) -> bool {
+    std::process::Command::new("which")
+        .arg(program)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+}
+
+/// Escape a string for use inside single-quoted shell argument.
+fn shell_escape(s: &str) -> String {
+    format!("'{}'", s.replace('\'', "'\\''"))
+}
+
 pub struct ShellRun;
 
 const DANGEROUS_COMMAND_PATTERNS: &[&str] = &[
@@ -398,8 +414,8 @@ impl Tool for ShellRun {
             .as_str()
             .ok_or_else(|| anyhow::anyhow!("Missing required parameter: command"))?;
 
-        // Detect sudo commands and rewrite to use pkexec (PolicyKit) for a native GUI auth dialog.
-        // This avoids blocking on stdin for a password that will never arrive.
+        // Detect sudo commands and use a GUI auth mechanism instead of blocking on stdin.
+        // Fallback chain: pkexec → zenity+sudo -S → kdialog+sudo -S → error with instructions.
         let needs_admin = command.trim_start().starts_with("sudo ");
         let (exec_program, exec_args) = if needs_admin {
             // Strip "sudo " and any flags to get the inner command
@@ -413,11 +429,35 @@ impl Tool for ShellRun {
             } else {
                 inner
             };
-            // pkexec runs a single command with args, so wrap in bash -c
-            (
-                "pkexec".to_string(),
-                vec!["bash".to_string(), "-c".to_string(), inner.to_string()],
-            )
+
+            if which_exists("pkexec") {
+                // Best: native PolicyKit dialog (supports biometric if configured)
+                (
+                    "pkexec".to_string(),
+                    vec!["bash".to_string(), "-c".to_string(), inner.to_string()],
+                )
+            } else if which_exists("zenity") {
+                // Fallback: zenity password dialog → pipe to sudo -S
+                let script = format!(
+                    "PASSWD=$(zenity --password --title='Noah needs administrator access' 2>/dev/null) && echo \"$PASSWD\" | sudo -S bash -c {}",
+                    shell_escape(inner)
+                );
+                ("/bin/bash".to_string(), vec!["-c".to_string(), script])
+            } else if which_exists("kdialog") {
+                // Fallback: kdialog password dialog → pipe to sudo -S
+                let script = format!(
+                    "PASSWD=$(kdialog --password 'Noah needs administrator access' 2>/dev/null) && echo \"$PASSWD\" | sudo -S bash -c {}",
+                    shell_escape(inner)
+                );
+                ("/bin/bash".to_string(), vec!["-c".to_string(), script])
+            } else {
+                // No GUI auth available — return instructions instead of hanging
+                return Ok(ToolResult::read_only(format!(
+                    "Administrator access required but no GUI authentication tool found (pkexec, zenity, or kdialog). \
+                     Please run this command manually in a terminal:\n\nsudo {}",
+                    inner
+                ), json!({})));
+            }
         } else {
             (
                 "/bin/bash".to_string(),
