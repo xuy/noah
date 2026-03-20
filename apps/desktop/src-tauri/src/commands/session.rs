@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
+use crate::dashboard_link::{self, DashboardConfig};
 use crate::safety::journal::{self, MessageRecord, SessionRecord};
 use crate::AppState;
 
@@ -76,6 +77,28 @@ pub async fn end_session(
         if let Err(e) = journal::end_session_record(&conn, &session_id, &ended_at, message_count) {
             eprintln!("[warn] Failed to persist session end: {}", e);
         }
+
+        // Push session report to fleet if linked
+        let session_record = journal::list_sessions(&conn)
+            .ok()
+            .and_then(|sessions| sessions.into_iter().find(|s| s.id == session_id));
+
+        if let Some(config) = DashboardConfig::load(&state.app_dir) {
+            let sid = session_id.clone();
+            let title = session_record.as_ref().and_then(|s| s.title.clone());
+            let summary = session_record.as_ref().and_then(|s| s.compressed_summary.clone());
+            let resolved = session_record.as_ref().and_then(|s| s.resolved);
+            let created_at = session_record.as_ref().map(|s| s.created_at.clone()).unwrap_or_default();
+            let ended = ended_at.clone();
+            tokio::spawn(async move {
+                if let Err(e) = dashboard_link::push_session_report(
+                    &config, &sid, title.as_deref(), summary.as_deref(),
+                    message_count, resolved, &created_at, Some(&ended),
+                ).await {
+                    eprintln!("[fleet] Failed to push session report: {}", e);
+                }
+            });
+        }
     }
 
     Ok(removed)
@@ -143,7 +166,31 @@ pub async fn mark_resolved(
 ) -> Result<(), String> {
     let conn = state.db.lock().await;
     journal::mark_session_resolved(&conn, &session_id, resolved)
-        .map_err(|e| format!("Failed to mark session: {}", e))
+        .map_err(|e| format!("Failed to mark session: {}", e))?;
+
+    // Push resolved status update to fleet if linked
+    let session_record = journal::list_sessions(&conn)
+        .ok()
+        .and_then(|sessions| sessions.into_iter().find(|s| s.id == session_id));
+
+    if let Some(config) = DashboardConfig::load(&state.app_dir) {
+        let sid = session_id.clone();
+        let title = session_record.as_ref().and_then(|s| s.title.clone());
+        let summary = session_record.as_ref().and_then(|s| s.compressed_summary.clone());
+        let message_count = session_record.as_ref().map(|s| s.message_count).unwrap_or(0);
+        let created_at = session_record.as_ref().map(|s| s.created_at.clone()).unwrap_or_default();
+        let ended_at = session_record.as_ref().and_then(|s| s.ended_at.clone());
+        tokio::spawn(async move {
+            if let Err(e) = dashboard_link::push_session_report(
+                &config, &sid, title.as_deref(), summary.as_deref(),
+                message_count, Some(resolved), &created_at, ended_at.as_deref(),
+            ).await {
+                eprintln!("[fleet] Failed to push session resolved update: {}", e);
+            }
+        });
+    }
+
+    Ok(())
 }
 
 #[tauri::command]

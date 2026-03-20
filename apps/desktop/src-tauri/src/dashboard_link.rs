@@ -335,6 +335,59 @@ pub async fn push_auto_heal_event(
     Ok(())
 }
 
+/// Push a session report to the fleet dashboard.
+/// Called when a session ends or when resolved status changes.
+pub async fn push_session_report(
+    config: &DashboardConfig,
+    session_id: &str,
+    title: Option<&str>,
+    summary: Option<&str>,
+    message_count: i32,
+    resolved: Option<bool>,
+    started_at: &str,
+    ended_at: Option<&str>,
+) -> Result<()> {
+    let url = format!(
+        "{}/dashboard/session-report",
+        config.dashboard_url.trim_end_matches('/'),
+    );
+
+    let mut body = serde_json::json!({
+        "session_id": session_id,
+        "message_count": message_count,
+        "started_at": started_at,
+    });
+
+    if let Some(t) = title {
+        body["title"] = serde_json::Value::String(t.to_string());
+    }
+    if let Some(s) = summary {
+        body["summary"] = serde_json::Value::String(s.to_string());
+    }
+    if let Some(r) = resolved {
+        body["resolved"] = serde_json::Value::Bool(r);
+    }
+    if let Some(e) = ended_at {
+        body["ended_at"] = serde_json::Value::String(e.to_string());
+    }
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", config.device_token))
+        .json(&body)
+        .send()
+        .await
+        .context("Failed to push session report")?;
+
+    if !resp.status().is_success() {
+        let text = resp.text().await.unwrap_or_default();
+        anyhow::bail!("Session report push failed: {}", text);
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
