@@ -101,7 +101,7 @@ pub async fn get_health_score(state: State<'_, AppState>) -> Result<String, Stri
 
 /// Run all health scanners directly, then compute and return the health score.
 #[tauri::command]
-pub async fn run_health_check(state: State<'_, AppState>) -> Result<String, String> {
+pub async fn run_health_check(state: State<'_, AppState>, app_handle: tauri::AppHandle) -> Result<String, String> {
     // Run security + update scanners on a blocking thread, then read results
     // from the DB within the same function to avoid any stale-read issues.
     let db = state.db.clone();
@@ -181,6 +181,7 @@ pub async fn run_health_check(state: State<'_, AppState>) -> Result<String, Stri
     if result_json != "null" {
         let app_dir = state.app_dir.clone();
         let json_for_sync = result_json.clone();
+        let handle = app_handle.clone();
         tokio::spawn(async move {
             if let Some(config) = DashboardConfig::load(&app_dir) {
                 if let Ok(score) = serde_json::from_str::<serde_json::Value>(&json_for_sync) {
@@ -200,7 +201,15 @@ pub async fn run_health_check(state: State<'_, AppState>) -> Result<String, Stri
                             eprintln!("[health] fleet sync ok");
                         }
                         Err(e) => {
-                            eprintln!("[health] fleet sync failed: {}", e);
+                            let err_msg = e.to_string();
+                            eprintln!("[health] fleet sync failed: {}", err_msg);
+                            // Notify UI when device was removed from fleet
+                            if err_msg.contains("Device removed from fleet") {
+                                use tauri::Emitter;
+                                let _ = handle.emit("fleet-disconnected", serde_json::json!({
+                                    "reason": "Your device was removed from the fleet by the administrator."
+                                }));
+                            }
                         }
                     }
                 }
@@ -341,10 +350,11 @@ pub async fn resolve_fleet_action(
 #[tauri::command]
 pub async fn verify_remediation(
     state: State<'_, AppState>,
+    app_handle: tauri::AppHandle,
     action_id: String,
 ) -> Result<String, String> {
     // Re-run health check (reuse the existing logic)
-    let result_json = run_health_check(state.clone()).await?;
+    let result_json = run_health_check(state.clone(), app_handle).await?;
 
     if result_json == "null" {
         return Err("No health data after rescan".to_string());

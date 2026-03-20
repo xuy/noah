@@ -317,6 +317,10 @@ impl Orchestrator {
         let mut all_text_parts: Vec<String> = Vec::new();
         let mut ui_protocol_retries = 0usize;
 
+        // Dead loop detection: track recent tool call signatures (name + input hash).
+        // If the same signature appears 3 times, the LLM is stuck.
+        let mut recent_tool_signatures: Vec<String> = Vec::new();
+
         let mut handle_ui_protocol_error = |reason: String| -> Option<String> {
             ui_protocol_retries += 1;
             if ui_protocol_retries >= 3 {
@@ -570,6 +574,37 @@ impl Orchestrator {
             // If no tool calls, we're done — return all accumulated text.
             if tool_uses.is_empty() {
                 return Ok(all_text_parts.join("\n"));
+            }
+
+            // Dead loop detection: check if the same tool calls keep repeating.
+            {
+                let mut turn_sigs: Vec<String> = Vec::new();
+                for (_, name, input) in &tool_uses {
+                    // Signature = tool name + compact JSON of input (deterministic).
+                    let sig = format!("{}:{}", name, serde_json::to_string(input).unwrap_or_default());
+                    turn_sigs.push(sig);
+                }
+                turn_sigs.sort();
+                let turn_key = turn_sigs.join("|");
+                recent_tool_signatures.push(turn_key.clone());
+
+                // Check if the last 3 turns had identical tool signatures.
+                let len = recent_tool_signatures.len();
+                if len >= 3
+                    && recent_tool_signatures[len - 1] == recent_tool_signatures[len - 2]
+                    && recent_tool_signatures[len - 2] == recent_tool_signatures[len - 3]
+                {
+                    emit_debug(
+                        app_handle,
+                        "dead_loop_detected",
+                        &format!("Breaking dead loop: same tool calls repeated 3 times: {}", &turn_key[..turn_key.len().min(200)]),
+                        json!({ "signature": turn_key }),
+                    );
+                    all_text_parts.push(
+                        "I noticed I was repeating the same steps without making progress, so I've stopped. Could you try rephrasing your request, or let me know what specific result you're looking for?".to_string()
+                    );
+                    return Ok(all_text_parts.join("\n"));
+                }
             }
 
             // Execute each tool call.

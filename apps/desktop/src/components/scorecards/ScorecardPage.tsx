@@ -19,8 +19,9 @@ export function ScorecardPage() {
   const [fleetStatus, setFleetStatus] = useState<DashboardStatus | null>(null);
   const [fleetActions, setFleetActions] = useState<FleetAction[]>([]);
   const [autoHealActive, setAutoHealActive] = useState<{ check_id: string; playbook_slug: string } | null>(null);
-  const [autoHealResult, setAutoHealResult] = useState<{ check_id: string; playbook_slug: string; success: boolean; score_before: number | null; score_after: number | null } | null>(null);
+  const [autoHealResult, setAutoHealResult] = useState<{ check_id: string; playbook_slug: string; success: boolean; score_before: number | null; score_after: number | null; error: string | null } | null>(null);
   const [autoHealAvailable, setAutoHealAvailable] = useState<{ check_id: string; playbook_slug: string; reason: string } | null>(null);
+  const [fleetDisconnected, setFleetDisconnected] = useState<string | null>(null);
 
   useEffect(() => {
     commands.getDashboardStatus().then(setFleetStatus).catch(() => {});
@@ -71,7 +72,7 @@ export function ScorecardPage() {
       setAutoHealActive(e.payload);
       setAutoHealResult(null);
     });
-    const unlistenCompleted = listen<{ check_id: string; playbook_slug: string; success: boolean; score_before: number | null; score_after: number | null }>("auto-heal-completed", (e) => {
+    const unlistenCompleted = listen<{ check_id: string; playbook_slug: string; success: boolean; score_before: number | null; score_after: number | null; error: string | null }>("auto-heal-completed", (e) => {
       setAutoHealActive(null);
       setAutoHealResult(e.payload);
       loadScore();
@@ -81,10 +82,15 @@ export function ScorecardPage() {
     const unlistenAvailable = listen<{ check_id: string; playbook_slug: string; reason: string }>("auto-heal-available", (e) => {
       setAutoHealAvailable(e.payload);
     });
+    const unlistenFleetDisconnect = listen<{ reason: string }>("fleet-disconnected", (e) => {
+      setFleetDisconnected(e.payload.reason);
+      setFleetStatus(null); // clear the fleet connection card
+    });
     return () => {
       unlistenStarted.then((fn) => fn());
       unlistenCompleted.then((fn) => fn());
       unlistenAvailable.then((fn) => fn());
+      unlistenFleetDisconnect.then((fn) => fn());
     };
   }, [loadScore, loadHistory]);
 
@@ -144,8 +150,7 @@ export function ScorecardPage() {
       });
       commands.setLocale(session.id, currentLocale()).catch(() => {});
 
-      // Add greeting + user message to chat
-      addMessage({ role: "system", content: "Hey! I'm Noah, your computer helper. Just tell me what's going on and I'll take care of it." });
+      // Add user message to chat (no greeting — welcome screen handles empty state)
       addMessage({ role: "user", content: message });
 
       // Switch to chat view
@@ -180,6 +185,16 @@ export function ScorecardPage() {
     <div className="flex-1 overflow-y-auto">
       <div className="max-w-2xl mx-auto px-6 py-8">
 
+        {/* Fleet disconnection banner */}
+        {fleetDisconnected && (
+          <div className="mb-4 bg-accent-red/8 border border-accent-red/15 rounded-xl p-4 flex items-center justify-between">
+            <p className="text-sm text-text-primary">{fleetDisconnected}</p>
+            <button onClick={() => setFleetDisconnected(null)} className="text-xs text-text-muted hover:text-text-secondary ml-3 flex-shrink-0 cursor-pointer">
+              Dismiss
+            </button>
+          </div>
+        )}
+
         {/* Fleet action cards (urgent, at top) */}
         {fleetActions.length > 0 && (
           <div className="mb-6">
@@ -212,7 +227,7 @@ export function ScorecardPage() {
                     before: autoHealResult.score_before ?? "?",
                     after: autoHealResult.score_after ?? "?",
                   })
-                : t("health.autoHealFailed")}
+                : `${t("health.autoHealFailed")}${autoHealResult.error ? `: ${autoHealResult.error}` : ""}`}
             </p>
           </div>
         )}
