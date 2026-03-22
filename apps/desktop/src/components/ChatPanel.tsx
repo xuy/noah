@@ -119,7 +119,6 @@ function StepIndicator({ step, total, label, allSteps, emoji, playbookName }: St
         {allSteps.map((s, i) => {
           const isCompleted = s.number < step;
           const isCurrent = s.number === step;
-          const isUpcoming = s.number > step;
           const isLast = i === allSteps.length - 1;
 
           return (
