@@ -13,117 +13,392 @@ function toTitleCase(value: string): string {
     .join(" ");
 }
 
-function MarkdownView({ content }: { content: string }) {
-  const lines = content.split("\n");
-  const blocks: ReactElement[] = [];
+// ── Playbook parser: extracts semantic structure from markdown ──
+
+interface PlaybookSection {
+  type: "trigger" | "quick-check" | "step" | "caveats" | "tools" | "section";
+  title: string;
+  stepNumber?: number;
+  lines: string[];
+}
+
+interface ParsedPlaybook {
+  title: string;
+  emoji?: string;
+  description?: string;
+  platform?: string;
+  author?: string;
+  lastReviewed?: string;
+  sections: PlaybookSection[];
+}
+
+function parsePlaybookContent(content: string, entry?: KnowledgeEntry | null): ParsedPlaybook {
+  // Strip frontmatter
+  let body = content;
+  let emoji = entry?.emoji ?? undefined;
+  let description = entry?.description ?? undefined;
+  let platform: string | undefined;
+  let author: string | undefined;
+  let lastReviewed: string | undefined;
+  if (body.trimStart().startsWith("---")) {
+    const after = body.trimStart().slice(3);
+    const endIdx = after.indexOf("\n---");
+    if (endIdx !== -1) {
+      const yaml = after.slice(0, endIdx);
+      for (const line of yaml.split("\n")) {
+        const t = line.trim();
+        if (t.startsWith("emoji:")) emoji = emoji ?? t.slice(6).trim();
+        if (t.startsWith("description:")) description = description ?? t.slice(12).trim();
+        if (t.startsWith("platform:")) platform = t.slice(9).trim();
+        if (t.startsWith("author:")) author = t.slice(7).trim();
+        if (t.startsWith("last_reviewed:")) lastReviewed = t.slice(14).trim();
+      }
+      body = after.slice(endIdx + 4);
+    }
+  }
+
+  const lines = body.split("\n");
+  let title = "";
   let i = 0;
+
+  // Find title (# heading)
+  while (i < lines.length) {
+    const t = lines[i].trim();
+    if (t.startsWith("# ")) {
+      title = t.slice(2);
+      i++;
+      break;
+    }
+    i++;
+  }
+
+  const sections: PlaybookSection[] = [];
+  let currentSection: PlaybookSection | null = null;
+
+  const flushSection = () => {
+    if (currentSection) sections.push(currentSection);
+    currentSection = null;
+  };
+
+  const classifyH2 = (heading: string): PlaybookSection["type"] => {
+    const h = heading.toLowerCase();
+    if (h.includes("when to activate") || h.includes("trigger")) return "trigger";
+    if (h.includes("quick check") || h.includes("triage")) return "quick-check";
+    if (h.includes("caveat") || h.includes("notes") || h.includes("warning")) return "caveats";
+    if (h.includes("tools referenced") || h.includes("tools used")) return "tools";
+    return "section";
+  };
 
   while (i < lines.length) {
     const line = lines[i];
+    const t = line.trim();
 
-    if (line.trim().startsWith("```") || line.trim().startsWith("~~~")) {
-      const fence = line.trim().slice(0, 3);
+    // ### N. Step heading
+    const stepMatch = t.match(/^###\s+(\d+)\.\s+(.+)/);
+    if (stepMatch) {
+      flushSection();
+      currentSection = {
+        type: "step",
+        title: stepMatch[2],
+        stepNumber: parseInt(stepMatch[1], 10),
+        lines: [],
+      };
+      i++;
+      continue;
+    }
+
+    // ## Step N: heading (alternative format)
+    const stepAltMatch = t.match(/^##\s+Step\s+(\d+)[:.—\-]\s*(.+)/i);
+    if (stepAltMatch) {
+      flushSection();
+      currentSection = {
+        type: "step",
+        title: stepAltMatch[2],
+        stepNumber: parseInt(stepAltMatch[1], 10),
+        lines: [],
+      };
+      i++;
+      continue;
+    }
+
+    // ## Section heading
+    if (t.startsWith("## ")) {
+      flushSection();
+      const heading = t.slice(3);
+      currentSection = {
+        type: classifyH2(heading),
+        title: heading,
+        lines: [],
+      };
+      i++;
+      continue;
+    }
+
+    // Accumulate content into current section
+    if (currentSection) {
+      currentSection.lines.push(line);
+    }
+    i++;
+  }
+  flushSection();
+
+  return { title, emoji, description, platform, author, lastReviewed, sections };
+}
+
+// ── Inline markdown renderer for playbook body text ──
+
+function PlaybookInline({ text }: { text: string }) {
+  // Handle **bold**, `code`, and [links](url)
+  const parts = text.split(/(\*\*[^*]+\*\*|`[^`]+`|\[[^\]]+\]\([^)]+\))/g);
+  return (
+    <>
+      {parts.map((part, i) => {
+        const bold = part.match(/^\*\*([^*]+)\*\*$/);
+        if (bold) return <strong key={i} className="font-semibold">{bold[1]}</strong>;
+        const code = part.match(/^`([^`]+)`$/);
+        if (code) return <code key={i} className="px-1.5 py-0.5 rounded bg-accent-blue/8 text-accent-blue text-[13px] font-mono">{code[1]}</code>;
+        const link = part.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
+        if (link) return <a key={i} href={link[2]} target="_blank" rel="noreferrer" className="text-accent-blue underline underline-offset-2">{link[1]}</a>;
+        return <span key={i}>{part}</span>;
+      })}
+    </>
+  );
+}
+
+function PlaybookBody({ lines }: { lines: string[] }) {
+  const blocks: ReactElement[] = [];
+  let idx = 0;
+
+  while (idx < lines.length) {
+    const line = lines[idx];
+    const t = line.trim();
+    if (!t) { idx++; continue; }
+
+    // Code block
+    if (t.startsWith("```") || t.startsWith("~~~")) {
+      const fence = t.slice(0, 3);
       const codeLines: string[] = [];
-      i += 1;
-      while (i < lines.length && !lines[i].trim().startsWith(fence)) {
-        codeLines.push(lines[i]);
-        i += 1;
+      idx++;
+      while (idx < lines.length && !lines[idx].trim().startsWith(fence)) {
+        codeLines.push(lines[idx]);
+        idx++;
       }
       blocks.push(
-        <pre
-          key={`code-${i}`}
-          className="bg-bg-secondary/70 border border-border-primary rounded-lg p-4 overflow-x-auto text-sm text-text-primary font-mono"
-        >
+        <pre key={`code-${idx}`} className="bg-bg-tertiary/50 border border-border-primary rounded-lg p-3 overflow-x-auto text-sm text-text-primary font-mono my-2">
           {codeLines.join("\n")}
         </pre>,
       );
-      i += 1;
+      idx++;
       continue;
     }
 
-    const trimmed = line.trim();
-    if (!trimmed) {
-      i += 1;
-      continue;
-    }
-
-    if (trimmed.startsWith("### ")) {
-      blocks.push(
-        <h3 key={`h3-${i}`} className="text-lg font-semibold text-text-primary mt-6 mb-2">
-          {trimmed.slice(4)}
-        </h3>,
-      );
-      i += 1;
-      continue;
-    }
-
-    if (trimmed.startsWith("## ")) {
-      blocks.push(
-        <h2 key={`h2-${i}`} className="text-xl font-semibold text-text-primary mt-6 mb-2">
-          {trimmed.slice(3)}
-        </h2>,
-      );
-      i += 1;
-      continue;
-    }
-
-    if (trimmed.startsWith("# ")) {
-      blocks.push(
-        <h1 key={`h1-${i}`} className="text-2xl font-semibold text-text-primary mt-6 mb-3">
-          {trimmed.slice(2)}
-        </h1>,
-      );
-      i += 1;
-      continue;
-    }
-
-    if (trimmed.startsWith("- ") || trimmed.startsWith("* ")) {
-      const items: string[] = [];
-      while (i < lines.length) {
-        const l = lines[i].trim();
-        if (l.startsWith("- ") || l.startsWith("* ")) {
-          items.push(l.slice(2));
-          i += 1;
-          continue;
-        }
-        break;
+    // Blockquote
+    if (t.startsWith("> ")) {
+      const quoteLines: string[] = [];
+      while (idx < lines.length && lines[idx].trim().startsWith("> ")) {
+        quoteLines.push(lines[idx].trim().slice(2));
+        idx++;
       }
       blocks.push(
-        <ul key={`ul-${i}`} className="list-disc pl-6 space-y-1 text-text-primary">
-          {items.map((item, idx) => (
-            <li key={idx}>{item}</li>
+        <div key={`bq-${idx}`} className="border-l-2 border-accent-blue/30 pl-3 py-1 my-2 text-sm text-text-secondary italic">
+          <PlaybookInline text={quoteLines.join(" ")} />
+        </div>,
+      );
+      continue;
+    }
+
+    // List items
+    if (t.startsWith("- ") || t.startsWith("* ")) {
+      const items: string[] = [];
+      while (idx < lines.length) {
+        const l = lines[idx].trim();
+        if (l.startsWith("- ") || l.startsWith("* ")) {
+          items.push(l.slice(2));
+          idx++;
+        } else if (l.startsWith("  ") && items.length > 0) {
+          // continuation line
+          items[items.length - 1] += " " + l.trim();
+          idx++;
+        } else break;
+      }
+      blocks.push(
+        <ul key={`ul-${idx}`} className="space-y-1.5 my-2">
+          {items.map((item, j) => (
+            <li key={j} className="flex gap-2 text-sm text-text-primary leading-relaxed">
+              <span className="text-text-muted mt-1 flex-shrink-0">•</span>
+              <span><PlaybookInline text={item} /></span>
+            </li>
           ))}
         </ul>,
       );
       continue;
     }
 
-    const paragraph: string[] = [trimmed];
-    i += 1;
-    while (i < lines.length) {
-      const next = lines[i].trim();
-      if (
-        !next ||
-        next.startsWith("#") ||
-        next.startsWith("- ") ||
-        next.startsWith("* ") ||
-        next.startsWith("```") ||
-        next.startsWith("~~~")
-      ) {
-        break;
-      }
-      paragraph.push(next);
-      i += 1;
+    // Paragraph
+    const para: string[] = [t];
+    idx++;
+    while (idx < lines.length) {
+      const next = lines[idx].trim();
+      if (!next || next.startsWith("#") || next.startsWith("- ") || next.startsWith("* ") || next.startsWith("```") || next.startsWith("~~~") || next.startsWith("> ")) break;
+      para.push(next);
+      idx++;
     }
-
     blocks.push(
-      <p key={`p-${i}`} className="text-base text-text-primary leading-relaxed">
-        {paragraph.join(" ")}
+      <p key={`p-${idx}`} className="text-sm text-text-primary leading-relaxed my-1.5">
+        <PlaybookInline text={para.join(" ")} />
       </p>,
     );
   }
 
-  return <div className="space-y-3">{blocks}</div>;
+  return <>{blocks}</>;
+}
+
+// ── PlaybookView: renders a playbook as an interactive artifact ──
+
+function PlaybookView({ content, entry }: { content: string; entry: KnowledgeEntry }) {
+  const pb = parsePlaybookContent(content, entry);
+  const steps = pb.sections.filter((s) => s.type === "step");
+  const trigger = pb.sections.find((s) => s.type === "trigger");
+  const quickCheck = pb.sections.find((s) => s.type === "quick-check");
+  const caveats = pb.sections.find((s) => s.type === "caveats");
+  const otherSections = pb.sections.filter(
+    (s) => s.type === "section" && !s.title.toLowerCase().includes("fix path"),
+  );
+
+  const platformLabel: Record<string, string> = {
+    macos: "macOS",
+    windows: "Windows",
+    linux: "Linux",
+    all: "All platforms",
+  };
+
+  return (
+    <div className="space-y-5">
+      {/* ── Hero header ── */}
+      <div className="rounded-2xl border border-border-primary bg-gradient-to-b from-bg-secondary/80 to-bg-primary p-6">
+        <div className="flex items-start gap-4">
+          {pb.emoji && (
+            <div className="w-14 h-14 rounded-xl bg-bg-tertiary/60 border border-border-primary flex items-center justify-center text-2xl flex-shrink-0">
+              {pb.emoji}
+            </div>
+          )}
+          <div className="flex-1 min-w-0">
+            <h1 className="text-xl font-semibold text-text-primary">{pb.title}</h1>
+            {pb.description && (
+              <p className="text-sm text-text-secondary mt-1">{pb.description}</p>
+            )}
+            <div className="flex items-center gap-3 mt-3 flex-wrap">
+              {pb.platform && (
+                <span className="inline-flex items-center gap-1 text-xs text-text-muted bg-bg-tertiary/60 rounded-full px-2.5 py-1">
+                  {platformLabel[pb.platform] ?? pb.platform}
+                </span>
+              )}
+              {steps.length > 0 && (
+                <span className="inline-flex items-center gap-1 text-xs text-text-muted bg-bg-tertiary/60 rounded-full px-2.5 py-1">
+                  {steps.length} {steps.length === 1 ? "step" : "steps"}
+                </span>
+              )}
+              {pb.author && (
+                <span className="inline-flex items-center gap-1 text-xs text-text-muted bg-bg-tertiary/60 rounded-full px-2.5 py-1">
+                  {pb.author}
+                </span>
+              )}
+              {pb.lastReviewed && (
+                <span className="inline-flex items-center gap-1 text-xs text-text-muted bg-bg-tertiary/60 rounded-full px-2.5 py-1">
+                  reviewed {pb.lastReviewed}
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Trigger keywords ── */}
+      {trigger && trigger.lines.some((l) => l.trim()) && (
+        <div className="rounded-xl border border-accent-blue/15 bg-accent-blue/4 p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="text-accent-blue">
+              <path d="M7 1L8.5 5H13L9.5 8L10.5 13L7 10L3.5 13L4.5 8L1 5H5.5L7 1Z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round"/>
+            </svg>
+            <span className="text-xs font-semibold text-accent-blue uppercase tracking-wider">Activates when</span>
+          </div>
+          <div className="text-sm text-text-primary">
+            <PlaybookBody lines={trigger.lines} />
+          </div>
+        </div>
+      )}
+
+      {/* ── Quick check ── */}
+      {quickCheck && quickCheck.lines.some((l) => l.trim()) && (
+        <div className="rounded-xl border border-border-primary bg-bg-secondary/40 p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="text-accent-purple">
+              <circle cx="7" cy="7" r="5.5" stroke="currentColor" strokeWidth="1.2"/>
+              <path d="M5 7L6.5 8.5L9 5.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+            <span className="text-xs font-semibold text-accent-purple uppercase tracking-wider">Quick check</span>
+          </div>
+          <div className="text-sm text-text-primary">
+            <PlaybookBody lines={quickCheck.lines} />
+          </div>
+        </div>
+      )}
+
+      {/* ── Steps: the main content ── */}
+      {steps.length > 0 && (
+        <div className="space-y-0">
+          <div className="text-xs font-semibold text-text-muted uppercase tracking-wider mb-3 px-1">
+            Procedure
+          </div>
+          {steps.map((step, i) => (
+            <div key={i} className="flex gap-3">
+              {/* Step rail */}
+              <div className="flex flex-col items-center flex-shrink-0">
+                <div className="w-7 h-7 rounded-full bg-bg-tertiary border border-border-primary flex items-center justify-center text-xs font-semibold text-text-secondary">
+                  {step.stepNumber ?? i + 1}
+                </div>
+                {i < steps.length - 1 && (
+                  <div className="w-px flex-1 bg-border-primary my-1" />
+                )}
+              </div>
+              {/* Step content */}
+              <div className={`flex-1 min-w-0 ${i < steps.length - 1 ? "pb-4" : "pb-1"}`}>
+                <div className="text-sm font-semibold text-text-primary mb-1">{step.title}</div>
+                <div className="text-text-secondary">
+                  <PlaybookBody lines={step.lines} />
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── Caveats ── */}
+      {caveats && caveats.lines.some((l) => l.trim()) && (
+        <div className="rounded-xl border border-accent-yellow/20 bg-accent-yellow/4 p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-sm">⚠</span>
+            <span className="text-xs font-semibold text-text-secondary uppercase tracking-wider">Caveats</span>
+          </div>
+          <div className="text-sm text-text-primary">
+            <PlaybookBody lines={caveats.lines} />
+          </div>
+        </div>
+      )}
+
+      {/* ── Other sections (catch-all) ── */}
+      {otherSections.map((sec, i) => (
+        <div key={i} className="rounded-xl border border-border-primary bg-bg-secondary/30 p-4">
+          <div className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-2">
+            {sec.title}
+          </div>
+          <div className="text-sm text-text-primary">
+            <PlaybookBody lines={sec.lines} />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 function KnowledgeCard({
@@ -281,13 +556,15 @@ export function KnowledgeView({ onNewKnowledge }: { onNewKnowledge?: () => void 
               </svg>
               {t("knowledgePanel.backToKnowledge")}
             </button>
-            <p className="text-xs text-text-muted font-mono mb-4">{selectedEntry.path}</p>
             {selectedEntry.category === "playbooks" ? (
-              <MarkdownView content={fileContent} />
+              <PlaybookView content={fileContent} entry={selectedEntry} />
             ) : (
-              <pre className="text-base text-text-primary whitespace-pre-wrap break-words leading-relaxed font-sans">
-                {fileContent}
-              </pre>
+              <>
+                <p className="text-xs text-text-muted font-mono mb-4">{selectedEntry.path}</p>
+                <pre className="text-base text-text-primary whitespace-pre-wrap break-words leading-relaxed font-sans">
+                  {fileContent}
+                </pre>
+              </>
             )}
           </div>
         ) : entries.length === 0 ? (
