@@ -94,7 +94,18 @@ fn run_macos_checks(budget: Duration) -> Vec<RawCheck> {
             detail: "Could not check for updates".to_string(),
         });
     } else {
-        let lower = su_output.to_lowercase();
+        // Filter out Rapid Security Responses (RSRs) — these are background
+        // patches that macOS auto-installs; System Settings shows "up to date"
+        // even while they're pending, so we shouldn't flag them.
+        let filtered: String = su_output
+            .lines()
+            .filter(|line| {
+                let l = line.to_lowercase();
+                !l.contains("background security improvement")
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        let lower = filtered.to_lowercase();
         let has_security = lower.contains("security") || lower.contains("critical");
         let has_updates = lower.contains("* label:");
 

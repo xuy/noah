@@ -7,6 +7,7 @@ mod machine_context;
 mod system_snapshot;
 mod platform;
 mod playbooks;
+pub(crate) mod fleet_policy;
 mod autoheal;
 mod proactive;
 mod safety;

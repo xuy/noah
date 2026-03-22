@@ -166,9 +166,11 @@ pub async fn push_checkin(
         fleet_name: Option<String>,
         #[serde(default)]
         assigned_playbooks: Option<Vec<AssignedPlaybook>>,
+        #[serde(default)]
+        policy: Option<crate::fleet_policy::FleetPolicy>,
     }
 
-    let data: CheckinResponse = resp.json().await.unwrap_or(CheckinResponse { enabled_categories: None, fleet_name: None, assigned_playbooks: None });
+    let data: CheckinResponse = resp.json().await.unwrap_or(CheckinResponse { enabled_categories: None, fleet_name: None, assigned_playbooks: None, policy: None });
 
     // Update fleet name from server (handles admin renames)
     if let (Some(ref name), Some(dir)) = (&data.fleet_name, app_dir) {
@@ -177,6 +179,13 @@ pub async fn push_checkin(
                 cfg.fleet_name = name.clone();
                 let _ = cfg.save(dir);
             }
+        }
+    }
+
+    // Persist fleet policy to disk
+    if let Some(dir) = app_dir {
+        if let Some(ref policy) = data.policy {
+            let _ = policy.save(dir);
         }
     }
 

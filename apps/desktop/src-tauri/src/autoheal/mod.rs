@@ -179,7 +179,18 @@ impl AutoHealMonitor {
 
         eprintln!("[autoheal] triage picked: {} for check {}", triage.playbook_slug, triage.check_id);
 
-        if !auto_heal_on {
+        // Per-category policy check: if fleet policy specifies auto_heal for this category,
+        // that overrides the global auto_heal_enabled setting.
+        let category = triage.check_id.split('.').next().unwrap_or("");
+        let policy_auto_heal = crate::fleet_policy::FleetPolicy::load(&self.app_dir)
+            .and_then(|p| crate::fleet_policy::should_auto_heal(&p, category));
+
+        let effective_auto_heal = match policy_auto_heal {
+            Some(val) => val,  // Policy explicitly says yes or no for this category
+            None => auto_heal_on,  // No policy rule — fall back to global toggle
+        };
+
+        if !effective_auto_heal {
             // Emit notification that auto-heal is available but off.
             let _ = self.app_handle.emit("auto-heal-available", AutoHealAvailablePayload {
                 check_id: triage.check_id.clone(),

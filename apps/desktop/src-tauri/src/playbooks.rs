@@ -58,6 +58,8 @@ pub struct PlaybookMeta {
     pub last_reviewed: Option<String>,
     /// Author or last reviewer.
     pub author: Option<String>,
+    /// Optional emoji icon for UI display.
+    pub emoji: Option<String>,
 }
 
 impl PlaybookMeta {
@@ -89,6 +91,10 @@ pub struct PlaybookState {
     pub total_steps: u32,
     /// Number of interactive ui_* turns completed so far.
     pub current_turn: u32,
+    /// Optional emoji from playbook frontmatter.
+    pub emoji: Option<String>,
+    /// Playbook description from frontmatter.
+    pub description: Option<String>,
 }
 
 impl PlaybookState {
@@ -96,11 +102,14 @@ impl PlaybookState {
     pub fn from_content(name: &str, content: &str) -> Self {
         let steps = parse_steps(content);
         let total = if steps.is_empty() { 1 } else { steps.len() as u32 };
+        let meta = parse_frontmatter(content);
         Self {
             name: name.to_string(),
             steps,
             total_steps: total,
             current_turn: 0,
+            emoji: meta.as_ref().and_then(|m| m.emoji.clone()),
+            description: meta.map(|m| m.description),
         }
     }
 
@@ -112,11 +121,23 @@ impl PlaybookState {
         }
         let step_index = (self.current_turn as usize).min(self.steps.len().saturating_sub(1));
         let step = &self.steps[step_index];
-        Some(serde_json::json!({
+        let all_steps: Vec<serde_json::Value> = self.steps.iter().map(|s| {
+            serde_json::json!({ "number": s.number, "label": s.label })
+        }).collect();
+        let mut obj = serde_json::json!({
             "step": step.number,
             "total": self.total_steps,
-            "label": step.label
-        }))
+            "label": step.label,
+            "all_steps": all_steps,
+            "playbook_name": self.name
+        });
+        if let Some(ref emoji) = self.emoji {
+            obj["emoji"] = serde_json::json!(emoji);
+        }
+        if let Some(ref desc) = self.description {
+            obj["description"] = serde_json::json!(desc);
+        }
+        Some(obj)
     }
 
     /// Advance one interactive turn.
@@ -423,6 +444,7 @@ fn parse_frontmatter(content: &str) -> Option<PlaybookMeta> {
     let mut author = None;
     let mut source_field = None;
     let mut type_field = None;
+    let mut emoji = None;
 
     for line in yaml_block.lines() {
         let line = line.trim();
@@ -440,6 +462,8 @@ fn parse_frontmatter(content: &str) -> Option<PlaybookMeta> {
             source_field = Some(val.trim().to_string());
         } else if let Some(val) = line.strip_prefix("type:") {
             type_field = Some(val.trim().to_string());
+        } else if let Some(val) = line.strip_prefix("emoji:") {
+            emoji = Some(val.trim().to_string());
         }
     }
 
@@ -467,6 +491,7 @@ fn parse_frontmatter(content: &str) -> Option<PlaybookMeta> {
         content_hash: content_hash(content),
         last_reviewed,
         author,
+        emoji,
     })
 }
 

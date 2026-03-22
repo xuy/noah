@@ -66,24 +66,137 @@ function humanizeActionLabel(label: string, actionType: string | undefined, t: (
   return raw;
 }
 
-// ── Progress Bar (playbook step indicator) ──
+// ── Step Indicator (playbook wizard stepper) ──
 
-function ProgressBar({ step, total, label }: { step: number; total: number; label: string }) {
+interface StepIndicatorProps {
+  step: number;
+  total: number;
+  label: string;
+  allSteps?: { number: number; label: string }[];
+  emoji?: string;
+  playbookName?: string;
+}
+
+function StepIndicator({ step, total, label, allSteps, emoji, playbookName }: StepIndicatorProps) {
   const { t } = useLocale();
-  const pct = Math.min(100, Math.round((step / total) * 100));
-  return (
-    <div className="mb-3">
-      <div className="flex items-center justify-between text-xs text-text-muted mb-1.5">
-        <span className="font-medium text-text-secondary">{t("chat.stepOf", { step, total })}</span>
-        <span>{label}</span>
+
+  // Fall back to simple progress bar when all_steps isn't available
+  if (!allSteps || allSteps.length === 0) {
+    const pct = Math.min(100, Math.round((step / total) * 100));
+    return (
+      <div className="mb-3">
+        <div className="flex items-center justify-between text-xs text-text-muted mb-1.5">
+          <span className="font-medium text-text-secondary">{t("chat.stepOf", { step, total })}</span>
+          <span>{label}</span>
+        </div>
+        <div className="w-full h-1.5 rounded-full bg-bg-tertiary overflow-hidden">
+          <div
+            className="h-full rounded-full bg-accent-blue transition-all duration-500 ease-out"
+            style={{ width: `${pct}%` }}
+          />
+        </div>
       </div>
-      <div className="w-full h-1.5 rounded-full bg-bg-tertiary overflow-hidden">
-        <div
-          className="h-full rounded-full bg-accent-blue transition-all duration-500 ease-out"
-          style={{ width: `${pct}%` }}
-        />
+    );
+  }
+
+  // Format playbook name for display: "network-diagnostics" → "Network Diagnostics"
+  const displayName = playbookName
+    ? playbookName.split("-").map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ")
+    : undefined;
+
+  return (
+    <div className="mb-4">
+      {/* Playbook title row */}
+      {displayName && (
+        <div className="flex items-center gap-2 mb-3">
+          {emoji && <span className="text-base">{emoji}</span>}
+          <span className="text-xs font-semibold text-text-secondary uppercase tracking-wider">{displayName}</span>
+        </div>
+      )}
+
+      {/* Stepper */}
+      <div className="flex items-start gap-0">
+        {allSteps.map((s, i) => {
+          const isCompleted = s.number < step;
+          const isCurrent = s.number === step;
+          const isLast = i === allSteps.length - 1;
+
+          return (
+            <div key={s.number} className="flex items-start flex-1 min-w-0">
+              <div className="flex flex-col items-center">
+                {/* Dot */}
+                <div
+                  className={`
+                    w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-semibold
+                    transition-all duration-300 flex-shrink-0
+                    ${isCompleted
+                      ? "bg-accent-blue text-white"
+                      : isCurrent
+                        ? "bg-accent-blue text-white ring-[3px] ring-accent-blue/20"
+                        : "bg-bg-tertiary text-text-muted"
+                    }
+                  `}
+                >
+                  {isCompleted ? (
+                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                      <path d="M2.5 6L5 8.5L9.5 3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  ) : (
+                    s.number
+                  )}
+                </div>
+                {/* Label below dot */}
+                <span
+                  className={`
+                    text-[10px] mt-1 text-center leading-tight max-w-[64px] line-clamp-2
+                    ${isCurrent ? "text-accent-blue font-medium" : isCompleted ? "text-text-secondary" : "text-text-muted"}
+                  `}
+                >
+                  {s.label}
+                </span>
+              </div>
+              {/* Connector line */}
+              {!isLast && (
+                <div className="flex-1 mt-3 mx-1">
+                  <div
+                    className={`h-[2px] rounded-full transition-all duration-500 ${
+                      isCompleted ? "bg-accent-blue" : "bg-bg-tertiary"
+                    }`}
+                  />
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
+  );
+}
+
+// Map status emoji to themed inline icons so rendering is consistent
+// regardless of platform emoji font.
+const STATUS_EMOJI: Record<string, { symbol: string; cls: string }> = {
+  "\u2705": { symbol: "\u2713", cls: "text-accent-green" },   // ✅ → ✓
+  "\u274C": { symbol: "\u2717", cls: "text-status-error" },    // ❌ → ✗
+  "\u26A0\uFE0F": { symbol: "!", cls: "text-status-pending" }, // ⚠️ → !
+  "\u26A0": { symbol: "!", cls: "text-status-pending" },       // ⚠ (no VS16)
+  "\u2139\uFE0F": { symbol: "i", cls: "text-accent-blue" },   // ℹ️ → i
+  "\u2139": { symbol: "i", cls: "text-accent-blue" },          // ℹ (no VS16)
+};
+
+const STATUS_EMOJI_PATTERN = new RegExp(
+  `(${Object.keys(STATUS_EMOJI).map((k) => k.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&")).join("|")})`,
+  "g",
+);
+
+function StyledEmoji({ symbol, cls }: { symbol: string; cls: string }) {
+  return (
+    <span
+      className={`inline-flex items-center justify-center w-5 h-5 rounded-full text-xs font-bold ${cls} bg-current/10 align-text-bottom`}
+      style={{ backgroundColor: "color-mix(in srgb, currentColor 12%, transparent)" }}
+    >
+      {symbol}
+    </span>
   );
 }
 
@@ -95,7 +208,17 @@ function LinkedText({ text }: { text: string }) {
         if (!part) return null;
         if (!URL_PATTERN.test(part)) {
           URL_PATTERN.lastIndex = 0;
-          return <span key={i}>{part}</span>;
+          // Replace status emoji with themed icons
+          const segments = part.split(STATUS_EMOJI_PATTERN);
+          return (
+            <span key={i}>
+              {segments.map((seg, j) => {
+                const mapped = STATUS_EMOJI[seg];
+                if (mapped) return <StyledEmoji key={j} symbol={mapped.symbol} cls={mapped.cls} />;
+                return <span key={j}>{seg}</span>;
+              })}
+            </span>
+          );
         }
         URL_PATTERN.lastIndex = 0;
         const href = part.startsWith("http://") || part.startsWith("https://")
@@ -257,15 +380,40 @@ function MarkdownSummary({ text }: { text: string }) {
         }
         break;
       }
-      blocks.push(
-        <ul key={`ul-${i}`} className="list-disc pl-5 space-y-1">
-          {items.map((item, idx) => (
-            <li key={idx}>
-              <InlineMarkdown text={item} />
-            </li>
-          ))}
-        </ul>,
+      // Check if every item starts with a status emoji — render as status list
+      // (emoji replaces bullet) instead of a bulleted list.
+      const statusEmojiKeys = Object.keys(STATUS_EMOJI);
+      const allStatus = items.every((item) =>
+        statusEmojiKeys.some((e) => item.startsWith(e)),
       );
+
+      if (allStatus) {
+        blocks.push(
+          <ul key={`ul-${i}`} className="list-none pl-1 space-y-1.5">
+            {items.map((item, idx) => {
+              const emojiKey = statusEmojiKeys.find((e) => item.startsWith(e))!;
+              const mapped = STATUS_EMOJI[emojiKey];
+              const rest = item.slice(emojiKey.length).replace(/^\s+/, "");
+              return (
+                <li key={idx} className="flex items-start gap-2">
+                  <StyledEmoji symbol={mapped.symbol} cls={mapped.cls} />
+                  <span className="flex-1"><InlineMarkdown text={rest} /></span>
+                </li>
+              );
+            })}
+          </ul>,
+        );
+      } else {
+        blocks.push(
+          <ul key={`ul-${i}`} className="list-disc pl-5 space-y-1">
+            {items.map((item, idx) => (
+              <li key={idx}>
+                <InlineMarkdown text={item} />
+              </li>
+            ))}
+          </ul>,
+        );
+      }
       continue;
     }
 
@@ -273,7 +421,7 @@ function MarkdownSummary({ text }: { text: string }) {
     i += 1;
     while (i < lines.length) {
       const next = lines[i].trim();
-      if (!next || next.startsWith("#") || next.startsWith("- ") || next.startsWith("* ") || /^\d+\.\s+/.test(next)) {
+      if (!next || next.startsWith("#") || next.startsWith("- ") || next.startsWith("* ") || /^\d+\.\s+/.test(next) || next.includes("|")) {
         break;
       }
       paragraph.push(next);
@@ -281,7 +429,7 @@ function MarkdownSummary({ text }: { text: string }) {
     }
     blocks.push(
       <p key={`p-${i}`} className="whitespace-pre-wrap break-words">
-        <InlineMarkdown text={paragraph.join(" ")} />
+        <InlineMarkdown text={paragraph.join("\n")} />
       </p>,
     );
   }
@@ -500,7 +648,7 @@ function ActionCard({
   actionTaken?: boolean;
   isProcessing: boolean;
   timestamp: number;
-  progress?: { step: number; total: number; label: string };
+  progress?: { step: number; total: number; label: string; all_steps?: { number: number; label: string }[]; emoji?: string; playbook_name?: string };
   qrData?: string;
   onDoIt: () => void;
 }) {
@@ -514,7 +662,16 @@ function ActionCard({
     <div className="group animate-fade-in">
       <div className="rounded-[14px] border border-surface-card-border bg-surface-card surface-card overflow-hidden">
         <div className="px-5 pt-4">
-          {progress && <ProgressBar step={progress.step} total={progress.total} label={progress.label} />}
+          {progress && (
+            <StepIndicator
+              step={progress.step}
+              total={progress.total}
+              label={progress.label}
+              allSteps={progress.all_steps}
+              emoji={progress.emoji}
+              playbookName={progress.playbook_name}
+            />
+          )}
         </div>
 
         {/* Situation / Instructions */}
@@ -591,7 +748,7 @@ function UserQuestionCard({
   actionTaken?: boolean;
   isProcessing: boolean;
   timestamp: number;
-  progress?: { step: number; total: number; label: string };
+  progress?: { step: number; total: number; label: string; all_steps?: { number: number; label: string }[]; emoji?: string; playbook_name?: string };
   onAnswer: (answer: string) => void;
   onSecureAnswer?: (secretName: string, value: string) => void;
   onSendMessage?: (text: string) => void;
@@ -632,7 +789,16 @@ function UserQuestionCard({
     <div className="group animate-fade-in">
       <div className="rounded-[14px] border border-surface-card-border bg-surface-card surface-card overflow-hidden">
         <div className="px-5 pt-4 pb-3">
-          {progress && <ProgressBar step={progress.step} total={progress.total} label={progress.label} />}
+          {progress && (
+            <StepIndicator
+              step={progress.step}
+              total={progress.total}
+              label={progress.label}
+              allSteps={progress.all_steps}
+              emoji={progress.emoji}
+              playbookName={progress.playbook_name}
+            />
+          )}
           <div className="text-sm font-semibold text-accent-blue mb-1.5 tracking-wide">
             <InlineMarkdown text={first.header} />
           </div>
@@ -773,9 +939,11 @@ function DoneCard({
 
   return (
     <div className="group animate-fade-in">
-      <div className="flex items-center gap-3 rounded-lg bg-accent-green/6 border border-accent-green/12 px-4 py-2.5">
-        <span className="flex items-center justify-center w-6 h-6 rounded-full bg-accent-green/15 text-accent-green text-sm flex-shrink-0">{"\u2713"}</span>
-        <div className="flex-1">
+      <div className="rounded-[14px] border border-surface-card-border bg-surface-card surface-card overflow-hidden">
+        <div className="px-5 pt-4 pb-3">
+          <div className="text-sm font-semibold text-accent-green mb-1.5 tracking-wide">
+            {t("chat.result")}
+          </div>
           <div className="text-base text-text-primary leading-relaxed">
             <MarkdownSummary text={summary} />
           </div>
