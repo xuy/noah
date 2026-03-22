@@ -838,7 +838,33 @@ impl Orchestrator {
         };
         let tool_input = &tool_input;
 
-        let tier = tool.safety_tier_for_input(tool_input);
+        let mut tier = tool.safety_tier_for_input(tool_input);
+
+        // Fleet policy override: check if admin has defined a safety rule for this tool.
+        let policy_app_dir = self.knowledge_dir.parent().unwrap_or(&self.knowledge_dir);
+        if let Some(policy) = crate::fleet_policy::FleetPolicy::load(policy_app_dir) {
+            if let Some(effect) = crate::fleet_policy::resolve_safety_effect(&policy, tool_name, tool_input) {
+                match effect {
+                    crate::fleet_policy::SafetyEffect::Block => {
+                        emit_debug(
+                            app_handle,
+                            "tool_blocked",
+                            &format!("Fleet policy blocked {}", tool_name),
+                            json!({ "name": tool_name, "input": tool_input }),
+                        );
+                        return Ok("Action blocked by fleet policy. Contact your IT administrator.".to_string());
+                    }
+                    crate::fleet_policy::SafetyEffect::AutoApprove => {
+                        // Override tier to skip approval below.
+                        tier = SafetyTier::SafeAction;
+                    }
+                    crate::fleet_policy::SafetyEffect::RequireApproval => {
+                        // Override tier to force approval below.
+                        tier = SafetyTier::NeedsApproval;
+                    }
+                }
+            }
+        }
 
         // For NeedsApproval tools, request approval from the frontend.
         if tier == SafetyTier::NeedsApproval {
