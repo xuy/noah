@@ -323,6 +323,29 @@ async function main() {
   const toUpload = [...artifacts];
   if (latestJsonPath) toUpload.push(latestJsonPath);
 
+  // Create stable-named copies so download URLs don't change between releases.
+  // e.g. https://github.com/xuy/noah/releases/latest/download/Noah.dmg always works.
+  const STABLE_NAMES = {
+    ".dmg": "Noah.dmg",
+    "-setup.exe": "Noah-setup.exe",
+    ".msi": "Noah.msi",
+    ".AppImage": "Noah.AppImage",
+  };
+  const stableCopies = [];
+  for (const artifact of artifacts) {
+    const name = path.basename(artifact);
+    for (const [suffix, stableName] of Object.entries(STABLE_NAMES)) {
+      if (name.endsWith(suffix) && !name.endsWith(".sig")) {
+        const stablePath = path.join(path.dirname(artifact), stableName);
+        const { copyFileSync } = await import("node:fs");
+        copyFileSync(artifact, stablePath);
+        stableCopies.push(stablePath);
+        console.log(`    Stable copy: ${name} → ${stableName}`);
+      }
+    }
+  }
+  toUpload.push(...stableCopies);
+
   await runCommand("gh", ["release", "upload", tag, ...toUpload, "--clobber"]);
   await runCommand("gh", ["release", "view", tag, "--json", "url", "-q", ".url"]);
 
