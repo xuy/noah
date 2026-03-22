@@ -173,6 +173,33 @@ function StepIndicator({ step, total, label, allSteps, emoji, playbookName }: St
   );
 }
 
+// Map status emoji to themed inline icons so rendering is consistent
+// regardless of platform emoji font.
+const STATUS_EMOJI: Record<string, { symbol: string; cls: string }> = {
+  "\u2705": { symbol: "\u2713", cls: "text-accent-green" },   // ✅ → ✓
+  "\u274C": { symbol: "\u2717", cls: "text-status-error" },    // ❌ → ✗
+  "\u26A0\uFE0F": { symbol: "!", cls: "text-status-pending" }, // ⚠️ → !
+  "\u26A0": { symbol: "!", cls: "text-status-pending" },       // ⚠ (no VS16)
+  "\u2139\uFE0F": { symbol: "i", cls: "text-accent-blue" },   // ℹ️ → i
+  "\u2139": { symbol: "i", cls: "text-accent-blue" },          // ℹ (no VS16)
+};
+
+const STATUS_EMOJI_PATTERN = new RegExp(
+  `(${Object.keys(STATUS_EMOJI).map((k) => k.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&")).join("|")})`,
+  "g",
+);
+
+function StyledEmoji({ symbol, cls }: { symbol: string; cls: string }) {
+  return (
+    <span
+      className={`inline-flex items-center justify-center w-5 h-5 rounded-full text-xs font-bold ${cls} bg-current/10 align-text-bottom`}
+      style={{ backgroundColor: "color-mix(in srgb, currentColor 12%, transparent)" }}
+    >
+      {symbol}
+    </span>
+  );
+}
+
 function LinkedText({ text }: { text: string }) {
   const parts = text.split(URL_PATTERN);
   return (
@@ -181,7 +208,17 @@ function LinkedText({ text }: { text: string }) {
         if (!part) return null;
         if (!URL_PATTERN.test(part)) {
           URL_PATTERN.lastIndex = 0;
-          return <span key={i}>{part}</span>;
+          // Replace status emoji with themed icons
+          const segments = part.split(STATUS_EMOJI_PATTERN);
+          return (
+            <span key={i}>
+              {segments.map((seg, j) => {
+                const mapped = STATUS_EMOJI[seg];
+                if (mapped) return <StyledEmoji key={j} symbol={mapped.symbol} cls={mapped.cls} />;
+                return <span key={j}>{seg}</span>;
+              })}
+            </span>
+          );
         }
         URL_PATTERN.lastIndex = 0;
         const href = part.startsWith("http://") || part.startsWith("https://")
@@ -343,15 +380,40 @@ function MarkdownSummary({ text }: { text: string }) {
         }
         break;
       }
-      blocks.push(
-        <ul key={`ul-${i}`} className="list-disc pl-5 space-y-1">
-          {items.map((item, idx) => (
-            <li key={idx}>
-              <InlineMarkdown text={item} />
-            </li>
-          ))}
-        </ul>,
+      // Check if every item starts with a status emoji — render as status list
+      // (emoji replaces bullet) instead of a bulleted list.
+      const statusEmojiKeys = Object.keys(STATUS_EMOJI);
+      const allStatus = items.every((item) =>
+        statusEmojiKeys.some((e) => item.startsWith(e)),
       );
+
+      if (allStatus) {
+        blocks.push(
+          <ul key={`ul-${i}`} className="list-none pl-1 space-y-1.5">
+            {items.map((item, idx) => {
+              const emojiKey = statusEmojiKeys.find((e) => item.startsWith(e))!;
+              const mapped = STATUS_EMOJI[emojiKey];
+              const rest = item.slice(emojiKey.length).replace(/^\s+/, "");
+              return (
+                <li key={idx} className="flex items-start gap-2">
+                  <StyledEmoji symbol={mapped.symbol} cls={mapped.cls} />
+                  <span className="flex-1"><InlineMarkdown text={rest} /></span>
+                </li>
+              );
+            })}
+          </ul>,
+        );
+      } else {
+        blocks.push(
+          <ul key={`ul-${i}`} className="list-disc pl-5 space-y-1">
+            {items.map((item, idx) => (
+              <li key={idx}>
+                <InlineMarkdown text={item} />
+              </li>
+            ))}
+          </ul>,
+        );
+      }
       continue;
     }
 
@@ -359,7 +421,7 @@ function MarkdownSummary({ text }: { text: string }) {
     i += 1;
     while (i < lines.length) {
       const next = lines[i].trim();
-      if (!next || next.startsWith("#") || next.startsWith("- ") || next.startsWith("* ") || /^\d+\.\s+/.test(next)) {
+      if (!next || next.startsWith("#") || next.startsWith("- ") || next.startsWith("* ") || /^\d+\.\s+/.test(next) || next.includes("|")) {
         break;
       }
       paragraph.push(next);
@@ -367,7 +429,7 @@ function MarkdownSummary({ text }: { text: string }) {
     }
     blocks.push(
       <p key={`p-${i}`} className="whitespace-pre-wrap break-words">
-        <InlineMarkdown text={paragraph.join(" ")} />
+        <InlineMarkdown text={paragraph.join("\n")} />
       </p>,
     );
   }
@@ -877,9 +939,11 @@ function DoneCard({
 
   return (
     <div className="group animate-fade-in">
-      <div className="flex items-center gap-3 rounded-lg bg-accent-green/6 border border-accent-green/12 px-4 py-2.5">
-        <span className="flex items-center justify-center w-6 h-6 rounded-full bg-accent-green/15 text-accent-green text-sm flex-shrink-0">{"\u2713"}</span>
-        <div className="flex-1">
+      <div className="rounded-[14px] border border-surface-card-border bg-surface-card surface-card overflow-hidden">
+        <div className="px-5 pt-4 pb-3">
+          <div className="text-sm font-semibold text-accent-green mb-1.5 tracking-wide">
+            {t("chat.result")}
+          </div>
           <div className="text-base text-text-primary leading-relaxed">
             <MarkdownSummary text={summary} />
           </div>
