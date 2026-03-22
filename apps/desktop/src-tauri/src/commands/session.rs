@@ -69,6 +69,9 @@ pub async fn end_session(
         .map(|s| s.messages.len() as i32)
         .unwrap_or(0);
 
+    // Extract playbook run tracker before ending session (which drops it).
+    let run_tracker = orchestrator.take_run_tracker(&session_id);
+
     let removed = orchestrator.end_session(&session_id);
 
     if removed {
@@ -90,12 +93,26 @@ pub async fn end_session(
             let resolved = session_record.as_ref().and_then(|s| s.resolved);
             let created_at = session_record.as_ref().map(|s| s.created_at.clone()).unwrap_or_default();
             let ended = ended_at.clone();
+
+            // Finalize playbook run report if a playbook was activated during this session.
+            let run_report = run_tracker.map(|tracker| {
+                let success = resolved.unwrap_or(false);
+                tracker.finalize(success, None, &sid)
+            });
+
+            let config_clone = config.clone();
             tokio::spawn(async move {
                 if let Err(e) = dashboard_link::push_session_report(
                     &config, &sid, title.as_deref(), summary.as_deref(),
                     message_count, resolved, &created_at, Some(&ended),
                 ).await {
                     eprintln!("[fleet] Failed to push session report: {}", e);
+                }
+                // Push playbook run report to fleet
+                if let Some(report) = run_report {
+                    if let Err(e) = dashboard_link::push_playbook_run(&config_clone, &report).await {
+                        eprintln!("[fleet] Failed to push playbook run report: {}", e);
+                    }
                 }
             });
         }

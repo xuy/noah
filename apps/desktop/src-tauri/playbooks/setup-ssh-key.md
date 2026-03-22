@@ -4,7 +4,7 @@ description: Generate an SSH key pair and add it to GitHub or another service
 platform: all
 last_reviewed: 2026-03-07
 author: noah-team
-type: system
+source: bundled
 emoji: 🔑
 ---
 

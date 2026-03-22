@@ -140,6 +140,7 @@ pub async fn run_prompt_flow(prompt: &str, max_turns: usize) -> Result<PromptRun
     // In debug/CLI mode, read bundled playbooks from the source tree.
     let bundled_playbooks = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("playbooks");
     let playbook_registry = playbooks::PlaybookRegistry::init(&knowledge_dir, &bundled_playbooks)?;
+    let playbook_registry = std::sync::Arc::new(std::sync::RwLock::new(playbook_registry));
     router.register(Box::new(playbooks::ActivatePlaybookTool::new(
         playbook_registry,
     )));

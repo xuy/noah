@@ -4,7 +4,7 @@ description: Comprehensive device health check — disk, memory, uptime, updates
 platform: all
 last_reviewed: 2026-03-17
 author: noah-team
-type: system
+source: bundled
 emoji: 🩺
 ---
 

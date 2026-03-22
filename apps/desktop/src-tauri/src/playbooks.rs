@@ -1,10 +1,47 @@
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, RwLock};
 
 use anyhow::Result;
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use sha2::{Sha256, Digest};
 
 use noah_tools::{SafetyTier, Tool, ToolResult};
+
+/// Source taxonomy for playbooks. Higher numeric value = higher precedence.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum PlaybookSource {
+    /// User-created on device (lowest precedence).
+    Local = 1,
+    /// Ships with the app binary (middle precedence).
+    Bundled = 2,
+    /// Admin-authored, pushed via fleet checkin (highest precedence).
+    Fleet = 3,
+}
+
+impl PlaybookSource {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            PlaybookSource::Local => "local",
+            PlaybookSource::Bundled => "bundled",
+            PlaybookSource::Fleet => "fleet",
+        }
+    }
+}
+
+impl std::fmt::Display for PlaybookSource {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+/// Compute a content hash (first 12 hex chars of SHA-256).
+pub fn content_hash(content: &str) -> String {
+    let digest = Sha256::digest(content.as_bytes());
+    digest[..6].iter().map(|b| format!("{:02x}", b)).collect()
+}
 
 /// Metadata parsed from a playbook's YAML frontmatter.
 #[derive(Debug, Clone)]
@@ -13,12 +50,25 @@ pub struct PlaybookMeta {
     pub description: String,
     /// Target platform: "macos", "windows", "linux", or "all".
     pub platform: String,
+    /// Source taxonomy (replaces legacy playbook_type).
+    pub source: PlaybookSource,
+    /// SHA-256 content hash (first 12 hex chars).
+    pub content_hash: String,
     /// Date of last review (YYYY-MM-DD). Used to flag stale playbooks.
     pub last_reviewed: Option<String>,
     /// Author or last reviewer.
     pub author: Option<String>,
-    /// "system" for built-in playbooks (always refreshed), "user" for user-created ones.
-    pub playbook_type: String,
+}
+
+impl PlaybookMeta {
+    /// Legacy accessor for backward compatibility.
+    pub fn playbook_type(&self) -> &str {
+        match self.source {
+            PlaybookSource::Local => "user",
+            PlaybookSource::Bundled => "system",
+            PlaybookSource::Fleet => "fleet",
+        }
+    }
 }
 
 // ── Playbook runtime structures ──────────────────────────────────────
@@ -73,6 +123,173 @@ impl PlaybookState {
     pub fn advance(&mut self) {
         self.current_turn += 1;
     }
+}
+
+// ── Playbook run tracking (observability) ────────────────────────────
+
+/// Trigger context attached to a session before playbook activation.
+/// Tells the tracker how the playbook was initiated.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TriggerContext {
+    pub trigger: String, // "user" | "auto_heal" | "fleet_dispatch"
+    pub check_id: Option<String>,
+    pub score_before: Option<i32>,
+}
+
+impl Default for TriggerContext {
+    fn default() -> Self {
+        Self {
+            trigger: "user".to_string(),
+            check_id: None,
+            score_before: None,
+        }
+    }
+}
+
+/// Detail for a single playbook step execution.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StepRunDetail {
+    pub step: u32,
+    pub label: String,
+    pub status: String, // "completed" | "skipped" | "failed"
+    pub started_at: DateTime<Utc>,
+    pub duration_ms: Option<u64>,
+}
+
+/// Tracks a single playbook execution for fleet reporting.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PlaybookRunTracker {
+    pub run_id: String,
+    pub playbook_slug: String,
+    pub trigger: String,
+    pub check_id: Option<String>,
+    pub started_at: DateTime<Utc>,
+    pub total_steps: Option<u32>,
+    pub steps: Vec<StepRunDetail>,
+    pub tools_called: Vec<String>,
+    pub score_before: Option<i32>,
+    pub error_message: Option<String>,
+    /// Source taxonomy of the playbook being run.
+    pub playbook_source: Option<String>,
+    /// Content hash of the playbook version being run.
+    pub playbook_content_hash: Option<String>,
+    /// Tracks which step we're currently on (for timing).
+    current_step_started: Option<DateTime<Utc>>,
+}
+
+impl PlaybookRunTracker {
+    /// Create a new tracker when activate_playbook succeeds.
+    pub fn new(
+        playbook_slug: &str,
+        total_steps: Option<u32>,
+        trigger_ctx: Option<&TriggerContext>,
+    ) -> Self {
+        let ctx = trigger_ctx.cloned().unwrap_or_default();
+        Self {
+            run_id: uuid::Uuid::new_v4().to_string(),
+            playbook_slug: playbook_slug.to_string(),
+            trigger: ctx.trigger,
+            check_id: ctx.check_id,
+            started_at: Utc::now(),
+            total_steps,
+            steps: Vec::new(),
+            tools_called: Vec::new(),
+            score_before: ctx.score_before,
+            error_message: None,
+            playbook_source: None,
+            playbook_content_hash: None,
+            current_step_started: Some(Utc::now()),
+        }
+    }
+
+    /// Set source and content hash from registry metadata.
+    pub fn set_meta(&mut self, source: PlaybookSource, hash: &str) {
+        self.playbook_source = Some(source.as_str().to_string());
+        self.playbook_content_hash = Some(hash.to_string());
+    }
+
+    /// Record a tool call name.
+    pub fn record_tool(&mut self, tool_name: &str) {
+        if !self.tools_called.contains(&tool_name.to_string()) {
+            self.tools_called.push(tool_name.to_string());
+        }
+    }
+
+    /// Record a step advancement (called when PlaybookState.advance() fires).
+    pub fn record_step(&mut self, step_number: u32, label: &str) {
+        let now = Utc::now();
+        let duration_ms = self
+            .current_step_started
+            .map(|started| (now - started).num_milliseconds().max(0) as u64);
+
+        self.steps.push(StepRunDetail {
+            step: step_number,
+            label: label.to_string(),
+            status: "completed".to_string(),
+            started_at: self.current_step_started.unwrap_or(now),
+            duration_ms,
+        });
+
+        self.current_step_started = Some(now);
+    }
+
+    /// Finalize the tracker into a report payload for fleet.
+    pub fn finalize(
+        &self,
+        success: bool,
+        score_after: Option<i32>,
+        session_id: &str,
+    ) -> PlaybookRunReport {
+        let completed_at = Utc::now();
+        let duration_ms = (completed_at - self.started_at).num_milliseconds().max(0) as u64;
+        PlaybookRunReport {
+            run_id: self.run_id.clone(),
+            playbook_slug: self.playbook_slug.clone(),
+            trigger: self.trigger.clone(),
+            check_id: self.check_id.clone(),
+            started_at: self.started_at.to_rfc3339(),
+            completed_at: completed_at.to_rfc3339(),
+            duration_ms,
+            success,
+            total_steps: self.total_steps,
+            steps_completed: self.steps.len() as u32,
+            steps_detail: serde_json::to_string(&self.steps).ok(),
+            score_before: self.score_before,
+            score_after,
+            error_message: self.error_message.clone(),
+            tools_called: serde_json::to_string(&self.tools_called).ok(),
+            session_id: session_id.to_string(),
+            playbook_source: self.playbook_source.clone(),
+            playbook_content_hash: self.playbook_content_hash.clone(),
+        }
+    }
+}
+
+/// Serializable report sent to fleet via POST /dashboard/playbook-run.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PlaybookRunReport {
+    pub run_id: String,
+    pub playbook_slug: String,
+    pub trigger: String,
+    pub check_id: Option<String>,
+    pub started_at: String,
+    pub completed_at: String,
+    pub duration_ms: u64,
+    pub success: bool,
+    pub total_steps: Option<u32>,
+    pub steps_completed: u32,
+    pub steps_detail: Option<String>,
+    pub score_before: Option<i32>,
+    pub score_after: Option<i32>,
+    pub error_message: Option<String>,
+    pub tools_called: Option<String>,
+    pub session_id: String,
+    /// Source taxonomy of the playbook that was run.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub playbook_source: Option<String>,
+    /// Content hash of the playbook version that was run.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub playbook_content_hash: Option<String>,
 }
 
 /// Parse `## Step N: Label` headers from playbook markdown.
@@ -184,6 +401,10 @@ fn scan_folder_playbooks(dir: &Path) -> Vec<(String, String)> {
 
 /// Parse YAML frontmatter from a playbook markdown string.
 /// Expects `---\n...\n---\n` at the start of the file.
+///
+/// Backward-compatible: `source:` takes precedence over `type:` when both present.
+/// - `source: fleet` → Fleet, `source: bundled` → Bundled, `source: local` → Local
+/// - Legacy: `type: system` → Bundled, `type: user` → Local
 fn parse_frontmatter(content: &str) -> Option<PlaybookMeta> {
     let trimmed = content.trim_start();
     if !trimmed.starts_with("---") {
@@ -200,7 +421,8 @@ fn parse_frontmatter(content: &str) -> Option<PlaybookMeta> {
     let mut platform = None;
     let mut last_reviewed = None;
     let mut author = None;
-    let mut playbook_type = None;
+    let mut source_field = None;
+    let mut type_field = None;
 
     for line in yaml_block.lines() {
         let line = line.trim();
@@ -214,18 +436,37 @@ fn parse_frontmatter(content: &str) -> Option<PlaybookMeta> {
             last_reviewed = Some(val.trim().to_string());
         } else if let Some(val) = line.strip_prefix("author:") {
             author = Some(val.trim().to_string());
+        } else if let Some(val) = line.strip_prefix("source:") {
+            source_field = Some(val.trim().to_string());
         } else if let Some(val) = line.strip_prefix("type:") {
-            playbook_type = Some(val.trim().to_string());
+            type_field = Some(val.trim().to_string());
         }
     }
+
+    // Resolve source: `source:` takes precedence over `type:`.
+    let source = if let Some(ref s) = source_field {
+        match s.as_str() {
+            "fleet" => PlaybookSource::Fleet,
+            "local" => PlaybookSource::Local,
+            _ => PlaybookSource::Bundled, // "bundled" or unknown
+        }
+    } else if let Some(ref t) = type_field {
+        match t.as_str() {
+            "user" => PlaybookSource::Local,
+            _ => PlaybookSource::Bundled, // "system" or unknown
+        }
+    } else {
+        PlaybookSource::Bundled // default when neither present
+    };
 
     Some(PlaybookMeta {
         name: name?,
         description: description?,
         platform: platform.unwrap_or_else(|| "all".to_string()),
+        source,
+        content_hash: content_hash(content),
         last_reviewed,
         author,
-        playbook_type: playbook_type.unwrap_or_else(|| "system".to_string()),
     })
 }
 
@@ -240,6 +481,68 @@ fn current_platform() -> &'static str {
     } else {
         "linux"
     }
+}
+
+/// Check the source of an existing file on disk without requiring valid frontmatter.
+fn existing_file_source(path: &Path) -> Option<PlaybookSource> {
+    let content = std::fs::read_to_string(path).ok()?;
+    parse_frontmatter(&content).map(|m| m.source)
+}
+
+/// Scan the playbooks directory for all .md files, parse frontmatter, and filter by platform.
+/// Returns deduplicated metas: when multiple sources provide the same slug, highest precedence wins.
+fn scan_metas(playbooks_dir: &Path, platform: &str) -> Vec<PlaybookMeta> {
+    let mut all_metas: Vec<PlaybookMeta> = Vec::new();
+    let Ok(entries) = std::fs::read_dir(playbooks_dir) else { return all_metas };
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_file() && path.extension().is_some_and(|ext| ext == "md") {
+            if let Ok(content) = std::fs::read_to_string(&path) {
+                if let Some(meta) = parse_frontmatter(&content) {
+                    if meta.platform == "all" || meta.platform == platform {
+                        all_metas.push(meta);
+                    }
+                }
+            }
+        } else if path.is_dir() {
+            let main_file = path.join("playbook.md");
+            if main_file.exists() {
+                if let Ok(content) = std::fs::read_to_string(&main_file) {
+                    if let Some(meta) = parse_frontmatter(&content) {
+                        if meta.platform == "all" || meta.platform == platform {
+                            all_metas.push(meta);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Deduplicate by slug: keep highest-precedence source.
+    let mut seen: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    let mut deduped: Vec<PlaybookMeta> = Vec::new();
+    // Sort so highest source comes last (we'll overwrite index).
+    all_metas.sort_by(|a, b| a.name.cmp(&b.name).then(a.source.cmp(&b.source)));
+    for meta in all_metas {
+        if let Some(&idx) = seen.get(&meta.name) {
+            if meta.source >= deduped[idx].source {
+                if meta.source > deduped[idx].source {
+                    eprintln!(
+                        "[playbooks] '{}' shadowed: {} overrides {}",
+                        meta.name, meta.source, deduped[idx].source
+                    );
+                }
+                deduped[idx] = meta;
+            }
+        } else {
+            seen.insert(meta.name.clone(), deduped.len());
+            deduped.push(meta);
+        }
+    }
+
+    deduped.sort_by(|a, b| a.name.cmp(&b.name));
+    deduped
 }
 
 impl PlaybookRegistry {
@@ -260,20 +563,17 @@ impl PlaybookRegistry {
         let flat = scan_flat_playbooks(bundled_dir);
         let folders = scan_folder_playbooks(bundled_dir);
 
-        // Write system playbooks that match this platform (or "all") to disk.
+        // Write bundled playbooks that match this platform (or "all") to disk.
         // Wrong-platform playbooks are removed so they don't appear in the
         // knowledge TOC or confuse the LLM.
         for (filename, content) in &flat {
             let dest = playbooks_dir.join(filename);
 
-            // Never overwrite user-owned files.
-            let is_user_owned = dest.exists() && std::fs::read_to_string(&dest)
-                .ok()
-                .and_then(|c| parse_frontmatter(&c))
-                .map(|m| m.playbook_type == "user")
-                .unwrap_or(false);
-            if is_user_owned {
-                continue;
+            // Never overwrite user-owned (local) or fleet-owned files.
+            if let Some(existing_source) = existing_file_source(&dest) {
+                if existing_source == PlaybookSource::Local || existing_source == PlaybookSource::Fleet {
+                    continue;
+                }
             }
 
             // Check if this builtin matches the current platform.
@@ -297,12 +597,11 @@ impl PlaybookRegistry {
                 std::fs::create_dir_all(parent)?;
             }
 
-            let is_user_owned = dest.exists() && std::fs::read_to_string(&dest)
-                .ok()
-                .and_then(|c| parse_frontmatter(&c))
-                .map(|m| m.playbook_type == "user")
-                .unwrap_or(false);
-            if is_user_owned { continue; }
+            if let Some(existing_source) = existing_file_source(&dest) {
+                if existing_source == PlaybookSource::Local || existing_source == PlaybookSource::Fleet {
+                    continue;
+                }
+            }
 
             let matches_platform = parse_frontmatter(content)
                 .map(|m| m.platform == "all" || m.platform == platform)
@@ -315,43 +614,19 @@ impl PlaybookRegistry {
             }
         }
 
-        // Scan directory for all .md files and parse frontmatter.
-        // Only include playbooks matching current platform or "all".
-        // Scans both top-level files and playbook.md inside subdirectories.
-        let mut metas = Vec::new();
-        let entries = std::fs::read_dir(&playbooks_dir)?;
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_file() && path.extension().is_some_and(|ext| ext == "md") {
-                if let Ok(content) = std::fs::read_to_string(&path) {
-                    if let Some(meta) = parse_frontmatter(&content) {
-                        if meta.platform == "all" || meta.platform == platform {
-                            metas.push(meta);
-                        }
-                    }
-                }
-            } else if path.is_dir() {
-                // Check for playbook.md inside subdirectory (folder-based playbook).
-                let main_file = path.join("playbook.md");
-                if main_file.exists() {
-                    if let Ok(content) = std::fs::read_to_string(&main_file) {
-                        if let Some(meta) = parse_frontmatter(&content) {
-                            if meta.platform == "all" || meta.platform == platform {
-                                metas.push(meta);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // Sort by name for deterministic ordering.
-        metas.sort_by(|a, b| a.name.cmp(&b.name));
+        let metas = scan_metas(&playbooks_dir, platform);
 
         Ok(Self {
             playbooks_dir,
             metas,
         })
+    }
+
+    /// Re-scan the playbooks directory and rebuild metadata.
+    /// Called after fleet checkin writes/removes playbook files.
+    pub fn reload(&mut self) {
+        let platform = current_platform();
+        self.metas = scan_metas(&self.playbooks_dir, platform);
     }
 
     /// Read a playbook by name or path.
@@ -361,13 +636,12 @@ impl PlaybookRegistry {
     /// - Folder playbooks: `"setup-nanoclaw"` → reads `setup-nanoclaw/playbook.md`
     /// - Sub-modules: `"setup-nanoclaw/add-telegram"` → reads `setup-nanoclaw/add-telegram.md`
     ///
-    /// If both a `type: system` and a `type: user` version match the same name, both are
-    /// returned concatenated with origin/date annotations so the LLM can draw from both.
+    /// When multiple sources provide the same slug, the highest-precedence source wins
+    /// (Fleet > Bundled > Local). Lower-precedence versions are preserved on disk but shadowed.
     fn read_playbook(&self, name: &str) -> Result<String> {
         struct Match {
             content: String,
-            playbook_type: String,
-            date: Option<String>,
+            source: PlaybookSource,
         }
 
         let mut matches: Vec<Match> = Vec::new();
@@ -398,12 +672,10 @@ impl PlaybookRegistry {
         let folder_main = self.playbooks_dir.join(name).join("playbook.md");
         if folder_main.exists() {
             if let Ok(content) = std::fs::read_to_string(&folder_main) {
-                let meta = parse_frontmatter(&content);
-                let playbook_type = meta.as_ref()
-                    .map(|m| m.playbook_type.clone())
-                    .unwrap_or_else(|| "user".to_string());
-                let date = meta.and_then(|m| m.last_reviewed);
-                matches.push(Match { content, playbook_type, date });
+                let source = parse_frontmatter(&content)
+                    .map(|m| m.source)
+                    .unwrap_or(PlaybookSource::Local);
+                matches.push(Match { content, source });
             }
         }
 
@@ -422,12 +694,10 @@ impl PlaybookRegistry {
                 || path.file_stem().map(|s| s.to_string_lossy() == name).unwrap_or(false);
 
             if name_matches {
-                let meta = parse_frontmatter(&content);
-                let playbook_type = meta.as_ref()
-                    .map(|m| m.playbook_type.clone())
-                    .unwrap_or_else(|| "user".to_string());
-                let date = meta.and_then(|m| m.last_reviewed);
-                matches.push(Match { content, playbook_type, date });
+                let source = parse_frontmatter(&content)
+                    .map(|m| m.source)
+                    .unwrap_or(PlaybookSource::Local);
+                matches.push(Match { content, source });
             }
         }
 
@@ -438,33 +708,31 @@ impl PlaybookRegistry {
             );
         }
 
-        if matches.len() == 1 {
-            return Ok(matches.remove(0).content);
+        // Return highest-precedence match only.
+        matches.sort_by(|a, b| b.source.cmp(&a.source));
+        if matches.len() > 1 {
+            eprintln!(
+                "[playbooks] '{}': returning {} version, shadowing {} other source(s)",
+                name, matches[0].source, matches.len() - 1
+            );
         }
+        Ok(matches.remove(0).content)
+    }
 
-        // Multiple matches (system + user): concatenate with origin annotations.
-        // System first, then user.
-        matches.sort_by(|a, b| a.playbook_type.cmp(&b.playbook_type).reverse()); // "user" < "system"
-        let mut parts: Vec<String> = Vec::new();
-        for m in &matches {
-            let date_str = m.date.as_deref().unwrap_or("unknown date");
-            parts.push(format!(
-                "<!-- [origin: {}, last updated: {}] -->\n{}",
-                m.playbook_type, date_str, m.content
-            ));
-        }
-        Ok(parts.join("\n\n---\n\n"))
+    /// Look up metadata for a playbook by slug.
+    pub fn meta_for(&self, slug: &str) -> Option<&PlaybookMeta> {
+        self.metas.iter().find(|m| m.name == slug)
     }
 }
 
 // ── ActivatePlaybookTool ───────────────────────────────────────────────
 
 pub struct ActivatePlaybookTool {
-    registry: PlaybookRegistry,
+    registry: Arc<RwLock<PlaybookRegistry>>,
 }
 
 impl ActivatePlaybookTool {
-    pub fn new(registry: PlaybookRegistry) -> Self {
+    pub fn new(registry: Arc<RwLock<PlaybookRegistry>>) -> Self {
         Self { registry }
     }
 }
@@ -501,7 +769,9 @@ impl Tool for ActivatePlaybookTool {
             .as_str()
             .ok_or_else(|| anyhow::anyhow!("Missing required parameter: name"))?;
 
-        let content = self.registry.read_playbook(name)?;
+        let content = self.registry.read()
+            .map_err(|e| anyhow::anyhow!("Registry lock poisoned: {}", e))?
+            .read_playbook(name)?;
 
         Ok(ToolResult::read_only(
             content.clone(),
@@ -539,14 +809,48 @@ mod tests {
         assert_eq!(meta.name, "test-playbook");
         assert_eq!(meta.description, "A test playbook");
         assert_eq!(meta.platform, "all"); // default
-        assert_eq!(meta.playbook_type, "system"); // default when type: absent
+        assert_eq!(meta.source, PlaybookSource::Bundled); // default when no source/type
     }
 
     #[test]
     fn test_parse_frontmatter_system_type() {
         let content = "---\nname: net\ndescription: Net diag\nplatform: macos\ntype: system\n---\n\n# Body";
         let meta = parse_frontmatter(content).unwrap();
-        assert_eq!(meta.playbook_type, "system");
+        assert_eq!(meta.source, PlaybookSource::Bundled); // legacy type: system → Bundled
+    }
+
+    #[test]
+    fn test_parse_frontmatter_source_field() {
+        // source: takes precedence over type:
+        let content = "---\nname: net\ndescription: Net\nsource: fleet\ntype: system\n---\n# Body";
+        let meta = parse_frontmatter(content).unwrap();
+        assert_eq!(meta.source, PlaybookSource::Fleet);
+
+        let content2 = "---\nname: net\ndescription: Net\nsource: local\n---\n# Body";
+        let meta2 = parse_frontmatter(content2).unwrap();
+        assert_eq!(meta2.source, PlaybookSource::Local);
+
+        let content3 = "---\nname: net\ndescription: Net\nsource: bundled\n---\n# Body";
+        let meta3 = parse_frontmatter(content3).unwrap();
+        assert_eq!(meta3.source, PlaybookSource::Bundled);
+    }
+
+    #[test]
+    fn test_parse_frontmatter_legacy_user_type() {
+        let content = "---\nname: my-pb\ndescription: Custom\ntype: user\n---\n# Body";
+        let meta = parse_frontmatter(content).unwrap();
+        assert_eq!(meta.source, PlaybookSource::Local); // legacy type: user → Local
+    }
+
+    #[test]
+    fn test_content_hash_deterministic() {
+        let h1 = content_hash("hello world");
+        let h2 = content_hash("hello world");
+        assert_eq!(h1, h2);
+        assert_eq!(h1.len(), 12); // 6 bytes = 12 hex chars
+
+        let h3 = content_hash("different content");
+        assert_ne!(h1, h3);
     }
 
     #[test]
@@ -599,37 +903,67 @@ mod tests {
     }
 
     #[test]
-    fn test_bootstrap_always_refreshes_system_playbooks() {
+    fn test_bootstrap_always_refreshes_bundled_playbooks() {
         let tmp = tempfile::tempdir().unwrap();
         let playbooks_dir = tmp.path().join("playbooks");
         std::fs::create_dir_all(&playbooks_dir).unwrap();
 
-        // Pre-write a stale/modified system playbook (type: system on disk).
-        let stale = "---\nname: network-diagnostics\ndescription: Stale version\nplatform: macos\ntype: system\n---\n\n# Stale";
+        // Pre-write a stale/modified bundled playbook on disk.
+        let stale = "---\nname: network-diagnostics\ndescription: Stale version\nplatform: macos\nsource: bundled\n---\n\n# Stale";
         std::fs::write(playbooks_dir.join("network-diagnostics.md"), stale).unwrap();
 
         let _registry = PlaybookRegistry::init_for_platform(tmp.path(), &bundled_dir(),"macos").unwrap();
 
-        // System file should be overwritten with the current embedded content.
+        // Bundled file should be overwritten with the current shipped content.
         let content = std::fs::read_to_string(playbooks_dir.join("network-diagnostics.md")).unwrap();
-        assert!(!content.contains("Stale version"), "System playbook was not refreshed");
-        assert!(content.contains("type: system"));
+        assert!(!content.contains("Stale version"), "Bundled playbook was not refreshed");
     }
 
     #[test]
-    fn test_bootstrap_preserves_user_owned_file() {
+    fn test_bootstrap_preserves_local_owned_file() {
         let tmp = tempfile::tempdir().unwrap();
         let playbooks_dir = tmp.path().join("playbooks");
         std::fs::create_dir_all(&playbooks_dir).unwrap();
 
-        // A file with the same name as a built-in but marked type: user — must not be overwritten.
-        let user_version = "---\nname: network-diagnostics\ndescription: My custom version\nplatform: macos\ntype: user\n---\n\n# My custom";
+        // A file with the same name as a built-in but marked source: local — must not be overwritten.
+        let user_version = "---\nname: network-diagnostics\ndescription: My custom version\nplatform: macos\nsource: local\n---\n\n# My custom";
         std::fs::write(playbooks_dir.join("network-diagnostics.md"), user_version).unwrap();
 
         let _registry = PlaybookRegistry::init_for_platform(tmp.path(), &bundled_dir(),"macos").unwrap();
 
         let content = std::fs::read_to_string(playbooks_dir.join("network-diagnostics.md")).unwrap();
-        assert!(content.contains("My custom version"), "User-owned file was overwritten");
+        assert!(content.contains("My custom version"), "Local-owned file was overwritten");
+    }
+
+    #[test]
+    fn test_bootstrap_preserves_fleet_owned_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let playbooks_dir = tmp.path().join("playbooks");
+        std::fs::create_dir_all(&playbooks_dir).unwrap();
+
+        // A fleet-managed playbook with the same name as a built-in — must not be overwritten.
+        let fleet_version = "---\nname: network-diagnostics\ndescription: Fleet override\nplatform: macos\nsource: fleet\n---\n\n# Fleet version";
+        std::fs::write(playbooks_dir.join("network-diagnostics.md"), fleet_version).unwrap();
+
+        let _registry = PlaybookRegistry::init_for_platform(tmp.path(), &bundled_dir(),"macos").unwrap();
+
+        let content = std::fs::read_to_string(playbooks_dir.join("network-diagnostics.md")).unwrap();
+        assert!(content.contains("Fleet version"), "Fleet-owned file was overwritten by bundled");
+    }
+
+    #[test]
+    fn test_reload_picks_up_new_playbooks() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut registry = PlaybookRegistry::init_for_platform(tmp.path(), &bundled_dir(), "macos").unwrap();
+        let initial_count = registry.metas.len();
+
+        // Add a new playbook to disk.
+        let new_pb = "---\nname: new-fleet-pb\ndescription: A fleet playbook\nplatform: all\nsource: fleet\n---\n\n# Fleet content";
+        std::fs::write(registry.playbooks_dir.join("new-fleet-pb.md"), new_pb).unwrap();
+
+        registry.reload();
+        assert_eq!(registry.metas.len(), initial_count + 1);
+        assert!(registry.metas.iter().any(|m| m.name == "new-fleet-pb" && m.source == PlaybookSource::Fleet));
     }
 
     #[test]
@@ -716,7 +1050,7 @@ mod tests {
         let playbooks_dir = tmp.path().join("playbooks");
         std::fs::create_dir_all(&playbooks_dir).unwrap();
 
-        let win_playbook = "---\nname: win-only\ndescription: Windows test\nplatform: windows\n---\n\n# Win";
+        let win_playbook = "---\nname: win-only\ndescription: Windows test\nplatform: windows\nsource: local\n---\n\n# Win";
         std::fs::write(playbooks_dir.join("win-only.md"), win_playbook).unwrap();
 
         let registry = PlaybookRegistry::init_for_platform(tmp.path(), &bundled_dir(),"macos").unwrap();
@@ -762,25 +1096,41 @@ mod tests {
     }
 
     #[test]
-    fn test_read_playbook_dual_track_concatenation() {
-        // Both a system and a user version of the same playbook → both returned, annotated.
+    fn test_read_playbook_precedence_bundled_over_local() {
+        // Both a bundled and a local version of the same playbook → bundled wins.
         let tmp = tempfile::tempdir().unwrap();
         let playbooks_dir = tmp.path().join("playbooks");
         std::fs::create_dir_all(&playbooks_dir).unwrap();
 
-        let system_pb = "---\nname: wifi-fix\ndescription: System wifi fix\nplatform: all\nlast_reviewed: 2026-01-01\nauthor: noah-team\ntype: system\n---\n\n# System steps";
-        let user_pb   = "---\nname: wifi-fix\ndescription: My notes\nplatform: all\ntype: user\n---\n\n# My extra steps";
-        std::fs::write(playbooks_dir.join("wifi-fix.md"), system_pb).unwrap();
-        std::fs::write(playbooks_dir.join("wifi-fix-user.md"), user_pb).unwrap();
+        let bundled_pb = "---\nname: wifi-fix\ndescription: Bundled wifi fix\nplatform: all\nlast_reviewed: 2026-01-01\nauthor: noah-team\nsource: bundled\n---\n\n# Bundled steps";
+        let local_pb   = "---\nname: wifi-fix\ndescription: My notes\nplatform: all\nsource: local\n---\n\n# My local steps";
+        std::fs::write(playbooks_dir.join("wifi-fix.md"), bundled_pb).unwrap();
+        std::fs::write(playbooks_dir.join("wifi-fix-local.md"), local_pb).unwrap();
 
         let registry = PlaybookRegistry::init_for_platform(tmp.path(), &bundled_dir(),"all").unwrap();
         let content = registry.read_playbook("wifi-fix").unwrap();
 
-        assert!(content.contains("System steps"), "System content missing");
-        assert!(content.contains("My extra steps"), "User content missing");
-        assert!(content.contains("origin: system"));
-        assert!(content.contains("origin: user"));
-        assert!(content.contains("2026-01-01"), "Date annotation missing");
+        assert!(content.contains("Bundled steps"), "Bundled content should win");
+        assert!(!content.contains("My local steps"), "Local content should be shadowed");
+    }
+
+    #[test]
+    fn test_read_playbook_precedence_fleet_over_bundled() {
+        // Fleet playbook should shadow bundled.
+        let tmp = tempfile::tempdir().unwrap();
+        let playbooks_dir = tmp.path().join("playbooks");
+        std::fs::create_dir_all(&playbooks_dir).unwrap();
+
+        let bundled_pb = "---\nname: wifi-fix\ndescription: Bundled\nplatform: all\nsource: bundled\n---\n\n# Bundled";
+        let fleet_pb   = "---\nname: wifi-fix\ndescription: Fleet override\nplatform: all\nsource: fleet\n---\n\n# Fleet version";
+        std::fs::write(playbooks_dir.join("wifi-fix.md"), bundled_pb).unwrap();
+        std::fs::write(playbooks_dir.join("wifi-fix-fleet.md"), fleet_pb).unwrap();
+
+        let registry = PlaybookRegistry::init_for_platform(tmp.path(), &bundled_dir(),"all").unwrap();
+        let content = registry.read_playbook("wifi-fix").unwrap();
+
+        assert!(content.contains("Fleet version"), "Fleet content should win");
+        assert!(!content.contains("# Bundled"), "Bundled content should be shadowed");
     }
 
     #[test]
@@ -814,20 +1164,24 @@ mod tests {
                 meta.platform
             );
 
-            // All built-ins must declare type: system.
+            // All built-ins must be bundled source (via `source: bundled` or legacy `type: system`).
             assert_eq!(
-                meta.playbook_type, "system",
-                "Built-in playbook {} is missing 'type: system' in frontmatter",
-                filename
+                meta.source, PlaybookSource::Bundled,
+                "Built-in playbook {} should have source: bundled (or type: system), got {:?}",
+                filename, meta.source
             );
         }
+    }
+
+    fn wrap_registry(registry: PlaybookRegistry) -> Arc<RwLock<PlaybookRegistry>> {
+        Arc::new(RwLock::new(registry))
     }
 
     #[tokio::test]
     async fn test_activate_playbook_tool_success() {
         let tmp = tempfile::tempdir().unwrap();
         let registry = PlaybookRegistry::init_for_platform(tmp.path(), &bundled_dir(),"macos").unwrap();
-        let tool = ActivatePlaybookTool::new(registry);
+        let tool = ActivatePlaybookTool::new(wrap_registry(registry));
 
         let result = tool.execute(&json!({"name": "network-diagnostics"})).await.unwrap();
         assert!(result.output.contains("Network Diagnostics"));
@@ -838,7 +1192,7 @@ mod tests {
     async fn test_activate_playbook_tool_not_found() {
         let tmp = tempfile::tempdir().unwrap();
         let registry = PlaybookRegistry::init_for_platform(tmp.path(), &bundled_dir(),"macos").unwrap();
-        let tool = ActivatePlaybookTool::new(registry);
+        let tool = ActivatePlaybookTool::new(wrap_registry(registry));
 
         let err = tool.execute(&json!({"name": "nonexistent"})).await.unwrap_err();
         assert!(err.to_string().contains("not found"));
@@ -848,7 +1202,7 @@ mod tests {
     async fn test_activate_playbook_tool_missing_param() {
         let tmp = tempfile::tempdir().unwrap();
         let registry = PlaybookRegistry::init_for_platform(tmp.path(), &bundled_dir(),"macos").unwrap();
-        let tool = ActivatePlaybookTool::new(registry);
+        let tool = ActivatePlaybookTool::new(wrap_registry(registry));
 
         let err = tool.execute(&json!({})).await.unwrap_err();
         assert!(err.to_string().contains("Missing required parameter"));
@@ -858,7 +1212,7 @@ mod tests {
     fn test_activate_playbook_tool_is_read_only() {
         let tmp = tempfile::tempdir().unwrap();
         let registry = PlaybookRegistry::init_for_platform(tmp.path(), &bundled_dir(),"macos").unwrap();
-        let tool = ActivatePlaybookTool::new(registry);
+        let tool = ActivatePlaybookTool::new(wrap_registry(registry));
 
         assert_eq!(tool.safety_tier(), SafetyTier::ReadOnly);
         assert_eq!(tool.name(), "activate_playbook");

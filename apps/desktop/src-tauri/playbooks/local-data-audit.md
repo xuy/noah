@@ -4,7 +4,7 @@ description: Audit a device for locally stored sensitive or company data — for
 platform: all
 last_reviewed: 2026-03-17
 author: noah-team
-type: system
+source: bundled
 emoji: 📂
 ---
 

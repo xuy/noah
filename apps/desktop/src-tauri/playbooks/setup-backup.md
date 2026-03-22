@@ -4,7 +4,7 @@ description: Set up Time Machine backup on macOS or configure basic backup strat
 platform: macos
 last_reviewed: 2026-03-07
 author: noah-team
-type: system
+source: bundled
 emoji: 🛡️
 ---
 

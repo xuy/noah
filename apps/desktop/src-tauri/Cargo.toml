@@ -33,6 +33,7 @@ html2text = "0.12"
 noah-tools = { path = "../../../crates/noah-tools" }
 noah-health = { path = "../../../crates/noah-health" }
 hostname = "0.4"
+sha2 = "0.10"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt", "macros"] }

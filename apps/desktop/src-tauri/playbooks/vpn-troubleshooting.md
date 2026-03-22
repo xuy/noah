@@ -4,7 +4,7 @@ description: Diagnose VPN connection failures, drops, and split-tunnel DNS issue
 platform: macos
 last_reviewed: 2026-03-04
 author: noah-team
-type: system
+source: bundled
 emoji: 🔒
 ---
 

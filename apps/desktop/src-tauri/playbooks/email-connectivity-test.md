@@ -4,7 +4,7 @@ description: Test network connectivity to email servers — SMTP, IMAP, POP3, an
 platform: all
 last_reviewed: 2026-03-17
 author: noah-team
-type: system
+source: bundled
 emoji: 📡
 ---
 

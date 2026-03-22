@@ -97,7 +97,10 @@ pub struct KnowledgeEntry {
     pub filename: String,
     pub path: String,
     pub title: String,
-    pub playbook_type: Option<String>,
+    /// Source taxonomy for playbooks: "local", "bundled", "fleet".
+    /// For backward compatibility, also serialized as `playbook_type` in JSON.
+    #[serde(alias = "playbook_type")]
+    pub source: Option<String>,
     /// Description from frontmatter (playbooks only).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
@@ -109,32 +112,38 @@ pub struct KnowledgeEntry {
 /// Parsed frontmatter fields from a knowledge/playbook markdown file.
 struct Frontmatter {
     description: Option<String>,
-    playbook_type: Option<String>,
+    source: Option<String>,
     emoji: Option<String>,
 }
 
 fn extract_frontmatter(content: &str) -> Frontmatter {
     let trimmed = content.trim_start();
     if !trimmed.starts_with("---") {
-        return Frontmatter { description: None, playbook_type: None, emoji: None };
+        return Frontmatter { description: None, source: None, emoji: None };
     }
 
     let after_first = &trimmed[3..];
     let Some(end) = after_first.find("\n---") else {
-        return Frontmatter { description: None, playbook_type: None, emoji: None };
+        return Frontmatter { description: None, source: None, emoji: None };
     };
     let yaml_block = &after_first[..end];
 
     let mut description = None;
-    let mut playbook_type = None;
+    let mut source_field = None;
+    let mut type_field = None;
     let mut emoji = None;
 
     for line in yaml_block.lines() {
         let line = line.trim();
-        if let Some(value) = line.strip_prefix("type:") {
+        if let Some(value) = line.strip_prefix("source:") {
+            let s = value.trim();
+            if !s.is_empty() {
+                source_field = Some(s.to_string());
+            }
+        } else if let Some(value) = line.strip_prefix("type:") {
             let kind = value.trim();
             if !kind.is_empty() {
-                playbook_type = Some(kind.to_string());
+                type_field = Some(kind.to_string());
             }
         } else if let Some(value) = line.strip_prefix("description:") {
             let desc = value.trim();
@@ -149,7 +158,18 @@ fn extract_frontmatter(content: &str) -> Frontmatter {
         }
     }
 
-    Frontmatter { description, playbook_type, emoji }
+    // Resolve source: `source:` takes precedence over `type:`.
+    let source = if let Some(s) = source_field {
+        Some(s)
+    } else {
+        type_field.map(|t| match t.as_str() {
+            "user" => "local".to_string(),
+            "system" => "bundled".to_string(),
+            other => other.to_string(),
+        })
+    };
+
+    Frontmatter { description, source, emoji }
 }
 
 /// Extract the title from the first `# ` heading line, or derive from filename.
@@ -228,8 +248,8 @@ pub fn list_knowledge_tree(
                 let content = std::fs::read_to_string(file_entry.path()).unwrap_or_default();
                 let title = extract_title(&content, &fname);
                 let fm = extract_frontmatter(&content);
-                let playbook_type = if cat_name == "playbooks" {
-                    fm.playbook_type.or_else(|| Some("system".to_string()))
+                let source = if cat_name == "playbooks" {
+                    fm.source.or_else(|| Some("bundled".to_string()))
                 } else {
                     None
                 };
@@ -238,7 +258,7 @@ pub fn list_knowledge_tree(
                     filename: fname,
                     path: rel_path,
                     title,
-                    playbook_type,
+                    source,
                     description: fm.description,
                     emoji: fm.emoji,
                 });
@@ -264,8 +284,8 @@ fn scan_subdir(entries: &mut Vec<KnowledgeEntry>, cat_name: &str, dir: &Path, fo
         let content = std::fs::read_to_string(file_entry.path()).unwrap_or_default();
         let title = extract_title(&content, &fname);
         let fm = extract_frontmatter(&content);
-        let playbook_type = if cat_name == "playbooks" {
-            fm.playbook_type.or_else(|| Some("system".to_string()))
+        let source = if cat_name == "playbooks" {
+            fm.source.or_else(|| Some("bundled".to_string()))
         } else {
             None
         };
@@ -274,7 +294,7 @@ fn scan_subdir(entries: &mut Vec<KnowledgeEntry>, cat_name: &str, dir: &Path, fo
             filename: fname,
             path: rel_path,
             title,
-            playbook_type,
+            source,
             description: fm.description,
             emoji: fm.emoji,
         });
@@ -946,7 +966,7 @@ mod tests {
     }
 
     #[test]
-    fn test_list_knowledge_tree_sets_playbook_type() {
+    fn test_list_knowledge_tree_sets_source() {
         let (_tmp, kdir) = setup();
         let content = "---
 name: Network Diagnostics
@@ -958,8 +978,25 @@ type: system
 
         let entries = list_knowledge_tree(&kdir, Some("playbooks")).unwrap();
         assert_eq!(entries.len(), 1);
-        assert_eq!(entries[0].playbook_type.as_deref(), Some("system"));
+        assert_eq!(entries[0].source.as_deref(), Some("bundled")); // legacy type: system → bundled
         assert_eq!(entries[0].description.as_deref(), Some("Diagnose network issues"));
+    }
+
+    #[test]
+    fn test_list_knowledge_tree_source_field_precedence() {
+        let (_tmp, kdir) = setup();
+        let content = "---
+name: test
+description: Test
+source: fleet
+type: system
+---
+# Test";
+        std::fs::write(kdir.join("playbooks/test.md"), content).unwrap();
+
+        let entries = list_knowledge_tree(&kdir, Some("playbooks")).unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].source.as_deref(), Some("fleet")); // source: takes precedence
     }
 
     #[test]

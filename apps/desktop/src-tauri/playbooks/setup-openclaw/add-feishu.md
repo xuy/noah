@@ -4,7 +4,7 @@ description: Add Feishu (飞书) as a messaging channel for OpenClaw (built-in p
 platform: all
 last_reviewed: 2026-03-09
 author: noah-team
-type: system
+source: bundled
 emoji: 🦞
 ---
 

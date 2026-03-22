@@ -4,7 +4,7 @@ description: Check email-related DNS records (MX, SPF, DKIM, DMARC) for a domain
 platform: all
 last_reviewed: 2026-03-17
 author: noah-team
-type: system
+source: bundled
 emoji: 📋
 ---
 

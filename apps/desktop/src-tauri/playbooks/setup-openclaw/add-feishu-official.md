@@ -4,7 +4,7 @@ description: Add Feishu official plugin (user-identity OAuth — documents, cale
 platform: all
 last_reviewed: 2026-03-09
 author: noah-team
-type: system
+source: bundled
 emoji: 🦞
 ---
 

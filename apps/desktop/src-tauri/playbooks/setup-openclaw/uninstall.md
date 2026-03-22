@@ -4,7 +4,7 @@ description: Completely uninstall OpenClaw — stop services, remove config, uni
 platform: all
 last_reviewed: 2026-03-10
 author: noah-team
-type: system
+source: bundled
 emoji: 🦞
 ---
 

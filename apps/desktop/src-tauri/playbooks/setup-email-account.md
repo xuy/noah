@@ -4,7 +4,7 @@ description: Add an email account to Apple Mail or Outlook on macOS
 platform: macos
 last_reviewed: 2026-03-07
 author: noah-team
-type: system
+source: bundled
 emoji: ✉️
 ---
 

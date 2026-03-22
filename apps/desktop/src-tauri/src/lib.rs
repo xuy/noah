@@ -17,7 +17,7 @@ mod web_fetch;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use tauri::Manager;
 use tauri::menu::{MenuBuilder, SubmenuBuilder, PredefinedMenuItem};
 use tokio::sync::{oneshot, Mutex};
@@ -42,6 +42,8 @@ pub struct AppState {
     pub scanner_trigger: Arc<std::sync::Mutex<Option<String>>>,
     /// Scanner pause handle — add scan_type strings to pause specific scanners.
     pub scanner_pause: Arc<std::sync::Mutex<std::collections::HashSet<String>>>,
+    /// Playbook registry — shared with ActivatePlaybookTool and reloaded after fleet checkin.
+    pub playbook_registry: Arc<RwLock<playbooks::PlaybookRegistry>>,
 }
 
 /// Load auth: proxy.json first, then api_key.txt, then env var.
@@ -293,7 +295,8 @@ pub fn run() {
                 .join("playbooks");
             let playbook_registry = playbooks::PlaybookRegistry::init(&knowledge_dir, &bundled_playbooks)
                 .expect("Failed to initialise playbooks");
-            router.register(Box::new(playbooks::ActivatePlaybookTool::new(playbook_registry)));
+            let playbook_registry = Arc::new(RwLock::new(playbook_registry));
+            router.register(Box::new(playbooks::ActivatePlaybookTool::new(playbook_registry.clone())));
 
             // Load auth: proxy config, API key file, or env var.
             let auth = load_auth(&app_dir);
@@ -344,6 +347,8 @@ pub fn run() {
             let health_app_dir = app_dir.clone();
             let autoheal_db = db_arc.clone();
             let autoheal_app_dir = app_dir.clone();
+            let health_registry = playbook_registry.clone();
+            let health_registry2 = playbook_registry.clone();
 
             // Manage shared state.
             app.manage(AppState {
@@ -355,6 +360,7 @@ pub fn run() {
                 cancelled,
                 scanner_trigger,
                 scanner_pause,
+                playbook_registry,
             });
 
             // Refresh machine context and system snapshot in background (avoids
@@ -480,8 +486,9 @@ pub fn run() {
                             let s = score.overall_score as i32;
                             let g = score.overall_grade.to_string();
                             let sync_app_dir = app_dir.clone();
+                            let reg = health_registry.clone();
                             tokio::spawn(async move {
-                                match crate::dashboard_link::push_checkin(&config, s, &g, &cats, Some(&sync_app_dir)).await {
+                                match crate::dashboard_link::push_checkin(&config, s, &g, &cats, Some(&sync_app_dir), Some(&reg)).await {
                                     Ok(Some(new_cats)) => {
                                         // Update enabled_categories from fleet policy.
                                         if let Some(mut cfg) = crate::dashboard_link::DashboardConfig::load(&sync_app_dir) {
@@ -595,8 +602,9 @@ pub fn run() {
                                 let s = score.overall_score as i32;
                                 let g = score.overall_grade.to_string();
                                 let sync_app_dir = app_dir.clone();
+                                let reg = health_registry2.clone();
                                 tokio::spawn(async move {
-                                    match crate::dashboard_link::push_checkin(&config, s, &g, &cats, Some(&sync_app_dir)).await {
+                                    match crate::dashboard_link::push_checkin(&config, s, &g, &cats, Some(&sync_app_dir), Some(&reg)).await {
                                         Ok(Some(new_cats)) => {
                                             if let Some(mut cfg) = crate::dashboard_link::DashboardConfig::load(&sync_app_dir) {
                                                 cfg.enabled_categories = Some(new_cats);

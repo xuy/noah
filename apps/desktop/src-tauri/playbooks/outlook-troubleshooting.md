@@ -4,7 +4,7 @@ description: Fix Outlook sync failures, crashes, stuck email, and profile corrup
 platform: all
 last_reviewed: 2026-03-04
 author: noah-team
-type: system
+source: bundled
 emoji: 📧
 ---
 

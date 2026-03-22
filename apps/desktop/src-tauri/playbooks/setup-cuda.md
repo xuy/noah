@@ -4,7 +4,7 @@ description: Install NVIDIA CUDA Toolkit on Linux (Ubuntu/Debian, RHEL/Fedora)
 platform: linux
 last_reviewed: 2026-03-11
 author: noah-team
-type: system
+source: bundled
 emoji: 🎮
 ---
 

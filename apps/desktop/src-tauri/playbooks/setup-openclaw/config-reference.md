@@ -4,7 +4,7 @@ description: Comprehensive OpenClaw configuration field reference
 platform: all
 last_reviewed: 2026-03-08
 author: noah-team
-type: system
+source: bundled
 emoji: 🦞
 ---
 

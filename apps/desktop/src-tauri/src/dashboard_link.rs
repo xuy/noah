@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
+use std::sync::{Arc, RwLock};
 
 const CONFIG_FILE: &str = "dashboard.json";
 
@@ -118,7 +119,15 @@ pub async fn enroll_device(
 
 /// Push a health checkin to the dashboard.
 /// Pass `app_dir` so we can auto-unlink if the device token has been revoked (admin removed device).
-pub async fn push_checkin(config: &DashboardConfig, score: i32, grade: &str, categories_json: &str, app_dir: Option<&Path>) -> Result<Option<Vec<String>>> {
+/// Pass `playbook_registry` to trigger a reload after fleet playbooks are written to disk.
+pub async fn push_checkin(
+    config: &DashboardConfig,
+    score: i32,
+    grade: &str,
+    categories_json: &str,
+    app_dir: Option<&Path>,
+    playbook_registry: Option<&Arc<RwLock<crate::playbooks::PlaybookRegistry>>>,
+) -> Result<Option<Vec<String>>> {
     let url = format!("{}/dashboard/checkin", config.dashboard_url.trim_end_matches('/'));
 
     let body = serde_json::json!({
@@ -171,17 +180,120 @@ pub async fn push_checkin(config: &DashboardConfig, score: i32, grade: &str, cat
         }
     }
 
-    // Persist assigned playbooks to disk so they're available for auto-heal and manual runs
-    if let Some(ref playbooks) = data.assigned_playbooks {
-        if !playbooks.is_empty() {
-            if let Some(dir) = app_dir {
-                let pb_path = dir.join("fleet_playbooks.json");
-                let _ = std::fs::write(&pb_path, serde_json::to_string_pretty(playbooks).unwrap_or_default());
+    // Write assigned fleet playbooks to knowledge/playbooks/ as individual .md files.
+    if let Some(dir) = app_dir {
+        let knowledge_dir = dir.join("knowledge");
+        let playbooks_dir = knowledge_dir.join("playbooks");
+        let _ = std::fs::create_dir_all(&playbooks_dir);
+
+        if let Some(ref playbooks) = data.assigned_playbooks {
+            let assigned_slugs: std::collections::HashSet<String> =
+                playbooks.iter().map(|p| p.slug.clone()).collect();
+
+            // Write each assigned playbook.
+            for pb in playbooks {
+                let dest = playbooks_dir.join(format!("{}.md", pb.slug));
+
+                // Never overwrite user-created (source: local) files.
+                if dest.exists() {
+                    if let Ok(existing) = std::fs::read_to_string(&dest) {
+                        if existing.contains("source: local") {
+                            continue;
+                        }
+                    }
+                }
+
+                // If content already has frontmatter, ensure source: fleet is present.
+                // Otherwise, inject frontmatter.
+                let content = if pb.content.trim_start().starts_with("---") {
+                    ensure_fleet_source(&pb.content)
+                } else {
+                    format!(
+                        "---\nname: {}\ndescription: {}\nsource: fleet\nplatform: all\n---\n{}",
+                        pb.slug, pb.name, pb.content
+                    )
+                };
+
+                let _ = std::fs::write(&dest, content);
+            }
+
+            // Cleanup pass: remove fleet playbooks no longer assigned.
+            if let Ok(entries) = std::fs::read_dir(&playbooks_dir) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if !path.is_file() || path.extension().and_then(|e| e.to_str()) != Some("md") {
+                        continue;
+                    }
+                    if let Ok(content) = std::fs::read_to_string(&path) {
+                        if content.contains("source: fleet") {
+                            let slug = path.file_stem()
+                                .unwrap_or_default()
+                                .to_string_lossy()
+                                .to_string();
+                            if !assigned_slugs.contains(&slug) {
+                                eprintln!("[fleet] removing unassigned fleet playbook: {}", slug);
+                                let _ = std::fs::remove_file(&path);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Delete legacy fleet_playbooks.json if it exists.
+        let legacy_path = dir.join("fleet_playbooks.json");
+        if legacy_path.exists() {
+            let _ = std::fs::remove_file(&legacy_path);
+        }
+
+        // Reload the playbook registry to pick up changes.
+        if let Some(registry) = playbook_registry {
+            if let Ok(mut reg) = registry.write() {
+                reg.reload();
+                eprintln!("[fleet] playbook registry reloaded ({} playbooks)", reg.metas.len());
             }
         }
     }
 
     Ok(data.enabled_categories)
+}
+
+/// Ensure a playbook's frontmatter contains `source: fleet`.
+/// If it has `source:` with a different value, replace it.
+/// If it has no `source:` line, add one after the opening `---`.
+fn ensure_fleet_source(content: &str) -> String {
+    let trimmed = content.trim_start();
+    if !trimmed.starts_with("---") {
+        return content.to_string();
+    }
+    let after_first = &trimmed[3..];
+    let Some(end) = after_first.find("\n---") else {
+        return content.to_string();
+    };
+    let yaml_block = &after_first[..end];
+
+    // Check if source: is already present.
+    let has_source = yaml_block.lines().any(|l| l.trim().starts_with("source:"));
+    if has_source {
+        // Replace existing source: line.
+        let lines: Vec<&str> = content.lines().collect();
+        let result: Vec<String> = lines
+            .iter()
+            .map(|l| {
+                if l.trim().starts_with("source:") {
+                    "source: fleet".to_string()
+                } else {
+                    l.to_string()
+                }
+            })
+            .collect();
+        result.join("\n")
+    } else {
+        // Insert source: fleet after the opening ---.
+        let mut result = String::from("---\nsource: fleet");
+        result.push_str(after_first);
+        result
+    }
 }
 
 /// A playbook assigned to this device via fleet (from group or direct assignment).
@@ -383,6 +495,34 @@ pub async fn push_session_report(
     if !resp.status().is_success() {
         let text = resp.text().await.unwrap_or_default();
         anyhow::bail!("Session report push failed: {}", text);
+    }
+
+    Ok(())
+}
+
+/// Push a playbook run report to the fleet dashboard.
+/// Called after any playbook execution completes (user, auto-heal, fleet-dispatch).
+pub async fn push_playbook_run(
+    config: &DashboardConfig,
+    report: &crate::playbooks::PlaybookRunReport,
+) -> Result<()> {
+    let url = format!(
+        "{}/dashboard/playbook-run",
+        config.dashboard_url.trim_end_matches('/'),
+    );
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", config.device_token))
+        .json(report)
+        .send()
+        .await
+        .context("Failed to push playbook run report")?;
+
+    if !resp.status().is_success() {
+        let text = resp.text().await.unwrap_or_default();
+        anyhow::bail!("Playbook run report push failed: {}", text);
     }
 
     Ok(())

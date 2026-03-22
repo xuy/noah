@@ -182,13 +182,14 @@ pub async fn run_health_check(state: State<'_, AppState>, app_handle: tauri::App
         let app_dir = state.app_dir.clone();
         let json_for_sync = result_json.clone();
         let handle = app_handle.clone();
+        let reg = state.playbook_registry.clone();
         tokio::spawn(async move {
             if let Some(config) = DashboardConfig::load(&app_dir) {
                 if let Ok(score) = serde_json::from_str::<serde_json::Value>(&json_for_sync) {
                     let s = score.get("overall_score").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
                     let g = score.get("overall_grade").and_then(|v| v.as_str()).unwrap_or("F");
                     let cats = score.get("categories").map(|v| v.to_string()).unwrap_or_else(|| "[]".to_string());
-                    match crate::dashboard_link::push_checkin(&config, s, g, &cats, Some(&app_dir)).await {
+                    match crate::dashboard_link::push_checkin(&config, s, g, &cats, Some(&app_dir), Some(&reg)).await {
                         Ok(Some(new_cats)) => {
                             // Update enabled_categories from fleet policy.
                             if let Some(mut cfg) = DashboardConfig::load(&app_dir) {
@@ -381,10 +382,16 @@ pub async fn start_fleet_playbook(
     action_id: String,
     playbook_slug: String,
 ) -> Result<String, String> {
-    // Create a new session
+    // Create a new session with fleet-dispatch trigger context
     let session_id = {
         let mut orch = state.orchestrator.lock().await;
-        orch.create_session()
+        let id = orch.create_session();
+        orch.set_trigger_context(&id, crate::playbooks::TriggerContext {
+            trigger: "fleet_dispatch".to_string(),
+            check_id: Some(action_id.clone()),
+            score_before: None,
+        });
+        id
     };
 
     // Persist the session to the DB

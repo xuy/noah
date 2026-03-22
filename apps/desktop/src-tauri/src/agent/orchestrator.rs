@@ -16,7 +16,7 @@ use crate::agent::llm_client::{
 use crate::agent::prompts;
 use crate::agent::tool_router::ToolRouter;
 use crate::knowledge;
-use crate::playbooks::PlaybookState;
+use crate::playbooks::{PlaybookRunTracker, PlaybookSource, PlaybookState, TriggerContext, content_hash};
 use crate::safety::journal;
 use crate::ui_tools;
 
@@ -72,6 +72,10 @@ pub struct Session {
     pub locale: Option<String>,
     /// Session mode: "default" for normal chat, "learn" for knowledge-creation flow.
     pub mode: String,
+    /// Trigger context for playbook observability (set before session starts for auto-heal/fleet).
+    pub trigger_context: Option<TriggerContext>,
+    /// Run tracker for playbook observability. Created when activate_playbook fires.
+    pub run_tracker: Option<PlaybookRunTracker>,
 }
 
 pub struct Orchestrator {
@@ -131,9 +135,25 @@ impl Orchestrator {
             secrets: HashMap::new(),
             locale: None,
             mode: "default".to_string(),
+            trigger_context: None,
+            run_tracker: None,
         };
         self.sessions.insert(id.clone(), session);
         id
+    }
+
+    /// Set trigger context on a session (call before sending the activate message).
+    pub fn set_trigger_context(&mut self, session_id: &str, ctx: TriggerContext) {
+        if let Some(session) = self.sessions.get_mut(session_id) {
+            session.trigger_context = Some(ctx);
+        }
+    }
+
+    /// Take the run tracker out of the session (consuming it for reporting).
+    pub fn take_run_tracker(&mut self, session_id: &str) -> Option<PlaybookRunTracker> {
+        self.sessions
+            .get_mut(session_id)
+            .and_then(|s| s.run_tracker.take())
     }
 
     /// Store a secret value from a secure_input response. Never enters LLM context.
@@ -270,6 +290,8 @@ impl Orchestrator {
             secrets: HashMap::new(),
             locale: None,
             mode: "default".to_string(),
+            trigger_context: None,
+            run_tracker: None,
         };
         self.sessions.insert(session_id.to_string(), session);
         Ok(())
@@ -518,15 +540,22 @@ impl Orchestrator {
                                 let session = self.sessions.get_mut(session_id).unwrap();
                                 let payload = if let Some(ref mut pb) = session.playbook {
                                     if let Some(progress) = pb.progress_json() {
+                                        let step_num = progress["step"].as_u64().unwrap_or(0) as u32;
+                                        let step_label = progress["label"].as_str().unwrap_or("").to_string();
                                         // Parse, inject progress, re-serialize.
-                                        if let Ok(mut v) = serde_json::from_str::<Value>(&payload) {
+                                        let result = if let Ok(mut v) = serde_json::from_str::<Value>(&payload) {
                                             v["progress"] = progress;
                                             pb.advance();
                                             v.to_string()
                                         } else {
                                             pb.advance();
                                             payload
+                                        };
+                                        // Record step in run tracker.
+                                        if let Some(ref mut tracker) = session.run_tracker {
+                                            tracker.record_step(step_num, &step_label);
                                         }
+                                        result
                                     } else {
                                         payload
                                     }
@@ -644,7 +673,7 @@ impl Orchestrator {
 
                 match result {
                     Ok(ref output) => {
-                        // Detect activate_playbook and set up runtime state.
+                        // Detect activate_playbook and set up runtime state + tracker.
                         if tool_name == "activate_playbook" {
                             if let Some(pb_name) = tool_input.get("name").and_then(|v| v.as_str()) {
                                 let state = PlaybookState::from_content(pb_name, output);
@@ -667,8 +696,24 @@ impl Orchestrator {
                                     );
                                 }
                                 let session = self.sessions.get_mut(session_id).unwrap();
+                                let total = if state.steps.is_empty() { None } else { Some(state.total_steps) };
+                                let mut tracker = PlaybookRunTracker::new(
+                                    pb_name,
+                                    total,
+                                    session.trigger_context.as_ref(),
+                                );
+                                // Enrich tracker with source and content hash from the loaded content.
+                                let hash = content_hash(output);
+                                let source = detect_source_from_content(output);
+                                tracker.set_meta(source, &hash);
+                                session.run_tracker = Some(tracker);
                                 session.playbook = Some(state);
                             }
+                        }
+
+                        // Record tool call in playbook run tracker.
+                        if let Some(ref mut tracker) = self.sessions.get_mut(session_id).unwrap().run_tracker {
+                            tracker.record_tool(&tool_name);
                         }
 
                         emit_debug(
@@ -957,6 +1002,43 @@ impl Orchestrator {
         };
 
         Ok(approved)
+    }
+}
+
+/// Detect the PlaybookSource from playbook content frontmatter.
+fn detect_source_from_content(content: &str) -> PlaybookSource {
+    let trimmed = content.trim_start();
+    if !trimmed.starts_with("---") {
+        return PlaybookSource::Local;
+    }
+    let after_first = &trimmed[3..];
+    let Some(end) = after_first.find("\n---") else { return PlaybookSource::Local };
+    let yaml_block = &after_first[..end];
+
+    let mut source = None;
+    let mut type_field = None;
+    for line in yaml_block.lines() {
+        let line = line.trim();
+        if let Some(val) = line.strip_prefix("source:") {
+            source = Some(val.trim());
+        } else if let Some(val) = line.strip_prefix("type:") {
+            type_field = Some(val.trim());
+        }
+    }
+
+    if let Some(s) = source {
+        match s {
+            "fleet" => PlaybookSource::Fleet,
+            "local" => PlaybookSource::Local,
+            _ => PlaybookSource::Bundled,
+        }
+    } else if let Some(t) = type_field {
+        match t {
+            "user" => PlaybookSource::Local,
+            _ => PlaybookSource::Bundled,
+        }
+    } else {
+        PlaybookSource::Local
     }
 }
 

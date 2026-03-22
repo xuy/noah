@@ -4,7 +4,7 @@ description: Install and configure Homebrew package manager on macOS
 platform: macos
 last_reviewed: 2026-03-07
 author: noah-team
-type: system
+source: bundled
 emoji: 🍺
 ---
 

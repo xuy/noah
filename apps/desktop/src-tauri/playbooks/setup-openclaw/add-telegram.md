@@ -4,7 +4,7 @@ description: Add Telegram as a messaging channel for OpenClaw
 platform: all
 last_reviewed: 2026-03-08
 author: noah-team
-type: system
+source: bundled
 emoji: 🦞
 ---
 

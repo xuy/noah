@@ -245,6 +245,13 @@ impl AutoHealMonitor {
             let mut orch = state.orchestrator.lock().await;
             session_id = orch.create_session();
 
+            // Set trigger context for playbook run tracking.
+            orch.set_trigger_context(&session_id, crate::playbooks::TriggerContext {
+                trigger: "auto_heal".to_string(),
+                check_id: Some(check_id.to_string()),
+                score_before,
+            });
+
             let os_name = if cfg!(target_os = "macos") { "macOS" }
                 else if cfg!(target_os = "windows") { "Windows" }
                 else { "Linux" };
@@ -344,18 +351,32 @@ impl AutoHealMonitor {
             error: error_message,
         });
 
-        // Push auto-heal event to fleet if linked.
+        // Push playbook run report + auto-heal event to fleet if linked.
         if let Some(config) = crate::dashboard_link::DashboardConfig::load(&self.app_dir) {
             let sb = score_before.unwrap_or(0);
             let sa = score_after.unwrap_or(sb);
             let slug_owned = slug.to_string();
             let check_id_owned = check_id.to_string();
-            let push_app_dir = self.app_dir.clone();
+
+            // Extract run tracker and push playbook run report.
+            let run_report = {
+                let mut orch = state.orchestrator.lock().await;
+                orch.take_run_tracker(&session_id).map(|tracker| {
+                    tracker.finalize(success, score_after, &session_id)
+                })
+            };
+
+            let config_clone = config.clone();
             tokio::spawn(async move {
                 if let Err(e) = crate::dashboard_link::push_auto_heal_event(
                     &config, &check_id_owned, &slug_owned, sb, sa,
                 ).await {
                     eprintln!("[autoheal] fleet push failed: {}", e);
+                }
+                if let Some(report) = run_report {
+                    if let Err(e) = crate::dashboard_link::push_playbook_run(&config_clone, &report).await {
+                        eprintln!("[autoheal] playbook run report push failed: {}", e);
+                    }
                 }
             });
         }
@@ -365,7 +386,7 @@ impl AutoHealMonitor {
     }
 }
 
-/// List playbook slugs from the playbooks directory.
+/// List playbook slugs from the playbooks directory, including source taxonomy.
 fn list_playbook_slugs(playbooks_dir: &std::path::Path) -> Vec<serde_json::Value> {
     let mut list = Vec::new();
     let Ok(entries) = std::fs::read_dir(playbooks_dir) else { return list };
@@ -373,14 +394,55 @@ fn list_playbook_slugs(playbooks_dir: &std::path::Path) -> Vec<serde_json::Value
         let path = entry.path();
         if path.extension().and_then(|e| e.to_str()) == Some("md") {
             let filename = path.file_stem().unwrap_or_default().to_string_lossy().to_string();
-            // Read first few lines to get description
             let content = std::fs::read_to_string(&path).unwrap_or_default();
+
+            // Extract source from frontmatter.
+            let source = extract_source_from_frontmatter(&content);
             let description: String = content.lines().take(3).collect::<Vec<_>>().join(" ");
             list.push(serde_json::json!({
                 "slug": filename,
                 "description": description,
+                "source": source,
             }));
         }
     }
     list
+}
+
+/// Extract the source field from frontmatter, with legacy type: fallback.
+fn extract_source_from_frontmatter(content: &str) -> &'static str {
+    let trimmed = content.trim_start();
+    if !trimmed.starts_with("---") {
+        return "local";
+    }
+    let after_first = &trimmed[3..];
+    let Some(end) = after_first.find("\n---") else { return "local" };
+    let yaml_block = &after_first[..end];
+
+    let mut source = None;
+    let mut type_field = None;
+
+    for line in yaml_block.lines() {
+        let line = line.trim();
+        if let Some(val) = line.strip_prefix("source:") {
+            source = Some(val.trim());
+        } else if let Some(val) = line.strip_prefix("type:") {
+            type_field = Some(val.trim());
+        }
+    }
+
+    if let Some(s) = source {
+        match s {
+            "fleet" => "fleet",
+            "local" => "local",
+            _ => "bundled",
+        }
+    } else if let Some(t) = type_field {
+        match t {
+            "user" => "local",
+            _ => "bundled",
+        }
+    } else {
+        "bundled"
+    }
 }

@@ -4,7 +4,7 @@ description: Verify backup integrity by checking status, timestamps, and testing
 platform: all
 last_reviewed: 2026-03-17
 author: noah-team
-type: system
+source: bundled
 emoji: 💾
 ---
 

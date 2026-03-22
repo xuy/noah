@@ -4,7 +4,7 @@ description: Connect to a new Wi-Fi network including enterprise/WPA2-Enterprise
 platform: all
 last_reviewed: 2026-03-07
 author: noah-team
-type: system
+source: bundled
 emoji: 📶
 ---
 
