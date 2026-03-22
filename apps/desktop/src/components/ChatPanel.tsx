@@ -66,22 +66,109 @@ function humanizeActionLabel(label: string, actionType: string | undefined, t: (
   return raw;
 }
 
-// ── Progress Bar (playbook step indicator) ──
+// ── Step Indicator (playbook wizard stepper) ──
 
-function ProgressBar({ step, total, label }: { step: number; total: number; label: string }) {
+interface StepIndicatorProps {
+  step: number;
+  total: number;
+  label: string;
+  allSteps?: { number: number; label: string }[];
+  emoji?: string;
+  playbookName?: string;
+}
+
+function StepIndicator({ step, total, label, allSteps, emoji, playbookName }: StepIndicatorProps) {
   const { t } = useLocale();
-  const pct = Math.min(100, Math.round((step / total) * 100));
-  return (
-    <div className="mb-3">
-      <div className="flex items-center justify-between text-xs text-text-muted mb-1.5">
-        <span className="font-medium text-text-secondary">{t("chat.stepOf", { step, total })}</span>
-        <span>{label}</span>
+
+  // Fall back to simple progress bar when all_steps isn't available
+  if (!allSteps || allSteps.length === 0) {
+    const pct = Math.min(100, Math.round((step / total) * 100));
+    return (
+      <div className="mb-3">
+        <div className="flex items-center justify-between text-xs text-text-muted mb-1.5">
+          <span className="font-medium text-text-secondary">{t("chat.stepOf", { step, total })}</span>
+          <span>{label}</span>
+        </div>
+        <div className="w-full h-1.5 rounded-full bg-bg-tertiary overflow-hidden">
+          <div
+            className="h-full rounded-full bg-accent-blue transition-all duration-500 ease-out"
+            style={{ width: `${pct}%` }}
+          />
+        </div>
       </div>
-      <div className="w-full h-1.5 rounded-full bg-bg-tertiary overflow-hidden">
-        <div
-          className="h-full rounded-full bg-accent-blue transition-all duration-500 ease-out"
-          style={{ width: `${pct}%` }}
-        />
+    );
+  }
+
+  // Format playbook name for display: "network-diagnostics" → "Network Diagnostics"
+  const displayName = playbookName
+    ? playbookName.split("-").map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ")
+    : undefined;
+
+  return (
+    <div className="mb-4">
+      {/* Playbook title row */}
+      {displayName && (
+        <div className="flex items-center gap-2 mb-3">
+          {emoji && <span className="text-base">{emoji}</span>}
+          <span className="text-xs font-semibold text-text-secondary uppercase tracking-wider">{displayName}</span>
+        </div>
+      )}
+
+      {/* Stepper */}
+      <div className="flex items-start gap-0">
+        {allSteps.map((s, i) => {
+          const isCompleted = s.number < step;
+          const isCurrent = s.number === step;
+          const isUpcoming = s.number > step;
+          const isLast = i === allSteps.length - 1;
+
+          return (
+            <div key={s.number} className="flex items-start flex-1 min-w-0">
+              <div className="flex flex-col items-center">
+                {/* Dot */}
+                <div
+                  className={`
+                    w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-semibold
+                    transition-all duration-300 flex-shrink-0
+                    ${isCompleted
+                      ? "bg-accent-blue text-white"
+                      : isCurrent
+                        ? "bg-accent-blue text-white ring-[3px] ring-accent-blue/20"
+                        : "bg-bg-tertiary text-text-muted"
+                    }
+                  `}
+                >
+                  {isCompleted ? (
+                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                      <path d="M2.5 6L5 8.5L9.5 3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  ) : (
+                    s.number
+                  )}
+                </div>
+                {/* Label below dot */}
+                <span
+                  className={`
+                    text-[10px] mt-1 text-center leading-tight max-w-[64px] line-clamp-2
+                    ${isCurrent ? "text-accent-blue font-medium" : isCompleted ? "text-text-secondary" : "text-text-muted"}
+                  `}
+                >
+                  {s.label}
+                </span>
+              </div>
+              {/* Connector line */}
+              {!isLast && (
+                <div className="flex-1 mt-3 mx-1">
+                  <div
+                    className={`h-[2px] rounded-full transition-all duration-500 ${
+                      isCompleted ? "bg-accent-blue" : "bg-bg-tertiary"
+                    }`}
+                  />
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -500,7 +587,7 @@ function ActionCard({
   actionTaken?: boolean;
   isProcessing: boolean;
   timestamp: number;
-  progress?: { step: number; total: number; label: string };
+  progress?: { step: number; total: number; label: string; all_steps?: { number: number; label: string }[]; emoji?: string; playbook_name?: string };
   qrData?: string;
   onDoIt: () => void;
 }) {
@@ -514,7 +601,16 @@ function ActionCard({
     <div className="group animate-fade-in">
       <div className="rounded-[14px] border border-surface-card-border bg-surface-card surface-card overflow-hidden">
         <div className="px-5 pt-4">
-          {progress && <ProgressBar step={progress.step} total={progress.total} label={progress.label} />}
+          {progress && (
+            <StepIndicator
+              step={progress.step}
+              total={progress.total}
+              label={progress.label}
+              allSteps={progress.all_steps}
+              emoji={progress.emoji}
+              playbookName={progress.playbook_name}
+            />
+          )}
         </div>
 
         {/* Situation / Instructions */}
@@ -591,7 +687,7 @@ function UserQuestionCard({
   actionTaken?: boolean;
   isProcessing: boolean;
   timestamp: number;
-  progress?: { step: number; total: number; label: string };
+  progress?: { step: number; total: number; label: string; all_steps?: { number: number; label: string }[]; emoji?: string; playbook_name?: string };
   onAnswer: (answer: string) => void;
   onSecureAnswer?: (secretName: string, value: string) => void;
   onSendMessage?: (text: string) => void;
@@ -632,7 +728,16 @@ function UserQuestionCard({
     <div className="group animate-fade-in">
       <div className="rounded-[14px] border border-surface-card-border bg-surface-card surface-card overflow-hidden">
         <div className="px-5 pt-4 pb-3">
-          {progress && <ProgressBar step={progress.step} total={progress.total} label={progress.label} />}
+          {progress && (
+            <StepIndicator
+              step={progress.step}
+              total={progress.total}
+              label={progress.label}
+              allSteps={progress.all_steps}
+              emoji={progress.emoji}
+              playbookName={progress.playbook_name}
+            />
+          )}
           <div className="text-sm font-semibold text-accent-blue mb-1.5 tracking-wide">
             <InlineMarkdown text={first.header} />
           </div>

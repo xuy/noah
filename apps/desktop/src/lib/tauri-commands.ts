@@ -88,10 +88,23 @@ export interface AssistantCardAction {
   type: AssistantActionType;
 }
 
+export interface PlaybookProgressStep {
+  number: number;
+  label: string;
+}
+
 export interface PlaybookProgress {
   step: number;
   total: number;
   label: string;
+  /** All steps in the playbook for stepper UI. */
+  all_steps?: PlaybookProgressStep[];
+  /** Playbook slug name. */
+  playbook_name?: string;
+  /** Emoji icon from frontmatter. */
+  emoji?: string;
+  /** Playbook description from frontmatter. */
+  description?: string;
 }
 
 export interface AssistantUiSpa {
