@@ -15,8 +15,10 @@ import { UpdateBanner } from "./components/UpdateBanner";
 import { ProactiveSuggestionBanner } from "./components/ProactiveSuggestionBanner";
 import { SessionSummary } from "./components/SessionSummary";
 import { useSessionStore } from "./stores/sessionStore";
-import { SetupScreen } from "./components/SetupScreen";
+import { SignInScreen } from "./components/SignInScreen";
+import { SubscribeModal } from "./components/SubscribeModal";
 import { useDebugStore, type DebugEvent } from "./stores/debugStore";
+import { useConsumerStore } from "./stores/consumerStore";
 import { useTheme } from "./hooks/useTheme";
 import { useZoom } from "./hooks/useZoom";
 
@@ -43,23 +45,29 @@ function App() {
   const [needsSetup, setNeedsSetup] = useState<boolean | null>(null);
   useTheme(); // Apply saved theme on mount (before setup screen too)
 
-  // Check for API key on mount.
+  // Gate on a valid consumer entitlement (default path) OR a BYOK api key
+  // (advanced). Fetching the entitlement also auto-clears a stale Keychain
+  // session when the server returns 401 — so a dev whose session expired
+  // server-side drops cleanly back to SignInScreen on next launch.
   useEffect(() => {
-    commands.hasApiKey().then((has) => {
-      setNeedsSetup(!has);
-    }).catch(() => {
-      setNeedsSetup(true);
-    }).finally(() => {
-      dismissSplash();
-    });
+    Promise.all([
+      commands.consumerGetEntitlement().catch(() => null),
+      commands.hasApiKey().catch(() => false),
+    ])
+      .then(([ent, hasKey]) => {
+        setNeedsSetup(!(ent || hasKey));
+      })
+      .finally(() => {
+        dismissSplash();
+      });
   }, []);
 
   // Show nothing while checking (splash is still visible).
   if (needsSetup === null) return null;
 
-  // Show setup screen if no API key configured.
+  // Show sign-in screen if no auth configured.
   if (needsSetup) {
-    return <SetupScreen onComplete={() => setNeedsSetup(false)} />;
+    return <SignInScreen onComplete={() => setNeedsSetup(false)} />;
   }
 
   return <MainApp />;
@@ -71,6 +79,14 @@ function MainApp() {
   const activeView = useSessionStore((s) => s.activeView);
   const addEvent = useDebugStore((s) => s.addEvent);
   const toggle = useDebugStore((s) => s.toggle);
+  const refreshEntitlement = useConsumerStore((s) => s.refresh);
+  const subscribeModal = useConsumerStore((s) => s.subscribeModal);
+  const closeSubscribeModal = useConsumerStore((s) => s.closeSubscribeModal);
+
+  // Hydrate the consumer entitlement once MainApp mounts.
+  useEffect(() => {
+    refreshEntitlement();
+  }, [refreshEntitlement]);
 
   // Set a random cheeky window title on mount.
   useEffect(() => {
@@ -130,6 +146,17 @@ function MainApp() {
           <ActionApproval />
         </div>
       </div>
+      {subscribeModal && (
+        <SubscribeModal
+          variant={subscribeModal.variant}
+          onDismiss={closeSubscribeModal}
+          onCheckoutOpened={() => {
+            // Leave the modal open so the user sees a "refreshing..." cue —
+            // closing happens when they return to the app and entitlement refreshes.
+            refreshEntitlement();
+          }}
+        />
+      )}
     </div>
   );
 }

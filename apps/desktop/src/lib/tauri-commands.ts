@@ -233,6 +233,17 @@ export async function getAuthMode(): Promise<"api_key" | "proxy"> {
   return await invoke<"api_key" | "proxy">("get_auth_mode");
 }
 
+export interface ProxyStatus {
+  status: "active" | "expired" | "not_proxy";
+  reason?: string;
+  invite_code?: string;
+}
+
+export async function checkProxyStatus(): Promise<ProxyStatus> {
+  const json = await invoke<string>("check_proxy_status");
+  return JSON.parse(json);
+}
+
 export async function clearAuth(): Promise<void> {
   await invoke<void>("clear_auth");
 }
@@ -458,6 +469,62 @@ export async function startFleetPlaybook(actionId: string, playbookSlug: string)
 
 export async function verifyRemediation(actionId: string): Promise<string> {
   return await invoke<string>("verify_remediation", { actionId });
+}
+
+// ── Consumer (account / subscription) ──
+
+export interface Entitlement {
+  plan: string | null;
+  status: "none" | "trialing" | "active" | "past_due" | "canceled" | "expired";
+  trial_started_at: number | null;
+  trial_ends_at: number | null;
+  period_start: number | null;
+  period_end: number | null;
+  usage_used: number;
+  usage_limit: number;
+  fix_count_total: number;
+}
+
+export interface FixCompletedResult {
+  fix_count_total: number;
+  usage_used: number;
+  entitlement: Entitlement;
+}
+
+export async function consumerHasSession(): Promise<boolean> {
+  return await invoke<boolean>("consumer_has_session");
+}
+
+export async function consumerRequestMagicLink(email: string): Promise<void> {
+  await invoke<void>("consumer_request_magic_link", { email });
+}
+
+export async function consumerCompleteSignIn(token: string): Promise<Entitlement> {
+  return await invoke<Entitlement>("consumer_complete_sign_in", { token });
+}
+
+export async function consumerSignOut(): Promise<void> {
+  await invoke<void>("consumer_sign_out");
+}
+
+export async function consumerGetEntitlement(): Promise<Entitlement | null> {
+  return await invoke<Entitlement | null>("consumer_get_entitlement");
+}
+
+export async function consumerNotifyIssueStarted(): Promise<Entitlement | null> {
+  return await invoke<Entitlement | null>("consumer_notify_issue_started");
+}
+
+export async function consumerNotifyFixCompleted(): Promise<FixCompletedResult | null> {
+  return await invoke<FixCompletedResult | null>("consumer_notify_fix_completed");
+}
+
+export async function consumerBillingCheckoutUrl(plan: "monthly" | "annual"): Promise<string> {
+  return await invoke<string>("consumer_billing_checkout_url", { plan });
+}
+
+export async function consumerBillingPortalUrl(): Promise<string> {
+  return await invoke<string>("consumer_billing_portal_url");
 }
 
 // ── V2 Agent Commands ──

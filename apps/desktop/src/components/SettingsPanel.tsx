@@ -3,6 +3,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { useTheme, type ThemePreference } from "../hooks/useTheme";
 import * as commands from "../lib/tauri-commands";
 import { useLocale, LOCALE_OPTIONS } from "../i18n";
+import { BillingSection } from "./BillingSection";
 
 export function SettingsPanel() {
   const [apiKey, setApiKey] = useState("");
@@ -128,17 +129,15 @@ export function SettingsPanel() {
         </div>
 
         <div className="grid gap-6 lg:grid-cols-2">
+          {authMode === "proxy" && <BillingSection />}
           <section className="rounded-2xl border border-border-primary bg-bg-secondary p-5">
             <h2 className="text-xs font-semibold text-text-primary uppercase tracking-wider mb-3">
-              {authMode === "proxy" ? t("settings.connection") : t("settings.apiKey")}
+              {authMode === "proxy" ? t("advanced.byokTitle") : t("settings.apiKey")}
             </h2>
             {authMode === "proxy" ? (
               <>
-                <p className="text-sm text-text-muted mb-2">
-                  {t("settings.connectedViaProxy")}
-                </p>
                 <p className="text-sm text-text-muted mb-3">
-                  {t("settings.switchPrompt")}
+                  {t("advanced.byokDesc")}
                 </p>
                 <input
                   type="password"
@@ -156,13 +155,13 @@ export function SettingsPanel() {
                 <button
                   onClick={handleSaveKey}
                   disabled={!apiKey.trim() || saving}
-                  className="mt-3 w-full py-2 rounded-lg bg-accent-green text-white text-sm font-medium hover:bg-accent-green/80 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="mt-3 w-full py-2 rounded-lg bg-bg-tertiary text-text-primary text-sm font-medium hover:bg-bg-hover transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {saving
                     ? t("settings.saving")
                     : saved
                       ? t("settings.saved")
-                      : t("settings.switchToOwnKey")}
+                      : t("advanced.byokSave")}
                 </button>
               </>
             ) : (

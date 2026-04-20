@@ -83,6 +83,69 @@
     "getFromAnthropic": "Get one from Anthropic",
     "keyLocalOnly": "Your key is saved locally and never shared."
   },
+  "signIn": {
+    "welcomeTitle": "Sign in to Noah",
+    "emailLabel": "Email",
+    "emailPlaceholder": "you@example.com",
+    "sendLink": "Email me a sign-in link",
+    "sending": "Sending...",
+    "trialHint": "New to Noah? Your 7-day free trial starts when you describe your first problem.",
+    "checkInbox": "We sent a sign-in link to {email}. Click the link to finish signing in — Noah will pick it up automatically.",
+    "checkSpam": "Can't find it? Check your spam folder.",
+    "useDifferentEmail": "Use a different email",
+    "finishing": "Signing you in...",
+    "errorInvalidEmail": "Please enter a valid email address.",
+    "errorSendFailed": "Couldn't send the link",
+    "errorBadLink": "That sign-in link looks broken. Try again.",
+    "errorVerifyFailed": "Couldn't verify the link"
+  },
+  "subscribe": {
+    "firstFixHeadline": "Nice — that's one fix down.",
+    "firstFixBody": "Your free trial runs 7 days. Subscribe any time and keep fixing without interruption.",
+    "paywallHeadline": "Your trial has ended",
+    "paywallBody": "Subscribe to keep fixing issues with Noah.",
+    "capHitHeadline": "You've hit this month's fair-use limit",
+    "capHitBody": "Your limit resets next period. Or upgrade your plan if you need more.",
+    "plan": {
+      "annual": {
+        "label": "Annual · $50/year",
+        "desc": "Save ~17% — best value"
+      },
+      "monthly": {
+        "label": "Monthly · $4.99/month",
+        "desc": "Cancel any time"
+      }
+    },
+    "notNow": "Not now",
+    "subscribe": "Subscribe",
+    "opening": "Opening..."
+  },
+  "billing": {
+    "sectionTitle": "Billing",
+    "plan": "Plan",
+    "status": "Status",
+    "trialEndsAt": "Trial ends {date}",
+    "periodEndsAt": "Renews {date}",
+    "usage": "{used} of {limit} fixes this period",
+    "manage": "Manage subscription",
+    "upgrade": "Upgrade",
+    "signOut": "Sign out",
+    "signedInAs": "Signed in",
+    "statusNone": "No subscription",
+    "statusTrialing": "Trial",
+    "statusActive": "Active",
+    "statusPastDue": "Past due",
+    "statusCanceled": "Canceled",
+    "statusExpired": "Expired"
+  },
+  "advanced": {
+    "sectionTitle": "Advanced",
+    "byokTitle": "Bring your own Anthropic key",
+    "byokDesc": "For tinkerers: route LLM calls directly to Anthropic with your own key. No account needed, no telemetry, no subscription. Turning this off routes calls through Noah's servers.",
+    "byokToggle": "Use my Anthropic key",
+    "byokKeyPlaceholder": "sk-ant-...",
+    "byokSave": "Save key"
+  },
   "setup.taglines": [
     "Your personal IT help desk — describe a problem, get it fixed.",
     "AI-powered computer repair, right on your desktop.",
@@ -104,6 +167,9 @@
     "connection": "Connection",
     "apiKey": "API Key",
     "connectedViaProxy": "Connected via Noah Beta (invite code).",
+    "inviteExpired": "Your invite code has expired.",
+    "inviteCode": "Invite code",
+    "requestRenewal": "Request renewal on Discord →",
     "switchPrompt": "Want to use your own Anthropic API key instead?",
     "replaceKeyPrompt": "Enter a new Anthropic API key to replace the current one.",
     "errorApiKeyInvalid": "That doesn't look like an Anthropic API key. It should start with sk-ant-",
