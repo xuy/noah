@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { useChatStore } from "../stores/chatStore";
 import { useSessionStore } from "../stores/sessionStore";
+import { useConsumerStore } from "../stores/consumerStore";
 import type { Message, ToolCall } from "../stores/chatStore";
 import { useAgent } from "../hooks/useAgent";
 import { parseResponse } from "../lib/parseResponse";
@@ -935,6 +936,26 @@ function DoneCard({
     } catch (err) {
       console.error("Failed to mark resolved:", err);
     }
+    // Consumer hook: on "Yes, fixed", record the fix on the server.
+    // If this is the user's first ever fix and they're on the trial,
+    // surface the SubscribeModal (the "aha moment" prompt).
+    if (value) {
+      try {
+        const result = await commands.consumerNotifyFixCompleted();
+        if (result) {
+          const consumer = useConsumerStore.getState();
+          consumer.setEntitlement(result.entitlement);
+          if (
+            result.fix_count_total === 1 &&
+            result.entitlement.status === "trialing"
+          ) {
+            consumer.openSubscribeModal("first_fix");
+          }
+        }
+      } catch {
+        // best-effort; BYOK users have no session and this is a no-op
+      }
+    }
   };
 
   return (
@@ -1559,6 +1580,23 @@ export function ChatPanel() {
       el.style.height = `${Math.min(el.scrollHeight, 300)}px`;
     }
   }, [input]);
+
+  // Move the cursor into the input when the user lands on a fresh chat —
+  // on app startup, after "New chat", or after switching to any empty
+  // session. Non-technical users expect a messaging app to be "ready to
+  // type" without first clicking into the input box.
+  useEffect(() => {
+    if (!sessionId || isProcessing) return;
+    const empty =
+      messages.length === 0 ||
+      (messages.length === 1 && messages[0]?.role === "system");
+    if (!empty) return;
+    // Defer to next tick so the textarea is mounted / re-enabled first.
+    const timer = window.setTimeout(() => {
+      textareaRef.current?.focus();
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [sessionId, isProcessing, messages]);
 
   useEffect(() => {
     if (!isProcessing) {

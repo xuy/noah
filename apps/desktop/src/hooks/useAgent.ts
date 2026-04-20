@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 import { useChatStore } from "../stores/chatStore";
 import { useSessionStore } from "../stores/sessionStore";
+import { isPaywalled, useConsumerStore } from "../stores/consumerStore";
 import * as commands from "../lib/tauri-commands";
 import type { UserEventType } from "../lib/tauri-commands";
 
@@ -61,6 +62,28 @@ export function useAgent(): UseAgentReturn {
       const trimmed = text.trim();
       if (!trimmed || !sessionId) return;
 
+      // Consumer path: check entitlement before sending.
+      // Paywalled → open modal, abort.
+      // Trial not yet started (status='none') → start it (idempotent on server).
+      const consumer = useConsumerStore.getState();
+      const ent = consumer.entitlement;
+      if (ent) {
+        if (isPaywalled(ent)) {
+          const variant =
+            ent.status === "active" ? "cap_hit" : "paywall";
+          consumer.openSubscribeModal(variant);
+          return;
+        }
+        if (ent.status === "none") {
+          try {
+            const started = await commands.consumerNotifyIssueStarted();
+            if (started) consumer.setEntitlement(started);
+          } catch {
+            // non-fatal — trial start is best-effort; server is authoritative
+          }
+        }
+      }
+
       const prevChangeIds = new Set(changes.map((c) => c.id));
 
       addMessage({ role: "user", content: trimmed });
@@ -75,6 +98,15 @@ export function useAgent(): UseAgentReturn {
         });
         await syncChanges(prevChangeIds);
       } catch (err) {
+        // 402 from the LLM proxy means paywall; 429 means usage cap.
+        const msg = err instanceof Error ? err.message : String(err);
+        if (/\b402\b/.test(msg)) {
+          useConsumerStore.getState().openSubscribeModal("paywall");
+          useConsumerStore.getState().refresh();
+        } else if (/\b429\b/.test(msg)) {
+          useConsumerStore.getState().openSubscribeModal("cap_hit");
+          useConsumerStore.getState().refresh();
+        }
         console.error("Agent communication error:", err);
         addMessage({
           role: "system",
