@@ -241,6 +241,46 @@ pub async fn get_feedback_context(state: State<'_, AppState>) -> Result<Feedback
     })
 }
 
+/// Check if the proxy token is still valid. Returns JSON with status info.
+#[tauri::command]
+pub async fn check_proxy_status(state: State<'_, AppState>) -> Result<String, String> {
+    let orch = state.orchestrator.lock().await;
+    let (base_url, token) = match orch.auth() {
+        AuthMode::Proxy { base_url, token } => (base_url.clone(), token.clone()),
+        _ => return Ok(r#"{"status":"not_proxy"}"#.to_string()),
+    };
+    drop(orch);
+
+    // Make a lightweight request to the proxy to check token validity.
+    // Use the /v1/messages endpoint with an invalid body — we only care about auth status.
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(format!("{}/v1/messages", base_url.trim_end_matches('/')))
+        .header("Authorization", format!("Bearer {}", token))
+        .header("Content-Type", "application/json")
+        .header("anthropic-version", "2023-06-01")
+        .body(r#"{"model":"claude-haiku-4-5-20251001","max_tokens":1,"messages":[{"role":"user","content":"ping"}]}"#)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to reach proxy: {}", e))?;
+
+    let status_code = resp.status().as_u16();
+    if status_code == 401 {
+        let body: serde_json::Value = resp.json().await.unwrap_or_default();
+        let reason = body.get("reason").and_then(|v| v.as_str()).unwrap_or("unknown");
+        let invite_code = body.get("invite_code").and_then(|v| v.as_str()).unwrap_or("");
+        let result = serde_json::json!({
+            "status": "expired",
+            "reason": reason,
+            "invite_code": invite_code,
+        });
+        return Ok(result.to_string());
+    }
+
+    // Any non-401 response means the token is accepted (even 400 for bad request body).
+    Ok(r#"{"status":"active"}"#.to_string())
+}
+
 /// Link this device to a web dashboard using a 6-char code.
 #[tauri::command]
 pub async fn link_dashboard(

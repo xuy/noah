@@ -11,7 +11,8 @@ use uuid::Uuid;
 use noah_tools::SafetyTier;
 
 use crate::agent::llm_client::{
-    is_context_limit_error, ContentBlock, LlmClient, Message, MessageContent, ResponseBlock,
+    is_context_limit_error, AuthMode, ContentBlock, LlmClient, Message, MessageContent,
+    ResponseBlock,
 };
 use crate::agent::prompts;
 use crate::agent::tool_router::ToolRouter;
@@ -204,6 +205,10 @@ impl Orchestrator {
 
     pub fn has_api_key(&self) -> bool {
         self.llm.has_auth()
+    }
+
+    pub fn auth(&self) -> &AuthMode {
+        self.llm.auth()
     }
 
     pub fn auth_mode_name(&self) -> &str {
