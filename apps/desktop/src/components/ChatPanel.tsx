@@ -1581,6 +1581,33 @@ export function ChatPanel() {
     }
   }, [input]);
 
+  // Pending seed message: set by SignInScreen (via TilePickerScreen)
+  // just before the magic-link request, so the user's chosen category
+  // + clarifier becomes the first chat turn once they return signed in.
+  // We consume it exactly once, on the first fresh session the user
+  // lands on after sign-in.
+  useEffect(() => {
+    if (!sessionId || isProcessing) return;
+    const empty =
+      messages.length === 0 ||
+      (messages.length === 1 && messages[0]?.role === "system");
+    if (!empty) return;
+    const raw = localStorage.getItem("noah.pendingSeed");
+    if (!raw) return;
+    try {
+      const parsed = JSON.parse(raw) as {
+        message?: string;
+        expiresAt?: number;
+      };
+      localStorage.removeItem("noah.pendingSeed");
+      if (!parsed.message || !parsed.expiresAt) return;
+      if (parsed.expiresAt < Date.now()) return;
+      sendMessage(parsed.message);
+    } catch {
+      localStorage.removeItem("noah.pendingSeed");
+    }
+  }, [sessionId, isProcessing, messages, sendMessage]);
+
   // Move the cursor into the input when the user lands on a fresh chat —
   // on app startup, after "New chat", or after switching to any empty
   // session. Non-technical users expect a messaging app to be "ready to

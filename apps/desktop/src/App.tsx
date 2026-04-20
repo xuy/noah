@@ -15,7 +15,7 @@ import { UpdateBanner } from "./components/UpdateBanner";
 import { ProactiveSuggestionBanner } from "./components/ProactiveSuggestionBanner";
 import { SessionSummary } from "./components/SessionSummary";
 import { useSessionStore } from "./stores/sessionStore";
-import { SignInScreen } from "./components/SignInScreen";
+import { TilePickerScreen } from "./components/TilePickerScreen";
 import { SubscribeModal } from "./components/SubscribeModal";
 import { useDebugStore, type DebugEvent } from "./stores/debugStore";
 import { useConsumerStore } from "./stores/consumerStore";
@@ -65,9 +65,11 @@ function App() {
   // Show nothing while checking (splash is still visible).
   if (needsSetup === null) return null;
 
-  // Show sign-in screen if no auth configured.
+  // Show the tile-picker onboarding if no auth configured. It handles
+  // both fresh users (pick a problem → sign in) and returning users
+  // (tap "Already have an account? Sign in").
   if (needsSetup) {
-    return <SignInScreen onComplete={() => setNeedsSetup(false)} />;
+    return <TilePickerScreen onComplete={() => setNeedsSetup(false)} />;
   }
 
   return <MainApp />;

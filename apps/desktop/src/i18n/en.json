@@ -146,6 +146,56 @@
     "byokKeyPlaceholder": "sk-ant-...",
     "byokSave": "Save key"
   },
+  "onboarding": {
+    "greeting": "Hi, I'm Noah. What's going on with your Mac?",
+    "subgreeting": "Pick the closest match — you can tell me more in a moment.",
+    "backLabel": "Back",
+    "continue": "Continue",
+    "alreadyHaveAccount": "Already have an account? Sign in",
+    "signinContext": "Signing in to help with: {category}",
+    "tile": {
+      "slow": {
+        "title": "My Mac feels slow",
+        "desc": "Freezes, stutters, or sluggishness",
+        "hint": "e.g. Safari freezes for 10 seconds every time I open a new tab — started yesterday"
+      },
+      "wifi": {
+        "title": "Wi-Fi or internet issues",
+        "desc": "Slow, dropping, or won't connect",
+        "hint": "e.g. the Wi-Fi keeps dropping every 10 minutes at home, but my phone is fine"
+      },
+      "crash": {
+        "title": "An app keeps crashing",
+        "desc": "Quits, beach balls, or won't open",
+        "hint": "e.g. Zoom crashes about 5 minutes into every call"
+      },
+      "connect": {
+        "title": "Can't print or connect a device",
+        "desc": "Printer, monitor, Bluetooth, USB",
+        "hint": "e.g. my Brother printer shows offline but it's been working for years"
+      },
+      "battery": {
+        "title": "Battery drains fast",
+        "desc": "Short runtime or overheating",
+        "hint": "e.g. I used to get 8 hours, now I'm lucky to get 3"
+      },
+      "update": {
+        "title": "Something's weird after an update",
+        "desc": "A new bug after macOS or an app updated",
+        "hint": "e.g. after the latest macOS update my external display stopped working"
+      },
+      "setup": {
+        "title": "Help me set something up",
+        "desc": "Email, iCloud, backups, accounts",
+        "hint": "e.g. I want to set up Time Machine backups to a new external drive"
+      },
+      "other": {
+        "title": "Something else",
+        "desc": "Tell me in your own words",
+        "hint": "Tell me what's going on..."
+      }
+    }
+  },
   "setup.taglines": [
     "Your personal IT help desk — describe a problem, get it fixed.",
     "AI-powered computer repair, right on your desktop.",

@@ -6,6 +6,33 @@ import { useLocale } from "../i18n";
 
 interface SignInScreenProps {
   onComplete: () => void;
+  /**
+   * Optional seed context — set when the user reached this screen via
+   * the TilePicker. `label` shows as a context banner; `seedMessage`
+   * is stashed in localStorage so the first chat turn auto-sends
+   * after the magic-link round-trip completes.
+   */
+  seedContext?: { label: string; seedMessage: string } | null;
+  /** Optional back button (shown when launched from the tile picker). */
+  onBack?: () => void;
+}
+
+/** Storage key read by ChatPanel on a fresh session post-sign-in. */
+const PENDING_SEED_KEY = "noah.pendingSeed";
+const PENDING_SEED_TTL_MS = 60 * 60 * 1000;
+
+function stashPendingSeed(seedMessage: string) {
+  try {
+    localStorage.setItem(
+      PENDING_SEED_KEY,
+      JSON.stringify({
+        message: seedMessage,
+        expiresAt: Date.now() + PENDING_SEED_TTL_MS,
+      }),
+    );
+  } catch {
+    // localStorage disabled — not worth blocking sign-in over.
+  }
 }
 
 type Stage = "email" | "sent" | "exchanging";
@@ -21,7 +48,11 @@ function extractToken(url: string): string | null {
   }
 }
 
-export function SignInScreen({ onComplete }: SignInScreenProps) {
+export function SignInScreen({
+  onComplete,
+  seedContext = null,
+  onBack,
+}: SignInScreenProps) {
   const { t, tArray } = useLocale();
   const [stage, setStage] = useState<Stage>("email");
   const [email, setEmail] = useState("");
@@ -102,6 +133,10 @@ export function SignInScreen({ onComplete }: SignInScreenProps) {
     setSubmitting(true);
     try {
       await commands.consumerRequestMagicLink(trimmed);
+      // Persist the seed BEFORE showing "check inbox", so even if the
+      // user follows the magic link in a different window the context
+      // still rides with them.
+      if (seedContext) stashPendingSeed(seedContext.seedMessage);
       setStage("sent");
     } catch (err) {
       setError(
@@ -112,11 +147,19 @@ export function SignInScreen({ onComplete }: SignInScreenProps) {
     } finally {
       setSubmitting(false);
     }
-  }, [email, t]);
+  }, [email, seedContext, t]);
 
   return (
     <div className="flex flex-col items-center justify-center h-screen bg-bg-primary px-6">
       <div className="w-full max-w-md">
+        {onBack && (
+          <button
+            onClick={onBack}
+            className="text-xs text-text-muted hover:text-text-secondary mb-4"
+          >
+            {"\u2190"} {t("onboarding.backLabel")}
+          </button>
+        )}
         <div className="flex flex-col items-center mb-8">
           <NoahIcon className="w-16 h-16 rounded-2xl mb-4" alt="Noah" />
           <h1 className="text-xl font-semibold text-text-primary">
@@ -125,6 +168,11 @@ export function SignInScreen({ onComplete }: SignInScreenProps) {
           <p className="text-sm text-text-secondary mt-2 text-center leading-relaxed">
             {tagline}
           </p>
+          {seedContext && (
+            <div className="mt-4 w-full px-3 py-2 rounded-lg bg-accent-green/10 border border-accent-green/25 text-xs text-text-secondary text-center">
+              {t("onboarding.signinContext", { category: seedContext.label })}
+            </div>
+          )}
         </div>
 
         {stage === "email" && (
