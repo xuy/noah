@@ -47,6 +47,12 @@
         "https://github.com/xuy/noah/releases/latest/download/latest.json"
       ],
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEM4QTY4NTRDN0M3RURFRkEKUldUNjNuNThUSVdteUowNFhHdU13T0pTUjVrNkF0UEMycG1pWlNRTXhWWXZvckwzenlMWFZQUzAK"
+    },
+    "deep-link": {
+      "mobile": [],
+      "desktop": {
+        "schemes": ["noah"]
+      }
     }
   }
 }

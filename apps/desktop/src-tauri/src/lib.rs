@@ -1,5 +1,6 @@
 pub mod agent;
 mod commands;
+mod consumer;
 mod dashboard_link;
 pub mod debug_runner;
 mod knowledge;
@@ -47,27 +48,18 @@ pub struct AppState {
     pub playbook_registry: Arc<RwLock<playbooks::PlaybookRegistry>>,
 }
 
-/// Load auth: proxy.json first, then api_key.txt, then env var.
+/// Load auth in priority order:
+///   1. BYOK (api_key.txt) — open-source escape hatch, fully offline
+///   2. Consumer session token from macOS Keychain → routes through noah-consumer
+///   3. ANTHROPIC_API_KEY env var (dev fallback)
 fn load_auth(app_dir: &std::path::Path) -> AuthMode {
-    // Check for proxy config first
-    let proxy_path = app_dir.join("proxy.json");
-    if let Ok(contents) = std::fs::read_to_string(&proxy_path) {
-        if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&contents) {
-            if let (Some(base_url), Some(token)) = (
-                parsed.get("base_url").and_then(|v| v.as_str()),
-                parsed.get("token").and_then(|v| v.as_str()),
-            ) {
-                if !token.is_empty() {
-                    return AuthMode::Proxy {
-                        base_url: base_url.to_string(),
-                        token: token.to_string(),
-                    };
-                }
-            }
-        }
+    // Legacy invite-code proxy.json is no longer used; clean it up if present
+    // so old installs don't carry stale tokens.
+    let legacy = app_dir.join("proxy.json");
+    if legacy.exists() {
+        let _ = std::fs::remove_file(&legacy);
     }
 
-    // Fall back to API key file
     let key_path = app_dir.join("api_key.txt");
     if let Ok(contents) = std::fs::read_to_string(&key_path) {
         let key = contents.trim().to_string();
@@ -76,7 +68,13 @@ fn load_auth(app_dir: &std::path::Path) -> AuthMode {
         }
     }
 
-    // Fall back to environment variable
+    if let Ok(Some(token)) = crate::consumer::session::get_session_token() {
+        return AuthMode::Proxy {
+            base_url: crate::consumer::client::base_url(),
+            token,
+        };
+    }
+
     AuthMode::ApiKey(std::env::var("ANTHROPIC_API_KEY").unwrap_or_default())
 }
 
@@ -182,6 +180,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_deep_link::init())
         .setup(|app| {
             // Native menu bar — macOS only.
             // On Linux/Windows the WM provides window controls and the menu bar
@@ -650,6 +649,7 @@ pub fn run() {
             commands::settings::set_api_key,
             commands::settings::redeem_invite_code,
             commands::settings::get_auth_mode,
+            commands::settings::check_proxy_status,
             commands::settings::clear_auth,
             commands::settings::get_app_version,
             commands::settings::get_telemetry_consent,
@@ -683,6 +683,15 @@ pub fn run() {
             commands::health::resolve_fleet_action,
             commands::health::start_fleet_playbook,
             commands::health::verify_remediation,
+            commands::consumer::consumer_has_session,
+            commands::consumer::consumer_request_magic_link,
+            commands::consumer::consumer_complete_sign_in,
+            commands::consumer::consumer_sign_out,
+            commands::consumer::consumer_get_entitlement,
+            commands::consumer::consumer_notify_issue_started,
+            commands::consumer::consumer_notify_fix_completed,
+            commands::consumer::consumer_billing_checkout_url,
+            commands::consumer::consumer_billing_portal_url,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

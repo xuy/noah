@@ -192,14 +192,33 @@ fn strip_markdown_fences(s: &str) -> String {
 fn friendly_api_error(status: reqwest::StatusCode, body: &str) -> String {
     match status.as_u16() {
         401 => {
-            "Your API key is invalid or has been revoked. Please check it in Settings.".to_string()
+            // Check if the proxy returned a structured expiry response.
+            if let Ok(parsed) = serde_json::from_str::<Value>(body) {
+                if parsed.get("reason").and_then(|v| v.as_str()) == Some("token_expired") {
+                    let invite_code = parsed.get("invite_code").and_then(|v| v.as_str()).unwrap_or("unknown");
+                    return format!(
+                        "Your invite code ({}) has expired. Request a renewal at http://noah.app/discord or enter your own API key in Settings.",
+                        invite_code
+                    );
+                }
+            }
+            "401 · Your session has expired. Please sign in again.".to_string()
+        }
+        402 => {
+            "402 · Your trial has ended. Subscribe in Settings to keep fixing issues.".to_string()
         }
         403 => {
-            "Your API key doesn't have permission for this request. Check your Anthropic account."
+            "403 · Your API key doesn't have permission for this request. Check your Anthropic account."
                 .to_string()
         }
         429 => {
-            "Too many requests — Claude is rate-limited. Wait a moment and try again.".to_string()
+            // Distinguish consumer-proxy usage cap from Anthropic rate-limit.
+            if let Ok(parsed) = serde_json::from_str::<Value>(body) {
+                if parsed.get("error").and_then(|v| v.as_str()) == Some("usage_cap") {
+                    return "429 · You've reached this month's fair-use limit. Resets next period.".to_string();
+                }
+            }
+            "429 · Too many requests — Claude is rate-limited. Wait a moment and try again.".to_string()
         }
         500 | 502 | 503 => {
             "Claude is having temporary issues. Please try again in a minute.".to_string()
@@ -269,6 +288,10 @@ impl LlmClient {
             AuthMode::ApiKey(key) => !key.is_empty(),
             AuthMode::Proxy { token, .. } => !token.is_empty(),
         }
+    }
+
+    pub fn auth(&self) -> &AuthMode {
+        &self.auth
     }
 
     pub fn auth_mode_name(&self) -> &str {
@@ -717,6 +740,22 @@ mod tests {
         assert!(
             msg.contains("Settings"),
             "401 should mention Settings: {}",
+            msg
+        );
+    }
+
+    #[test]
+    fn test_friendly_api_error_401_proxy_expired() {
+        let body = r#"{"error":"expired","reason":"token_expired","invite_code":"NOAH-ABCD-1234"}"#;
+        let msg = friendly_api_error(reqwest::StatusCode::UNAUTHORIZED, body);
+        assert!(
+            msg.contains("NOAH-ABCD-1234"),
+            "401 with proxy expiry should include invite code: {}",
+            msg
+        );
+        assert!(
+            msg.contains("expired"),
+            "401 with proxy expiry should mention expiry: {}",
             msg
         );
     }

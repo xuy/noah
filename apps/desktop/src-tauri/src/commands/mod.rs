@@ -1,4 +1,5 @@
 pub mod agent;
+pub mod consumer;
 pub mod health;
 pub mod knowledge;
 pub mod safety;
