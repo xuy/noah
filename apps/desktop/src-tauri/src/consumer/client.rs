@@ -33,7 +33,18 @@ fn client() -> reqwest::Client {
         .expect("reqwest client build")
 }
 
-pub async fn request_magic_link(email: &str) -> Result<()> {
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MagicLinkResponse {
+    pub ok: bool,
+    /// Set when the server chooses to issue a session immediately
+    /// (current behavior — lets the user proceed without clicking
+    /// the emailed link first). Absent means the old "check your
+    /// inbox to finish" flow is in effect.
+    #[serde(default)]
+    pub session_token: Option<String>,
+}
+
+pub async fn request_magic_link(email: &str) -> Result<MagicLinkResponse> {
     let resp = client()
         .post(format!("{}/auth/request", base_url()))
         .json(&serde_json::json!({ "email": email }))
@@ -44,7 +55,7 @@ pub async fn request_magic_link(email: &str) -> Result<()> {
         let text = resp.text().await.unwrap_or_default();
         return Err(anyhow!("auth/request failed: {status} — {text}"));
     }
-    Ok(())
+    Ok(resp.json().await?)
 }
 
 pub async fn fetch_entitlement(token: &str) -> Result<Entitlement> {

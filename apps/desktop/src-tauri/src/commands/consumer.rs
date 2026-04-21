@@ -10,10 +10,30 @@ pub async fn consumer_has_session() -> Result<bool, String> {
 }
 
 #[tauri::command]
-pub async fn consumer_request_magic_link(email: String) -> Result<(), String> {
-    client::request_magic_link(email.trim())
+pub async fn consumer_request_magic_link(
+    state: State<'_, AppState>,
+    email: String,
+) -> Result<Option<client::Entitlement>, String> {
+    let resp = client::request_magic_link(email.trim())
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    // If the server issued a session immediately (preferred flow),
+    // complete sign-in right here so the caller lands directly in the
+    // app instead of bouncing through a "check your inbox" screen.
+    let Some(token) = resp.session_token else {
+        return Ok(None);
+    };
+    let ent = client::fetch_entitlement(&token)
+        .await
+        .map_err(|e| e.to_string())?;
+    session::set_session_token(&token)?;
+    entitlement::save_cached(&state.app_dir, &ent)?;
+    let mut orch = state.orchestrator.lock().await;
+    orch.set_auth(AuthMode::Proxy {
+        base_url: client::base_url(),
+        token,
+    });
+    Ok(Some(ent))
 }
 
 #[tauri::command]

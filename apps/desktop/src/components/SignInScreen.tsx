@@ -131,11 +131,19 @@ export function SignInScreen({
     }
     setSubmitting(true);
     try {
-      await commands.consumerRequestMagicLink(trimmed);
-      // Persist the seed BEFORE showing "check inbox", so even if the
-      // user follows the magic link in a different window the context
-      // still rides with them.
+      // Stash the seed BEFORE the server call so it rides either path
+      // (instant-sign-in OR fallback "check inbox" if the server ever
+      // gates on email click again).
       if (seedContext) stashPendingSeed(seedContext.seedMessage);
+      const ent = await commands.consumerRequestMagicLink(trimmed);
+      if (ent) {
+        // Happy path — server issued a session immediately, we're in.
+        onComplete();
+        return;
+      }
+      // Legacy / fallback: server didn't auto-sign-in, show the
+      // "check your inbox" screen so the user knows to follow the
+      // email link.
       setStage("sent");
     } catch (err) {
       setError(

@@ -495,8 +495,17 @@ export async function consumerHasSession(): Promise<boolean> {
   return await invoke<boolean>("consumer_has_session");
 }
 
-export async function consumerRequestMagicLink(email: string): Promise<void> {
-  await invoke<void>("consumer_request_magic_link", { email });
+/**
+ * Request a magic link. The server will send the emailed link for
+ * future-use re-auth, but will also issue a session token immediately
+ * so the user can proceed without clicking the link. Returns the fresh
+ * entitlement when auto-sign-in succeeded, null if the server chose to
+ * gate on the email click (fallback flow).
+ */
+export async function consumerRequestMagicLink(
+  email: string,
+): Promise<Entitlement | null> {
+  return await invoke<Entitlement | null>("consumer_request_magic_link", { email });
 }
 
 export async function consumerCompleteSignIn(token: string): Promise<Entitlement> {
