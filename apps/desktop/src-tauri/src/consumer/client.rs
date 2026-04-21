@@ -29,6 +29,24 @@ pub struct FixCompletedResponse {
     pub entitlement: Entitlement,
 }
 
+/// Either a signed-in session token or an anonymous device id.
+/// Mirrors the server's `requireSessionOrDevice` middleware.
+#[derive(Debug, Clone)]
+pub enum Auth<'a> {
+    Session(&'a str),
+    Device(&'a str),
+}
+
+fn apply_auth(
+    builder: reqwest::RequestBuilder,
+    auth: &Auth<'_>,
+) -> reqwest::RequestBuilder {
+    match auth {
+        Auth::Session(t) => builder.bearer_auth(t),
+        Auth::Device(d) => builder.header("X-Device-Id", *d),
+    }
+}
+
 fn client() -> reqwest::Client {
     reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(15))
@@ -61,43 +79,35 @@ pub async fn request_magic_link(email: &str) -> Result<MagicLinkResponse> {
     Ok(resp.json().await?)
 }
 
-pub async fn fetch_entitlement(token: &str) -> Result<Entitlement> {
-    let resp = client()
-        .get(format!("{}/entitlement", base_url()))
-        .bearer_auth(token)
-        .send()
-        .await?;
+pub async fn fetch_entitlement(auth: &Auth<'_>) -> Result<Entitlement> {
+    let req = client().get(format!("{}/entitlement", base_url()));
+    let resp = apply_auth(req, auth).send().await?;
     if !resp.status().is_success() {
         return Err(anyhow!("entitlement fetch failed: {}", resp.status()));
     }
-    let ent: Entitlement = resp.json().await?;
-    Ok(ent)
+    Ok(resp.json().await?)
 }
 
-pub async fn notify_issue_started(token: &str) -> Result<Entitlement> {
-    let resp = client()
-        .post(format!("{}/events/issue-started", base_url()))
-        .bearer_auth(token)
-        .send()
-        .await?;
+pub async fn notify_issue_started(auth: &Auth<'_>) -> Result<Entitlement> {
+    let req = client().post(format!("{}/events/issue-started", base_url()));
+    let resp = apply_auth(req, auth).send().await?;
     if !resp.status().is_success() {
         return Err(anyhow!("issue-started failed: {}", resp.status()));
     }
     Ok(resp.json().await?)
 }
 
-pub async fn notify_fix_completed(token: &str) -> Result<FixCompletedResponse> {
-    let resp = client()
-        .post(format!("{}/events/fix-completed", base_url()))
-        .bearer_auth(token)
-        .send()
-        .await?;
+pub async fn notify_fix_completed(auth: &Auth<'_>) -> Result<FixCompletedResponse> {
+    let req = client().post(format!("{}/events/fix-completed", base_url()));
+    let resp = apply_auth(req, auth).send().await?;
     if !resp.status().is_success() {
         return Err(anyhow!("fix-completed failed: {}", resp.status()));
     }
     Ok(resp.json().await?)
 }
 
+/// Billing endpoints remain session-only on the server. Callers should
+/// only reach these after the user is signed in.
 pub async fn billing_checkout_url(token: &str, plan: &str) -> Result<String> {
     let resp = client()
         .post(format!("{}/billing/checkout", base_url()))

@@ -65,24 +65,39 @@ export function TilePickerScreen({ onComplete }: TilePickerScreenProps) {
     setStage({ name: "pick" });
   }, []);
 
-  const goSignInWithSeed = useCallback((tile: Tile, message: string) => {
-    setStage({ name: "signin", tile, seedMessage: message });
-  }, []);
-
   const goSignInBlank = useCallback(() => {
+    // Restore path — explicit "Already have an account? Sign in" link.
     setStage({ name: "signin", tile: null, seedMessage: null });
   }, []);
 
+  const finishWithSeed = useCallback(
+    (tile: Tile, clarifier: string) => {
+      const message = composeSeedMessage(tile.id, t(tile.titleKey), clarifier);
+      // Stash the seed to localStorage — ChatPanel picks it up on its
+      // first-fresh-session effect and auto-sends it as the first
+      // chat turn. No sign-in required; the device's anonymous trial
+      // starts when the server sees /events/issue-started.
+      try {
+        localStorage.setItem(
+          "noah.pendingSeed",
+          JSON.stringify({
+            message,
+            expiresAt: Date.now() + 60 * 60 * 1000,
+          }),
+        );
+      } catch {
+        // localStorage disabled — the user will type manually, fine.
+      }
+      onComplete();
+    },
+    [onComplete, t],
+  );
+
   if (stage.name === "signin") {
-    const label = stage.tile ? t(stage.tile.titleKey) : null;
-    const seedContext =
-      stage.seedMessage && label
-        ? { label, seedMessage: stage.seedMessage }
-        : null;
     return (
       <SignInScreen
         onComplete={onComplete}
-        seedContext={seedContext}
+        seedContext={null}
         onBack={goPick}
       />
     );
@@ -96,20 +111,12 @@ export function TilePickerScreen({ onComplete }: TilePickerScreenProps) {
         value={clarifier}
         onChange={setClarifier}
         onBack={goPick}
-        onContinue={(text) => {
-          const message = composeSeedMessage(tile.id, t(tile.titleKey), text);
-          goSignInWithSeed(tile, message);
-        }}
+        onContinue={(text) => finishWithSeed(tile, text)}
       />
     );
   }
 
-  return (
-    <PickStage
-      onPick={goClarify}
-      onSignInClick={goSignInBlank}
-    />
-  );
+  return <PickStage onPick={goClarify} onSignInClick={goSignInBlank} />;
 }
 
 // ── Pick stage ────────────────────────────────────────────────────────────

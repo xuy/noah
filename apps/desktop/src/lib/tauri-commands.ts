@@ -496,6 +496,16 @@ export async function consumerHasSession(): Promise<boolean> {
 }
 
 /**
+ * Ensure a stable device id exists in the Keychain. Returns the id —
+ * newly generated on first call, the same value on subsequent calls.
+ * This is the identity for anonymous device trials; sent as
+ * `X-Device-Id` to the consumer backend when no session token exists.
+ */
+export async function consumerEnsureDeviceId(): Promise<string> {
+  return await invoke<string>("consumer_ensure_device_id");
+}
+
+/**
  * Request a magic link. The server will send the emailed link for
  * future-use re-auth, but will also issue a session token immediately
  * so the user can proceed without clicking the link. Returns the fresh

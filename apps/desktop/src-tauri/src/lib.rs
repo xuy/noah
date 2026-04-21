@@ -71,7 +71,16 @@ fn load_auth(app_dir: &std::path::Path) -> AuthMode {
     if let Ok(Some(token)) = crate::consumer::session::get_session_token() {
         return AuthMode::Proxy {
             base_url: crate::consumer::client::base_url(),
-            token,
+            auth: crate::agent::llm_client::ProxyAuth::Session(token),
+        };
+    }
+
+    // Device-first anonymous trial — no sign-in required. ensure_device_id
+    // creates a stable random UUID in the Keychain on first launch.
+    if let Ok(device_id) = crate::consumer::device::ensure_device_id() {
+        return AuthMode::Proxy {
+            base_url: crate::consumer::client::base_url(),
+            auth: crate::agent::llm_client::ProxyAuth::Device(device_id),
         };
     }
 
@@ -684,6 +693,7 @@ pub fn run() {
             commands::health::start_fleet_playbook,
             commands::health::verify_remediation,
             commands::consumer::consumer_has_session,
+            commands::consumer::consumer_ensure_device_id,
             commands::consumer::consumer_request_magic_link,
             commands::consumer::consumer_complete_sign_in,
             commands::consumer::consumer_sign_out,

@@ -60,9 +60,26 @@ pub struct TriageResult {
 // ── Auth mode ─────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone)]
+pub enum ProxyAuth {
+    /// Signed-in session — `Authorization: Bearer <token>`.
+    Session(String),
+    /// Anonymous device trial — `X-Device-Id: <uuid>`.
+    Device(String),
+}
+
+impl ProxyAuth {
+    pub fn is_empty(&self) -> bool {
+        match self {
+            ProxyAuth::Session(s) => s.is_empty(),
+            ProxyAuth::Device(d) => d.is_empty(),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub enum AuthMode {
     ApiKey(String),
-    Proxy { base_url: String, token: String },
+    Proxy { base_url: String, auth: ProxyAuth },
 }
 
 // ── Request types ──────────────────────────────────────────────────────
@@ -299,7 +316,7 @@ impl LlmClient {
         }
         match &self.auth {
             AuthMode::ApiKey(key) => !key.is_empty(),
-            AuthMode::Proxy { token, .. } => !token.is_empty(),
+            AuthMode::Proxy { auth, .. } => !auth.is_empty(),
         }
     }
 
@@ -331,9 +348,12 @@ impl LlmClient {
     fn apply_auth(&self, builder: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
         match &self.auth {
             AuthMode::ApiKey(key) => builder.header("x-api-key", key),
-            AuthMode::Proxy { token, .. } => {
-                builder.header("Authorization", format!("Bearer {}", token))
-            }
+            AuthMode::Proxy { auth, .. } => match auth {
+                ProxyAuth::Session(t) => {
+                    builder.header("Authorization", format!("Bearer {}", t))
+                }
+                ProxyAuth::Device(d) => builder.header("X-Device-Id", d.clone()),
+            },
         }
     }
 

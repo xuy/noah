@@ -55,17 +55,25 @@ function App() {
   const [needsSetup, setNeedsSetup] = useState<boolean | null>(null);
   useTheme(); // Apply saved theme on mount (before setup screen too)
 
-  // Gate on a valid consumer entitlement (default path) OR a BYOK api key
-  // (advanced). Fetching the entitlement also auto-clears a stale Keychain
-  // session when the server returns 401 — so a dev whose session expired
-  // server-side drops cleanly back to SignInScreen on next launch.
+  // First-launch gate: show the TilePicker onboarding only when the
+  // user has never interacted with Noah before. With device-first
+  // identity, auth is no longer a hard gate — a fresh anonymous
+  // device can start a trial immediately from inside MainApp. The
+  // tile picker is purely UX (helps seed the first question) and
+  // becomes redundant once the user has any chat history.
+  //
+  // Also ensures a device id exists in the Keychain (no-op on
+  // subsequent launches) so backend calls can authenticate even
+  // when the user is not signed in.
   useEffect(() => {
+    commands.consumerEnsureDeviceId().catch(() => {});
     Promise.all([
-      commands.consumerGetEntitlement().catch(() => null),
+      commands.listSessions().catch(() => [] as unknown[]),
       commands.hasApiKey().catch(() => false),
     ])
-      .then(([ent, hasKey]) => {
-        setNeedsSetup(!(ent || hasKey));
+      .then(([sessions, hasKey]) => {
+        const hasPastUsage = Array.isArray(sessions) && sessions.length > 0;
+        setNeedsSetup(!hasPastUsage && !hasKey);
       })
       .finally(() => {
         dismissSplash();

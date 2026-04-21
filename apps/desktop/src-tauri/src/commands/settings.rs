@@ -69,7 +69,7 @@ pub async fn redeem_invite_code(
     let mut orch = state.orchestrator.lock().await;
     orch.set_auth(AuthMode::Proxy {
         base_url: proxy_url,
-        token,
+        auth: crate::agent::llm_client::ProxyAuth::Session(token),
     });
 
     Ok(())
@@ -246,7 +246,16 @@ pub async fn get_feedback_context(state: State<'_, AppState>) -> Result<Feedback
 pub async fn check_proxy_status(state: State<'_, AppState>) -> Result<String, String> {
     let orch = state.orchestrator.lock().await;
     let (base_url, token) = match orch.auth() {
-        AuthMode::Proxy { base_url, token } => (base_url.clone(), token.clone()),
+        AuthMode::Proxy { base_url, auth } => match auth {
+            crate::agent::llm_client::ProxyAuth::Session(t) => {
+                (base_url.clone(), t.clone())
+            }
+            // Device-id auth isn't an invite-code token; this legacy
+            // proxy-status check doesn't apply.
+            crate::agent::llm_client::ProxyAuth::Device(_) => {
+                return Ok(r#"{"status":"not_proxy"}"#.to_string())
+            }
+        },
         _ => return Ok(r#"{"status":"not_proxy"}"#.to_string()),
     };
     drop(orch);
