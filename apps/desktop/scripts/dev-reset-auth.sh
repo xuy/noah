@@ -49,9 +49,9 @@ if [[ "${1:-}" == "--launch" ]]; then
   cd "$SCRIPT_DIR/.."
   echo
   echo "→ Launching dev build with ANTHROPIC_API_KEY unset"
-  echo "  (NOAH_CONSUMER_URL=${NOAH_CONSUMER_URL:-http://localhost:8787})"
+  echo "  (NOAH_CONSUMER_URL=${NOAH_CONSUMER_URL:-http://localhost:8788})"
   echo
   unset ANTHROPIC_API_KEY
-  export NOAH_CONSUMER_URL="${NOAH_CONSUMER_URL:-http://localhost:8787}"
+  export NOAH_CONSUMER_URL="${NOAH_CONSUMER_URL:-http://localhost:8788}"
   exec pnpm tauri dev
 fi

@@ -2,8 +2,11 @@ use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 
 pub fn base_url() -> String {
+    // Dev default 8788. 8787 is a common collision on local dev
+    // machines (agent-native-channel uses it). Override via
+    // NOAH_CONSUMER_URL env when pointing at staging / prod.
     std::env::var("NOAH_CONSUMER_URL")
-        .unwrap_or_else(|_| "http://localhost:8787".to_string())
+        .unwrap_or_else(|_| "http://localhost:8788".to_string())
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

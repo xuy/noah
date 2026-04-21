@@ -207,6 +207,19 @@ fn friendly_api_error(status: reqwest::StatusCode, body: &str) -> String {
         402 => {
             "402 · Your trial has ended. Subscribe in Settings to keep fixing issues.".to_string()
         }
+        502 => {
+            // Distinguish the specific case where noah-consumer tells us
+            // Anthropic rejected *its* API key (server-side config issue,
+            // not the user's session).
+            if let Ok(parsed) = serde_json::from_str::<Value>(body) {
+                if parsed.get("detail").and_then(|v| v.as_str())
+                    == Some("anthropic_rejected_server_key")
+                {
+                    return "502 · Noah's server can't reach Claude right now (API key issue on our end). Try again in a moment.".to_string();
+                }
+            }
+            "502 · Noah's server had a hiccup reaching Claude. Please try again.".to_string()
+        }
         403 => {
             "403 · Your API key doesn't have permission for this request. Check your Anthropic account."
                 .to_string()
