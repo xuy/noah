@@ -141,11 +141,13 @@
   },
   "advanced": {
     "sectionTitle": "Advanced",
-    "byokTitle": "Bring your own Anthropic key",
-    "byokDesc": "For tinkerers: route LLM calls directly to Anthropic with your own key. No account needed, no telemetry, no subscription. Turning this off routes calls through Noah's servers.",
+    "byokTitle": "Use my own Anthropic key",
+    "byokDesc": "Route LLM calls directly to Anthropic with your own key. No account, no telemetry, no subscription.",
     "byokToggle": "Use my Anthropic key",
     "byokKeyPlaceholder": "sk-ant-...",
-    "byokSave": "Save key"
+    "byokSave": "Save key",
+    "useEmailInstead": "Use email sign-in instead",
+    "openAdvancedTooltip": "Advanced options"
   },
   "onboarding": {
     "greeting": "Hi, I'm Noah. What's going on with your Mac?",

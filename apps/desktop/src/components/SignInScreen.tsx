@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { onOpenUrl } from "@tauri-apps/plugin-deep-link";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, SlidersHorizontal } from "lucide-react";
 import * as commands from "../lib/tauri-commands";
 import { useLocale } from "../i18n";
 
@@ -156,7 +156,7 @@ export function SignInScreen({
         className="absolute top-0 left-0 right-0 h-9 z-10"
       />
 
-      {onBack && (
+      {onBack && !showAdvanced && (
         <button
           onClick={onBack}
           className="absolute top-12 left-6 inline-flex items-center gap-1.5 text-xs text-text-muted hover:text-text-secondary z-20"
@@ -166,8 +166,21 @@ export function SignInScreen({
         </button>
       )}
 
+      {/* Advanced-options toggle: small, top-right, unlabeled. Hidden
+          entry for tinkerers; invisible to average users. */}
+      {stage === "email" && !showAdvanced && (
+        <button
+          onClick={() => setShowAdvanced(true)}
+          title={t("advanced.openAdvancedTooltip")}
+          aria-label={t("advanced.openAdvancedTooltip")}
+          className="absolute top-12 right-6 flex items-center justify-center w-7 h-7 rounded-md text-text-muted hover:text-text-secondary hover:bg-bg-tertiary/50 transition-colors z-20"
+        >
+          <SlidersHorizontal size={14} strokeWidth={2} />
+        </button>
+      )}
+
       <div className="relative w-full max-w-sm">
-        {stage === "email" && (
+        {stage === "email" && !showAdvanced && (
           <>
             <p className="text-lg text-text-primary text-center mb-5 tracking-tight">
               {t("signIn.prompt")}
@@ -196,6 +209,47 @@ export function SignInScreen({
           </>
         )}
 
+        {stage === "email" && showAdvanced && (
+          <div className="space-y-3">
+            <p className="text-lg text-text-primary text-center tracking-tight">
+              {t("advanced.byokTitle")}
+            </p>
+            <p className="text-[11.5px] text-text-muted text-center leading-relaxed">
+              {t("advanced.byokDesc")}
+            </p>
+            <input
+              type="password"
+              value={byokKey}
+              onChange={(e) => setByokKey(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleSaveByok();
+              }}
+              placeholder={t("advanced.byokKeyPlaceholder")}
+              autoFocus
+              className="w-full px-4 py-2.5 rounded-xl bg-bg-input border border-border-primary text-sm text-text-primary placeholder-text-muted outline-none focus:border-border-focus transition-colors"
+            />
+            {error && (
+              <p className="text-xs text-accent-red">{error}</p>
+            )}
+            <button
+              onClick={handleSaveByok}
+              disabled={byokSaving}
+              className="w-full py-2.5 rounded-xl bg-accent-green text-white text-sm font-medium hover:bg-accent-green/80 transition-colors cursor-pointer disabled:opacity-50"
+            >
+              {byokSaving ? t("setup.saving") : t("advanced.byokSave")}
+            </button>
+            <button
+              onClick={() => {
+                setShowAdvanced(false);
+                setError(null);
+              }}
+              className="w-full text-center text-xs text-text-muted hover:text-text-secondary transition-colors pt-1"
+            >
+              {t("advanced.useEmailInstead")}
+            </button>
+          </div>
+        )}
+
         {stage === "sent" && (
           <div className="text-center space-y-3">
             <p className="text-sm text-text-primary leading-relaxed">
@@ -219,50 +273,6 @@ export function SignInScreen({
           <p className="text-sm text-text-secondary text-center">
             {t("signIn.finishing")}
           </p>
-        )}
-
-        {stage === "email" && (
-          <div className="mt-12 text-center">
-            {showAdvanced ? (
-              <div className="text-left space-y-2">
-                <p className="text-[11px] text-text-muted leading-relaxed">
-                  {t("advanced.byokDesc")}
-                </p>
-                <input
-                  type="password"
-                  value={byokKey}
-                  onChange={(e) => setByokKey(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") handleSaveByok();
-                  }}
-                  placeholder={t("advanced.byokKeyPlaceholder")}
-                  className="w-full px-4 py-2 rounded-xl bg-bg-input border border-border-primary text-sm text-text-primary placeholder-text-muted outline-none focus:border-border-focus transition-colors"
-                />
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => setShowAdvanced(false)}
-                    className="px-3 py-2 text-xs text-text-muted hover:text-text-primary transition-colors"
-                  >
-                    {t("onboarding.backLabel")}
-                  </button>
-                  <button
-                    onClick={handleSaveByok}
-                    disabled={byokSaving}
-                    className="flex-1 py-2 rounded-xl border border-border-primary text-sm text-text-primary hover:bg-bg-hover transition-colors disabled:opacity-50"
-                  >
-                    {byokSaving ? t("setup.saving") : t("advanced.byokSave")}
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <button
-                onClick={() => setShowAdvanced(true)}
-                className="text-[11px] text-text-muted hover:text-text-secondary underline"
-              >
-                {t("advanced.byokTitle")}
-              </button>
-            )}
-          </div>
         )}
       </div>
     </div>
