@@ -142,6 +142,14 @@ function PickStage({
           "var(--color-bg-primary)",
       }}
     >
+      {/* Window drag region — MainTitleBar (which normally owns this)
+          doesn't render on unauthenticated screens, so without this
+          the window becomes unmovable on macOS overlay title bars. */}
+      <div
+        data-tauri-drag-region=""
+        className="absolute top-0 left-0 right-0 h-9 z-10"
+      />
+
       {/* Noise / subtle vignette to avoid banding on the gradient */}
       <div
         aria-hidden

@@ -151,8 +151,13 @@ export function SignInScreen({
   }, [email, seedContext, t]);
 
   return (
-    <div className="flex flex-col items-center justify-center h-screen bg-bg-primary px-6">
-      <div className="w-full max-w-md">
+    <div className="flex flex-col items-center justify-center h-screen bg-bg-primary px-6 relative">
+      {/* Window drag region — see note in TilePickerScreen. */}
+      <div
+        data-tauri-drag-region=""
+        className="absolute top-0 left-0 right-0 h-9 z-10"
+      />
+      <div className="relative w-full max-w-md">
         {onBack && (
           <button
             onClick={onBack}
