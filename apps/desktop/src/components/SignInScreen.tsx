@@ -1,5 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
-import { onOpenUrl } from "@tauri-apps/plugin-deep-link";
+import { useCallback, useState } from "react";
 import { ArrowLeft, SlidersHorizontal } from "lucide-react";
 import * as commands from "../lib/tauri-commands";
 import { useLocale } from "../i18n";
@@ -36,17 +35,6 @@ function stashPendingSeed(seedMessage: string) {
 }
 
 type Stage = "email" | "sent" | "exchanging";
-
-function extractToken(url: string): string | null {
-  try {
-    const u = new URL(url);
-    return u.searchParams.get("token");
-  } catch {
-    // Fall back for URLs the URL constructor rejects.
-    const m = url.match(/[?&]token=([^&]+)/);
-    return m && m[1] ? decodeURIComponent(m[1]) : null;
-  }
-}
 
 export function SignInScreen({
   onComplete,
@@ -88,39 +76,9 @@ export function SignInScreen({
     }
   }, [byokKey, onComplete, t]);
 
-  // Listen for the deep link that comes back from the browser after the user
-  // clicks the magic link. When we get `noah://auth?token=…`, finish sign-in.
-  useEffect(() => {
-    let unlisten: (() => void) | undefined;
-    onOpenUrl(async (urls) => {
-      const url = urls.find((u) => u.startsWith("noah://auth"));
-      if (!url) return;
-      const token = extractToken(url);
-      if (!token) {
-        setError(t("signIn.errorBadLink"));
-        return;
-      }
-      setStage("exchanging");
-      try {
-        await commands.consumerCompleteSignIn(token);
-        onComplete();
-      } catch (err) {
-        setStage("sent");
-        setError(
-          `${t("signIn.errorVerifyFailed")}: ${
-            err instanceof Error ? err.message : String(err)
-          }`,
-        );
-      }
-    })
-      .then((fn) => {
-        unlisten = fn;
-      })
-      .catch(() => {});
-    return () => {
-      unlisten?.();
-    };
-  }, [onComplete, t]);
+  // Deep-link handling moved to App.tsx's root-level listener so it
+  // fires regardless of which screen is mounted (previously this
+  // listener was inactive when the user was on the tile picker).
 
   const handleSend = useCallback(async () => {
     setError(null);

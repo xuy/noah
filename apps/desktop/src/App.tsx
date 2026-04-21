@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
+import { onOpenUrl } from "@tauri-apps/plugin-deep-link";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import * as commands from "./lib/tauri-commands";
 import { useSession } from "./hooks/useSession";
@@ -41,6 +42,15 @@ function dismissSplash() {
   }
 }
 
+function extractDeepLinkToken(url: string): string | null {
+  try {
+    return new URL(url).searchParams.get("token");
+  } catch {
+    const m = url.match(/[?&]token=([^&]+)/);
+    return m && m[1] ? decodeURIComponent(m[1]) : null;
+  }
+}
+
 function App() {
   const [needsSetup, setNeedsSetup] = useState<boolean | null>(null);
   useTheme(); // Apply saved theme on mount (before setup screen too)
@@ -60,6 +70,34 @@ function App() {
       .finally(() => {
         dismissSplash();
       });
+  }, []);
+
+  // Global deep-link handler — registered at the app root so it fires
+  // regardless of which screen is currently mounted. When a
+  // `noah://auth?token=…` URL arrives (from clicking a magic link,
+  // or from `open noah://…` in the terminal), finish sign-in and
+  // dismiss the gate — don't drop the user back on the tile picker.
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    onOpenUrl(async (urls) => {
+      const url = urls.find((u) => u.startsWith("noah://auth"));
+      if (!url) return;
+      const token = extractDeepLinkToken(url);
+      if (!token) return;
+      try {
+        await commands.consumerCompleteSignIn(token);
+        setNeedsSetup(false);
+      } catch {
+        // Stale / already-consumed token — leave the current UI alone.
+      }
+    })
+      .then((fn) => {
+        unlisten = fn;
+      })
+      .catch(() => {});
+    return () => {
+      unlisten?.();
+    };
   }, []);
 
   // Show nothing while checking (splash is still visible).
