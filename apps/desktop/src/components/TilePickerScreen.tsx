@@ -130,15 +130,43 @@ function PickStage({
 
   return (
     <div
-      className="flex flex-col items-center justify-center min-h-screen px-6 py-10"
+      className="flex flex-col items-center justify-center min-h-screen px-6 py-10 relative overflow-hidden"
       style={{
         background:
-          "radial-gradient(ellipse at top, var(--color-accent-green-bg, rgba(52, 199, 89, 0.08)) 0%, var(--color-bg-primary) 55%)",
+          // Two layered radial gradients: brand teal from top-center
+          // bleeding down, and a warmer amber glow from the bottom-right
+          // that picks up the second logo color. Gives the canvas
+          // atmosphere instead of flat gray.
+          "radial-gradient(ellipse 80% 55% at 50% 0%, rgba(45, 212, 191, 0.14) 0%, transparent 70%), " +
+          "radial-gradient(ellipse 50% 45% at 90% 100%, rgba(251, 191, 36, 0.06) 0%, transparent 65%), " +
+          "var(--color-bg-primary)",
       }}
     >
-      <div className="w-full max-w-2xl">
+      {/* Noise / subtle vignette to avoid banding on the gradient */}
+      <div
+        aria-hidden
+        className="absolute inset-0 pointer-events-none opacity-[0.35]"
+        style={{
+          background:
+            "radial-gradient(ellipse at 50% 45%, transparent 40%, rgba(0,0,0,0.25) 100%)",
+        }}
+      />
+
+      <div className="relative w-full max-w-2xl">
         <div className="flex flex-col items-center mb-10">
-          <NoahIcon className="w-20 h-20 rounded-2xl mb-5 shadow-lg" alt="Noah" />
+          <div className="relative mb-5">
+            {/* Soft brand glow behind the logo — same teal as the gradient,
+                keeps Noah's mark feeling anchored rather than floating. */}
+            <div
+              aria-hidden
+              className="absolute inset-0 rounded-2xl blur-2xl opacity-70"
+              style={{ background: "rgba(45, 212, 191, 0.25)" }}
+            />
+            <NoahIcon
+              className="relative w-20 h-20 rounded-2xl shadow-xl"
+              alt="Noah"
+            />
+          </div>
           <h1 className="text-2xl font-semibold text-text-primary tracking-tight">
             {t("onboarding.greeting")}
           </h1>
@@ -155,19 +183,24 @@ function PickStage({
             <button
               key={tile.id}
               onClick={() => onPick(tile)}
-              className="group flex items-start gap-3 text-left px-4 py-3.5 rounded-xl border border-border-primary bg-bg-secondary/40 hover:border-accent-green hover:bg-accent-green/[0.04] transition-colors cursor-pointer"
+              className="group relative flex items-start gap-3 text-left px-4 py-4 rounded-xl border border-white/[0.06] bg-bg-secondary/70 backdrop-blur-sm hover:border-accent-blue/40 hover:bg-bg-secondary transition-all duration-200 cursor-pointer hover:shadow-[0_8px_24px_-12px_rgba(45,212,191,0.25)]"
             >
               <span
-                className="flex items-center justify-center w-9 h-9 rounded-lg bg-bg-tertiary text-text-secondary group-hover:bg-accent-green/15 group-hover:text-accent-green transition-colors shrink-0"
+                className="flex items-center justify-center w-11 h-11 rounded-lg shrink-0 transition-colors"
+                style={{
+                  background: "rgba(45, 212, 191, 0.09)",
+                  color: "rgba(94, 234, 212, 0.9)",
+                  border: "1px solid rgba(45, 212, 191, 0.12)",
+                }}
                 aria-hidden
               >
-                <tile.Icon size={18} strokeWidth={1.75} />
+                <tile.Icon size={19} strokeWidth={1.75} />
               </span>
-              <div className="min-w-0 flex-1">
-                <div className="text-sm font-medium text-text-primary">
+              <div className="min-w-0 flex-1 pt-0.5">
+                <div className="text-sm font-medium text-text-primary leading-snug">
                   {t(tile.titleKey)}
                 </div>
-                <div className="text-[11px] text-text-muted leading-relaxed mt-0.5">
+                <div className="text-[11.5px] text-text-muted leading-relaxed mt-1">
                   {t(tile.descKey)}
                 </div>
               </div>
