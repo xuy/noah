@@ -702,6 +702,7 @@ pub fn run() {
             commands::consumer::consumer_notify_fix_completed,
             commands::consumer::consumer_billing_checkout_url,
             commands::consumer::consumer_billing_portal_url,
+            commands::consumer::consumer_confirm_checkout,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

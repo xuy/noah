@@ -42,11 +42,11 @@ function dismissSplash() {
   }
 }
 
-function extractDeepLinkToken(url: string): string | null {
+function extractDeepLinkToken(url: string, param: string): string | null {
   try {
-    return new URL(url).searchParams.get("token");
+    return new URL(url).searchParams.get(param);
   } catch {
-    const m = url.match(/[?&]token=([^&]+)/);
+    const m = url.match(new RegExp(`[?&]${param}=([^&]+)`));
     return m && m[1] ? decodeURIComponent(m[1]) : null;
   }
 }
@@ -80,23 +80,39 @@ function App() {
       });
   }, []);
 
-  // Global deep-link handler — registered at the app root so it fires
-  // regardless of which screen is currently mounted. When a
-  // `noah://auth?token=…` URL arrives (from clicking a magic link,
-  // or from `open noah://…` in the terminal), finish sign-in and
-  // dismiss the gate — don't drop the user back on the tile picker.
+  // Global deep-link handler. Two URL shapes:
+  //
+  //   noah://auth?token=…           — magic-link sign-in
+  //   noah://subscribed?session_id=… — return from Stripe Checkout
+  //
+  // Registered at the app root so it fires regardless of which screen
+  // is mounted, and never drops the user back on the tile picker.
   useEffect(() => {
     let unlisten: (() => void) | undefined;
     onOpenUrl(async (urls) => {
-      const url = urls.find((u) => u.startsWith("noah://auth"));
-      if (!url) return;
-      const token = extractDeepLinkToken(url);
-      if (!token) return;
-      try {
-        await commands.consumerCompleteSignIn(token);
-        setNeedsSetup(false);
-      } catch {
-        // Stale / already-consumed token — leave the current UI alone.
+      const authUrl = urls.find((u) => u.startsWith("noah://auth"));
+      if (authUrl) {
+        const token = extractDeepLinkToken(authUrl, "token");
+        if (!token) return;
+        try {
+          await commands.consumerCompleteSignIn(token);
+          setNeedsSetup(false);
+        } catch {
+          // Stale / already-consumed token — leave the UI alone.
+        }
+        return;
+      }
+      const subUrl = urls.find((u) => u.startsWith("noah://subscribed"));
+      if (subUrl) {
+        const sid = extractDeepLinkToken(subUrl, "session_id");
+        if (!sid) return;
+        try {
+          await commands.consumerConfirmCheckout(sid);
+          // Nudge the consumer store + App gate to re-read entitlement.
+          setNeedsSetup(false);
+        } catch {
+          // Confirm failed — user can retry from the paywall modal.
+        }
       }
     })
       .then((fn) => {

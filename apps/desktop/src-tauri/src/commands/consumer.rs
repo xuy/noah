@@ -169,11 +169,59 @@ pub async fn consumer_notify_fix_completed(
 
 #[tauri::command]
 pub async fn consumer_billing_checkout_url(plan: String) -> Result<String, String> {
-    let token = session::get_session_token()?
-        .ok_or_else(|| "not signed in".to_string())?;
-    client::billing_checkout_url(&token, &plan)
+    let (session, device_id) = current_auth();
+    let Some(auth) = auth_ref(&session, &device_id) else {
+        return Err("no auth available".to_string());
+    };
+    client::billing_checkout_url(&auth, &plan)
         .await
         .map_err(|e| e.to_string())
+}
+
+/// Called by the desktop after catching the noah://subscribed deep link.
+/// For a real Stripe checkout session id, hits /billing/confirm and
+/// upgrades the local state to signed-in + paid. For the dev mock
+/// sentinel (session_id starting with "mock-"), just refreshes the
+/// device-scoped entitlement — the mock endpoint already flipped it
+/// server-side.
+#[tauri::command]
+pub async fn consumer_confirm_checkout(
+    state: State<'_, AppState>,
+    checkout_session_id: String,
+) -> Result<Option<client::Entitlement>, String> {
+    let trimmed = checkout_session_id.trim();
+    if trimmed.is_empty() {
+        return Err("missing checkout_session_id".to_string());
+    }
+
+    // Dev mock — no Stripe to call, just re-fetch entitlement.
+    if trimmed.starts_with("mock-") {
+        let (session, device_id) = current_auth();
+        let Some(auth) = auth_ref(&session, &device_id) else {
+            return Ok(None);
+        };
+        let ent = client::fetch_entitlement(&auth)
+            .await
+            .map_err(|e| e.to_string())?;
+        let _ = entitlement::save_cached(&state.app_dir, &ent);
+        return Ok(Some(ent));
+    }
+
+    let result = client::confirm_checkout(trimmed)
+        .await
+        .map_err(|e| e.to_string())?;
+    if let Some(token) = result.session_token {
+        session::set_session_token(&token)?;
+        let mut orch = state.orchestrator.lock().await;
+        orch.set_auth(AuthMode::Proxy {
+            base_url: client::base_url(),
+            auth: ProxyAuth::Session(token),
+        });
+    }
+    if let Some(ent) = &result.entitlement {
+        let _ = entitlement::save_cached(&state.app_dir, ent);
+    }
+    Ok(result.entitlement)
 }
 
 #[tauri::command]

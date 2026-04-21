@@ -106,15 +106,14 @@ pub async fn notify_fix_completed(auth: &Auth<'_>) -> Result<FixCompletedRespons
     Ok(resp.json().await?)
 }
 
-/// Billing endpoints remain session-only on the server. Callers should
-/// only reach these after the user is signed in.
-pub async fn billing_checkout_url(token: &str, plan: &str) -> Result<String> {
-    let resp = client()
+/// `/billing/checkout` accepts either session or device auth — a paying
+/// user can be a signed-in account or an anonymous device completing
+/// their trial's payment moment.
+pub async fn billing_checkout_url(auth: &Auth<'_>, plan: &str) -> Result<String> {
+    let req = client()
         .post(format!("{}/billing/checkout", base_url()))
-        .bearer_auth(token)
-        .json(&serde_json::json!({ "plan": plan }))
-        .send()
-        .await?;
+        .json(&serde_json::json!({ "plan": plan }));
+    let resp = apply_auth(req, auth).send().await?;
     if !resp.status().is_success() {
         return Err(anyhow!("checkout failed: {}", resp.status()));
     }
@@ -125,6 +124,36 @@ pub async fn billing_checkout_url(token: &str, plan: &str) -> Result<String> {
         .ok_or_else(|| anyhow!("checkout response missing url"))
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConfirmCheckoutResponse {
+    pub ok: bool,
+    #[serde(default)]
+    pub session_token: Option<String>,
+    #[serde(default)]
+    pub entitlement: Option<Entitlement>,
+}
+
+/// After the user returns from Stripe Checkout via the noah://subscribed
+/// deep link, hand the Checkout session id to the server. It verifies
+/// with Stripe, upserts a user by the customer email, links the device's
+/// entitlement row to that user, and mints a session token so the app
+/// becomes signed-in AND paid in one step.
+pub async fn confirm_checkout(checkout_session_id: &str) -> Result<ConfirmCheckoutResponse> {
+    let resp = client()
+        .post(format!("{}/billing/confirm", base_url()))
+        .json(&serde_json::json!({ "checkout_session_id": checkout_session_id }))
+        .send()
+        .await?;
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        return Err(anyhow!("confirm failed: {status} — {body}"));
+    }
+    Ok(resp.json().await?)
+}
+
+/// `/billing/portal` stays session-only — only signed-in users have a
+/// Stripe customer to manage.
 pub async fn billing_portal_url(token: &str) -> Result<String> {
     let resp = client()
         .post(format!("{}/billing/portal", base_url()))

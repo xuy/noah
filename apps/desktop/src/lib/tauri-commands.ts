@@ -546,6 +546,20 @@ export async function consumerBillingPortalUrl(): Promise<string> {
   return await invoke<string>("consumer_billing_portal_url");
 }
 
+/**
+ * After Stripe Checkout → noah://subscribed?session_id=… deep link,
+ * hand the session_id to the backend to finalize (upsert user by
+ * email, link device, mint session token). Returns the fresh
+ * entitlement if the confirm succeeded, null otherwise.
+ */
+export async function consumerConfirmCheckout(
+  checkoutSessionId: string,
+): Promise<Entitlement | null> {
+  return await invoke<Entitlement | null>("consumer_confirm_checkout", {
+    checkoutSessionId,
+  });
+}
+
 // ── V2 Agent Commands ──
 
 export async function sendMessageV2(
