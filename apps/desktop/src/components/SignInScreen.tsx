@@ -1,8 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { onOpenUrl } from "@tauri-apps/plugin-deep-link";
 import { ArrowLeft } from "lucide-react";
 import * as commands from "../lib/tauri-commands";
-import { NoahIcon } from "./NoahIcon";
 import { useLocale } from "../i18n";
 
 interface SignInScreenProps {
@@ -54,7 +53,7 @@ export function SignInScreen({
   seedContext = null,
   onBack,
 }: SignInScreenProps) {
-  const { t, tArray } = useLocale();
+  const { t } = useLocale();
   const [stage, setStage] = useState<Stage>("email");
   const [email, setEmail] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -62,11 +61,10 @@ export function SignInScreen({
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [byokKey, setByokKey] = useState("");
   const [byokSaving, setByokSaving] = useState(false);
-  const taglines = tArray("setup.taglines");
-  const tagline = useMemo(
-    () => taglines[Math.floor(Math.random() * taglines.length)],
-    [taglines],
-  );
+  // seedContext is still used for the localStorage stash on submit,
+  // we deliberately don't render it as a banner — the user is one
+  // second removed from picking the tile, a big reminder is noise.
+  void seedContext;
 
   const handleSaveByok = useCallback(async () => {
     setError(null);
@@ -157,77 +155,53 @@ export function SignInScreen({
         data-tauri-drag-region=""
         className="absolute top-0 left-0 right-0 h-9 z-10"
       />
-      <div className="relative w-full max-w-md">
-        {onBack && (
-          <button
-            onClick={onBack}
-            className="inline-flex items-center gap-1.5 text-xs text-text-muted hover:text-text-secondary mb-4"
-          >
-            <ArrowLeft size={13} strokeWidth={2} />
-            {t("onboarding.backLabel")}
-          </button>
-        )}
-        <div className="flex flex-col items-center mb-8">
-          <NoahIcon className="w-16 h-16 rounded-2xl mb-4" alt="Noah" />
-          <h1 className="text-xl font-semibold text-text-primary tracking-tight">
-            {t("signIn.welcomeTitle")}
-          </h1>
-          <p className="text-sm text-text-secondary mt-2 text-center leading-relaxed">
-            {tagline}
-          </p>
-          {seedContext && (
-            <div className="mt-4 w-full px-3 py-2 rounded-lg bg-accent-green/10 border border-accent-green/25 text-xs text-text-secondary text-center">
-              {t("onboarding.signinContext", { category: seedContext.label })}
-            </div>
-          )}
-        </div>
 
+      {onBack && (
+        <button
+          onClick={onBack}
+          className="absolute top-12 left-6 inline-flex items-center gap-1.5 text-xs text-text-muted hover:text-text-secondary z-20"
+        >
+          <ArrowLeft size={13} strokeWidth={2} />
+          {t("onboarding.backLabel")}
+        </button>
+      )}
+
+      <div className="relative w-full max-w-sm">
         {stage === "email" && (
-          <div className="space-y-4">
-            <div>
-              <label className="block text-xs text-text-muted mb-1.5">
-                {t("signIn.emailLabel")}
-              </label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") handleSend();
-                }}
-                placeholder={t("signIn.emailPlaceholder")}
-                className="w-full px-4 py-2.5 rounded-xl bg-bg-input border border-border-primary text-sm text-text-primary placeholder-text-muted outline-none focus:border-border-focus transition-colors"
-                autoFocus
-              />
-              {error && (
-                <p className="text-xs text-accent-red mt-1.5">{error}</p>
-              )}
-            </div>
-
+          <>
+            <p className="text-lg text-text-primary text-center mb-5 tracking-tight">
+              {t("signIn.prompt")}
+            </p>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleSend();
+              }}
+              placeholder={t("signIn.emailPlaceholder")}
+              className="w-full px-4 py-2.5 rounded-xl bg-bg-input border border-border-primary text-sm text-text-primary placeholder-text-muted outline-none focus:border-border-focus transition-colors"
+              autoFocus
+            />
+            {error && (
+              <p className="text-xs text-accent-red mt-2">{error}</p>
+            )}
             <button
               onClick={handleSend}
               disabled={submitting}
-              className="w-full py-2.5 rounded-xl bg-accent-green text-white text-sm font-medium hover:bg-accent-green/80 transition-colors cursor-pointer disabled:opacity-50"
+              className="mt-3 w-full py-2.5 rounded-xl bg-accent-green text-white text-sm font-medium hover:bg-accent-green/80 transition-colors cursor-pointer disabled:opacity-50"
             >
               {submitting ? t("signIn.sending") : t("signIn.sendLink")}
             </button>
-
-            <p className="text-[11px] text-text-muted text-center leading-relaxed">
-              {t("signIn.trialHint")}
-            </p>
-          </div>
+          </>
         )}
 
         {stage === "sent" && (
-          <div className="space-y-4 text-center">
-            <div className="px-4 py-6 rounded-xl bg-bg-input border border-border-primary">
-              <p className="text-sm text-text-primary">
-                {t("signIn.checkInbox", { email })}
-              </p>
-              <p className="text-xs text-text-muted mt-2">
-                {t("signIn.checkSpam")}
-              </p>
-            </div>
+          <div className="text-center space-y-3">
+            <p className="text-sm text-text-primary leading-relaxed">
+              {t("signIn.checkInbox", { email })}
+            </p>
+            <p className="text-xs text-text-muted">{t("signIn.checkSpam")}</p>
             <button
               onClick={() => {
                 setStage("email");
@@ -237,9 +211,7 @@ export function SignInScreen({
             >
               {t("signIn.useDifferentEmail")}
             </button>
-            {error && (
-              <p className="text-xs text-accent-red">{error}</p>
-            )}
+            {error && <p className="text-xs text-accent-red">{error}</p>}
           </div>
         )}
 
@@ -250,17 +222,9 @@ export function SignInScreen({
         )}
 
         {stage === "email" && (
-          <div className="mt-8 pt-4 border-t border-border-primary/60">
-            <button
-              onClick={() => setShowAdvanced((v) => !v)}
-              className="text-[11px] text-text-muted hover:text-text-secondary underline"
-            >
-              {showAdvanced
-                ? t("advanced.sectionTitle")
-                : t("advanced.byokTitle")}
-            </button>
-            {showAdvanced && (
-              <div className="mt-3 space-y-2">
+          <div className="mt-12 text-center">
+            {showAdvanced ? (
+              <div className="text-left space-y-2">
                 <p className="text-[11px] text-text-muted leading-relaxed">
                   {t("advanced.byokDesc")}
                 </p>
@@ -274,14 +238,29 @@ export function SignInScreen({
                   placeholder={t("advanced.byokKeyPlaceholder")}
                   className="w-full px-4 py-2 rounded-xl bg-bg-input border border-border-primary text-sm text-text-primary placeholder-text-muted outline-none focus:border-border-focus transition-colors"
                 />
-                <button
-                  onClick={handleSaveByok}
-                  disabled={byokSaving}
-                  className="w-full py-2 rounded-xl border border-border-primary text-sm text-text-primary hover:bg-bg-hover transition-colors disabled:opacity-50"
-                >
-                  {byokSaving ? t("setup.saving") : t("advanced.byokSave")}
-                </button>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setShowAdvanced(false)}
+                    className="px-3 py-2 text-xs text-text-muted hover:text-text-primary transition-colors"
+                  >
+                    {t("onboarding.backLabel")}
+                  </button>
+                  <button
+                    onClick={handleSaveByok}
+                    disabled={byokSaving}
+                    className="flex-1 py-2 rounded-xl border border-border-primary text-sm text-text-primary hover:bg-bg-hover transition-colors disabled:opacity-50"
+                  >
+                    {byokSaving ? t("setup.saving") : t("advanced.byokSave")}
+                  </button>
+                </div>
               </div>
+            ) : (
+              <button
+                onClick={() => setShowAdvanced(true)}
+                className="text-[11px] text-text-muted hover:text-text-secondary underline"
+              >
+                {t("advanced.byokTitle")}
+              </button>
             )}
           </div>
         )}

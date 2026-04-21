@@ -85,11 +85,12 @@
   },
   "signIn": {
     "welcomeTitle": "Sign in to Noah",
+    "prompt": "What's your email?",
     "emailLabel": "Email",
     "emailPlaceholder": "you@example.com",
     "sendLink": "Email me a sign-in link",
     "sending": "Sending...",
-    "trialHint": "New to Noah? Your 7-day free trial starts when you describe your first problem.",
+    "trialHint": "No passwords. Free for 7 days — no card needed.",
     "checkInbox": "We sent a sign-in link to {email}. Click the link to finish signing in — Noah will pick it up automatically.",
     "checkSpam": "Can't find it? Check your spam folder.",
     "useDifferentEmail": "Use a different email",
