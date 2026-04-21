@@ -1,4 +1,16 @@
 import { useCallback, useMemo, useState } from "react";
+import type { LucideIcon } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowLeft,
+  BatteryLow,
+  Cable,
+  Gauge,
+  MessageCircle,
+  RefreshCcw,
+  Settings2,
+  Wifi,
+} from "lucide-react";
 import { NoahIcon } from "./NoahIcon";
 import { SignInScreen } from "./SignInScreen";
 import { useLocale } from "../i18n";
@@ -9,21 +21,21 @@ interface TilePickerScreenProps {
 
 interface Tile {
   id: string;
-  emoji: string;
+  Icon: LucideIcon;
   titleKey: string;
   descKey: string;
   hintKey: string;
 }
 
 const TILES: readonly Tile[] = [
-  { id: "slow", emoji: "\u{1F40C}", titleKey: "onboarding.tile.slow.title", descKey: "onboarding.tile.slow.desc", hintKey: "onboarding.tile.slow.hint" },
-  { id: "wifi", emoji: "\u{1F4F6}", titleKey: "onboarding.tile.wifi.title", descKey: "onboarding.tile.wifi.desc", hintKey: "onboarding.tile.wifi.hint" },
-  { id: "crash", emoji: "\u{1F4A5}", titleKey: "onboarding.tile.crash.title", descKey: "onboarding.tile.crash.desc", hintKey: "onboarding.tile.crash.hint" },
-  { id: "connect", emoji: "\u{1F50C}", titleKey: "onboarding.tile.connect.title", descKey: "onboarding.tile.connect.desc", hintKey: "onboarding.tile.connect.hint" },
-  { id: "battery", emoji: "\u{1F50B}", titleKey: "onboarding.tile.battery.title", descKey: "onboarding.tile.battery.desc", hintKey: "onboarding.tile.battery.hint" },
-  { id: "update", emoji: "\u{1F504}", titleKey: "onboarding.tile.update.title", descKey: "onboarding.tile.update.desc", hintKey: "onboarding.tile.update.hint" },
-  { id: "setup", emoji: "\u{1F6E0}\u{FE0F}", titleKey: "onboarding.tile.setup.title", descKey: "onboarding.tile.setup.desc", hintKey: "onboarding.tile.setup.hint" },
-  { id: "other", emoji: "\u{1F4AC}", titleKey: "onboarding.tile.other.title", descKey: "onboarding.tile.other.desc", hintKey: "onboarding.tile.other.hint" },
+  { id: "slow", Icon: Gauge, titleKey: "onboarding.tile.slow.title", descKey: "onboarding.tile.slow.desc", hintKey: "onboarding.tile.slow.hint" },
+  { id: "wifi", Icon: Wifi, titleKey: "onboarding.tile.wifi.title", descKey: "onboarding.tile.wifi.desc", hintKey: "onboarding.tile.wifi.hint" },
+  { id: "crash", Icon: AlertTriangle, titleKey: "onboarding.tile.crash.title", descKey: "onboarding.tile.crash.desc", hintKey: "onboarding.tile.crash.hint" },
+  { id: "connect", Icon: Cable, titleKey: "onboarding.tile.connect.title", descKey: "onboarding.tile.connect.desc", hintKey: "onboarding.tile.connect.hint" },
+  { id: "battery", Icon: BatteryLow, titleKey: "onboarding.tile.battery.title", descKey: "onboarding.tile.battery.desc", hintKey: "onboarding.tile.battery.hint" },
+  { id: "update", Icon: RefreshCcw, titleKey: "onboarding.tile.update.title", descKey: "onboarding.tile.update.desc", hintKey: "onboarding.tile.update.hint" },
+  { id: "setup", Icon: Settings2, titleKey: "onboarding.tile.setup.title", descKey: "onboarding.tile.setup.desc", hintKey: "onboarding.tile.setup.hint" },
+  { id: "other", Icon: MessageCircle, titleKey: "onboarding.tile.other.title", descKey: "onboarding.tile.other.desc", hintKey: "onboarding.tile.other.hint" },
 ];
 
 type Stage =
@@ -117,14 +129,20 @@ function PickStage({
   );
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-bg-primary px-6 py-10">
+    <div
+      className="flex flex-col items-center justify-center min-h-screen px-6 py-10"
+      style={{
+        background:
+          "radial-gradient(ellipse at top, var(--color-accent-green-bg, rgba(52, 199, 89, 0.08)) 0%, var(--color-bg-primary) 55%)",
+      }}
+    >
       <div className="w-full max-w-2xl">
-        <div className="flex flex-col items-center mb-8">
-          <NoahIcon className="w-16 h-16 rounded-2xl mb-4" alt="Noah" />
-          <h1 className="text-xl font-semibold text-text-primary">
+        <div className="flex flex-col items-center mb-10">
+          <NoahIcon className="w-20 h-20 rounded-2xl mb-5 shadow-lg" alt="Noah" />
+          <h1 className="text-2xl font-semibold text-text-primary tracking-tight">
             {t("onboarding.greeting")}
           </h1>
-          <p className="text-sm text-text-secondary mt-2 text-center leading-relaxed">
+          <p className="text-sm text-text-secondary mt-2 text-center leading-relaxed max-w-md">
             {tagline}
           </p>
           <p className="text-xs text-text-muted mt-3">
@@ -137,12 +155,15 @@ function PickStage({
             <button
               key={tile.id}
               onClick={() => onPick(tile)}
-              className="flex items-start gap-3 text-left px-4 py-3 rounded-xl border border-border-primary hover:border-accent-green hover:bg-bg-hover transition-colors cursor-pointer"
+              className="group flex items-start gap-3 text-left px-4 py-3.5 rounded-xl border border-border-primary bg-bg-secondary/40 hover:border-accent-green hover:bg-accent-green/[0.04] transition-colors cursor-pointer"
             >
-              <span className="text-2xl leading-none mt-0.5" aria-hidden>
-                {tile.emoji}
+              <span
+                className="flex items-center justify-center w-9 h-9 rounded-lg bg-bg-tertiary text-text-secondary group-hover:bg-accent-green/15 group-hover:text-accent-green transition-colors shrink-0"
+                aria-hidden
+              >
+                <tile.Icon size={18} strokeWidth={1.75} />
               </span>
-              <div className="min-w-0">
+              <div className="min-w-0 flex-1">
                 <div className="text-sm font-medium text-text-primary">
                   {t(tile.titleKey)}
                 </div>
@@ -154,7 +175,7 @@ function PickStage({
           ))}
         </div>
 
-        <div className="mt-8 text-center">
+        <div className="mt-10 text-center">
           <button
             onClick={onSignInClick}
             className="text-xs text-text-muted hover:text-text-secondary underline"
@@ -184,19 +205,24 @@ function ClarifyStage({
 }) {
   const { t } = useLocale();
   const canContinue = value.trim().length > 0;
+  const { Icon } = tile;
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-bg-primary px-6 py-10">
       <div className="w-full max-w-xl">
         <button
           onClick={onBack}
-          className="text-xs text-text-muted hover:text-text-secondary mb-6"
+          className="inline-flex items-center gap-1.5 text-xs text-text-muted hover:text-text-secondary mb-6"
         >
-          {"\u2190"} {t("onboarding.backLabel")}
+          <ArrowLeft size={13} strokeWidth={2} />
+          {t("onboarding.backLabel")}
         </button>
 
         <div className="flex items-center gap-3 mb-6">
-          <span className="text-3xl leading-none" aria-hidden>
-            {tile.emoji}
+          <span
+            className="flex items-center justify-center w-11 h-11 rounded-xl bg-accent-green/10 text-accent-green"
+            aria-hidden
+          >
+            <Icon size={22} strokeWidth={1.75} />
           </span>
           <h2 className="text-lg font-semibold text-text-primary">
             {t(tile.titleKey)}

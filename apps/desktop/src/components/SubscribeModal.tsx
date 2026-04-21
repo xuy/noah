@@ -52,7 +52,7 @@ export function SubscribeModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
       <div className="w-full max-w-md mx-4 rounded-2xl bg-bg-primary border border-border-primary shadow-xl p-6">
-        <h3 className="text-lg font-semibold text-text-primary">{headline}</h3>
+        <h3 className="text-lg font-semibold text-text-primary tracking-tight">{headline}</h3>
         <p className="text-sm text-text-secondary mt-2 leading-relaxed">
           {body}
         </p>

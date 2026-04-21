@@ -124,8 +124,15 @@ body,
     sans-serif;
   font-size: 15px;
   line-height: 1.7;
+  letter-spacing: -0.003em;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* Tighten headings a hair — gives Plus Jakarta Sans a more
+   "designed" feel without changing size/weight. */
+h1, h2, h3, h4 {
+  letter-spacing: -0.015em;
 }
 
 /* ── Custom Scrollbar ── */

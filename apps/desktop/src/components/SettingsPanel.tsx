@@ -125,7 +125,7 @@ export function SettingsPanel() {
     <div className="flex-1 min-h-0 overflow-y-auto bg-bg-primary">
       <div className="mx-auto w-full max-w-4xl px-6 py-8 space-y-6">
         <div className="space-y-1">
-          <h1 className="text-2xl font-semibold text-text-primary">{t("settings.title")}</h1>
+          <h1 className="text-2xl font-semibold text-text-primary tracking-tight">{t("settings.title")}</h1>
         </div>
 
         <div className="grid gap-6 lg:grid-cols-2">

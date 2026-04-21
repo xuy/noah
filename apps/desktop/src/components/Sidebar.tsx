@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { Check } from "lucide-react";
 import { useSessionStore } from "../stores/sessionStore";
 import { useSession } from "../hooks/useSession";
 import type { SessionMode } from "../hooks/useSession";
@@ -218,10 +219,10 @@ function SessionItem({
         <p className="text-sm leading-snug truncate">
           {session.title || t("sidebar.untitledSession")}
         </p>
-        <p className="text-[10px] text-text-muted mt-0.5">
-          {formatDate(session.created_at, t, locale)}
+        <p className="text-[10px] text-text-muted mt-0.5 flex items-center gap-1">
+          <span>{formatDate(session.created_at, t, locale)}</span>
           {session.resolved === true && (
-            <span className="text-accent-green ml-1.5">{"\u2713"}</span>
+            <Check size={10} strokeWidth={2.5} className="text-accent-green" />
           )}
         </p>
       </div>

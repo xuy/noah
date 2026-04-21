@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { onOpenUrl } from "@tauri-apps/plugin-deep-link";
+import { ArrowLeft } from "lucide-react";
 import * as commands from "../lib/tauri-commands";
 import { NoahIcon } from "./NoahIcon";
 import { useLocale } from "../i18n";
@@ -155,14 +156,15 @@ export function SignInScreen({
         {onBack && (
           <button
             onClick={onBack}
-            className="text-xs text-text-muted hover:text-text-secondary mb-4"
+            className="inline-flex items-center gap-1.5 text-xs text-text-muted hover:text-text-secondary mb-4"
           >
-            {"\u2190"} {t("onboarding.backLabel")}
+            <ArrowLeft size={13} strokeWidth={2} />
+            {t("onboarding.backLabel")}
           </button>
         )}
         <div className="flex flex-col items-center mb-8">
           <NoahIcon className="w-16 h-16 rounded-2xl mb-4" alt="Noah" />
-          <h1 className="text-xl font-semibold text-text-primary">
+          <h1 className="text-xl font-semibold text-text-primary tracking-tight">
             {t("signIn.welcomeTitle")}
           </h1>
           <p className="text-sm text-text-secondary mt-2 text-center leading-relaxed">

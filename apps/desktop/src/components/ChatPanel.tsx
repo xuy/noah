@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { listen } from "@tauri-apps/api/event";
+import { Check, Info } from "lucide-react";
 import { useChatStore } from "../stores/chatStore";
 import { useSessionStore } from "../stores/sessionStore";
 import { useConsumerStore } from "../stores/consumerStore";
@@ -990,8 +991,8 @@ function DoneCard({
           </div>
         )}
         {resolved === true && (
-          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
-            <span className="text-accent-blue text-xs">{"\u2713"}</span>
+          <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+            <Check size={12} strokeWidth={2.5} className="text-accent-blue" />
             <span className="text-xs text-text-muted">{t("chat.resolved")}</span>
           </div>
         )}
@@ -1021,7 +1022,7 @@ function InfoCard({
   return (
     <div className="group animate-fade-in">
       <div className="flex items-start gap-3 py-2">
-        <span className="text-accent-blue text-base">{"\u2139"}</span>
+        <Info size={16} strokeWidth={2} className="text-accent-blue mt-0.5 shrink-0" />
         <div className="flex-1">
           <div className="text-base text-text-primary leading-relaxed">
             <MarkdownSummary text={summary} />
@@ -1539,7 +1540,7 @@ function WelcomeHero({ hasContextual, learnMode }: { hasContextual: boolean; lea
   return (
     <div className="flex flex-col items-center text-text-muted">
       <NoahIcon className="w-14 h-14 rounded-2xl mb-4" alt="Noah" />
-      <p className="text-2xl font-semibold text-text-primary mb-1">
+      <p className="text-2xl font-semibold text-text-primary mb-1 tracking-tight">
         {learnMode ? t("welcome.learnGreeting") : t("welcome.greeting")}
       </p>
       <p className="text-base text-text-secondary">
