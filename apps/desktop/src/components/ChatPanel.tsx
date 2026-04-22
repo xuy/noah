@@ -7,7 +7,11 @@ import { useConsumerStore } from "../stores/consumerStore";
 import type { Message, ToolCall } from "../stores/chatStore";
 import { useAgent } from "../hooks/useAgent";
 import { parseResponse } from "../lib/parseResponse";
-import type { AssistantQuestion, AssistantUiPayload } from "../lib/tauri-commands";
+import type {
+  AssistantActionType,
+  AssistantQuestion,
+  AssistantUiPayload,
+} from "../lib/tauri-commands";
 import * as commands from "../lib/tauri-commands";
 import { NoahIcon } from "./NoahIcon";
 import { useLocale } from "../i18n";
@@ -937,24 +941,19 @@ function DoneCard({
     } catch (err) {
       console.error("Failed to mark resolved:", err);
     }
-    // Consumer hook: on "Yes, fixed", record the fix on the server.
-    // If this is the user's first ever fix and they're on the trial,
-    // surface the SubscribeModal (the "aha moment" prompt).
+    // Consumer hook: on "Yes, fixed", record the fix on the server
+    // so usage_used increments against the monthly cap. The subscribe
+    // modal has already been shown (or dismissed) at the commitment
+    // moment — the RUN_STEP click on the action card — so nothing
+    // to surface here.
     if (value) {
       try {
         const result = await commands.consumerNotifyFixCompleted();
         if (result) {
-          const consumer = useConsumerStore.getState();
-          consumer.setEntitlement(result.entitlement);
-          if (
-            result.fix_count_total === 1 &&
-            result.entitlement.status === "trialing"
-          ) {
-            consumer.openSubscribeModal("first_fix");
-          }
+          useConsumerStore.getState().setEntitlement(result.entitlement);
         }
       } catch {
-        // best-effort; BYOK users have no session and this is a no-op
+        // best-effort — usage metering shouldn't block the UI.
       }
     }
   };
@@ -1089,7 +1088,11 @@ function renderFromUiPayload(
   isProcessing: boolean,
   isLatestDone: boolean,
   sessionId: string | null,
-  onConfirm: (messageId: string, actionLabel?: string) => void,
+  onConfirm: (
+    messageId: string,
+    actionLabel?: string,
+    actionType?: AssistantActionType,
+  ) => void,
   onEvent: (eventType: "USER_ANSWER_QUESTION", payload?: string) => void,
   onSecureAnswer?: (secretName: string, value: string) => void,
   onSendMessage?: (text: string) => void,
@@ -1109,7 +1112,7 @@ function renderFromUiPayload(
           timestamp={message.timestamp}
           progress={progress}
           qrData={ui.qr_data}
-          onDoIt={() => onConfirm(message.id, ui.action.label)}
+          onDoIt={() => onConfirm(message.id, ui.action.label, ui.action.type)}
         />
       );
     case "user_question":
@@ -1165,7 +1168,11 @@ function MessageDisplay({
   isProcessing: boolean;
   isLatestDone: boolean;
   sessionId: string | null;
-  onConfirm: (messageId: string, actionLabel?: string) => void;
+  onConfirm: (
+    messageId: string,
+    actionLabel?: string,
+    actionType?: AssistantActionType,
+  ) => void;
   onEvent: (eventType: "USER_ANSWER_QUESTION", payload?: string) => void;
   onSecureAnswer?: (secretName: string, value: string) => void;
   onSendMessage?: (text: string) => void;
@@ -1205,7 +1212,9 @@ function MessageDisplay({
             actionTaken={message.actionTaken}
             isProcessing={isProcessing}
             timestamp={message.timestamp}
-            onDoIt={() => onConfirm(message.id, parsed.actionLabel)}
+            onDoIt={() =>
+              onConfirm(message.id, parsed.actionLabel, parsed.actionType)
+            }
           />
         );
         break;

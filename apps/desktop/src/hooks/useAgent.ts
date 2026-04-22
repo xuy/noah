@@ -3,11 +3,35 @@ import { useChatStore } from "../stores/chatStore";
 import { useSessionStore } from "../stores/sessionStore";
 import { isPaywalled, useConsumerStore } from "../stores/consumerStore";
 import * as commands from "../lib/tauri-commands";
-import type { UserEventType } from "../lib/tauri-commands";
+import type {
+  AssistantActionType,
+  UserEventType,
+} from "../lib/tauri-commands";
+
+/** localStorage key marking that we've already shown the first-fix
+ *  subscribe prompt for this install. Reset by dev-reset-auth --fresh. */
+const FIRST_FIX_PROMPT_KEY = "noah.firstFixPromptShown";
+
+function maybeShowFirstFixPrompt(): void {
+  const consumer = useConsumerStore.getState();
+  const ent = consumer.entitlement;
+  if (!ent || ent.status !== "trialing") return;
+  try {
+    if (localStorage.getItem(FIRST_FIX_PROMPT_KEY) === "1") return;
+    localStorage.setItem(FIRST_FIX_PROMPT_KEY, "1");
+  } catch {
+    // localStorage disabled — fall through; modal shows once per session.
+  }
+  consumer.openSubscribeModal("first_fix");
+}
 
 interface UseAgentReturn {
   sendMessage: (text: string) => Promise<void>;
-  sendConfirmation: (messageId: string, actionLabel?: string) => Promise<void>;
+  sendConfirmation: (
+    messageId: string,
+    actionLabel?: string,
+    actionType?: AssistantActionType,
+  ) => Promise<void>;
   sendEvent: (eventType: UserEventType, payload?: string) => Promise<void>;
   cancelProcessing: () => Promise<void>;
   isProcessing: boolean;
@@ -120,8 +144,21 @@ export function useAgent(): UseAgentReturn {
   );
 
   const sendConfirmation = useCallback(
-    async (messageId: string, actionLabel?: string) => {
+    async (
+      messageId: string,
+      actionLabel?: string,
+      actionType?: AssistantActionType,
+    ) => {
       if (!sessionId) return;
+
+      // Commitment-moment subscribe prompt: when the user clicks the
+      // action button on a RUN_STEP card during the trial, that's
+      // their "please fix it" — show the first-fix modal right then,
+      // once per install. The fix continues in the background; the
+      // user can dismiss and let it run, or subscribe.
+      if (actionType === "RUN_STEP") {
+        maybeShowFirstFixPrompt();
+      }
 
       const prevChangeIds = new Set(changes.map((c) => c.id));
 
