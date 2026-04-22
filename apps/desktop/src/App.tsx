@@ -102,8 +102,15 @@ function App() {
         const sid = extractDeepLinkToken(subUrl, "session_id");
         if (!sid) return;
         try {
-          await commands.consumerConfirmCheckout(sid);
-          // Nudge the consumer store + App gate to re-read entitlement.
+          const ent = await commands.consumerConfirmCheckout(sid);
+          const consumer = useConsumerStore.getState();
+          if (ent) consumer.setEntitlement(ent);
+          // Re-fetch in case the server has newer state than what confirm
+          // returned (e.g. webhook raced ahead and already set period_end).
+          consumer.refresh();
+          // Dismiss the subscribe modal — the user just paid; don't leave
+          // the "Subscribe" CTA on screen.
+          consumer.closeSubscribeModal();
           setNeedsSetup(false);
         } catch {
           // Confirm failed — user can retry from the paywall modal.

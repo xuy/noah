@@ -529,6 +529,29 @@ describe("Deep-link handling at App root", () => {
     await screen.findByTestId("chat-panel");
   });
 
+  it("noah://subscribed updates the consumer store and closes the modal", async () => {
+    vi.mocked(commands.consumerConfirmCheckout).mockResolvedValue(
+      ACTIVE_ENTITLEMENT(),
+    );
+    useConsumerStore.setState({
+      subscribeModal: { variant: "first_fix" },
+      entitlement: TRIAL_ENTITLEMENT(),
+    });
+    render(<App />);
+    await screen.findByText(/What's going on with your Mac/);
+
+    await act(async () => {
+      await deepLinkCallback!([
+        "noah://subscribed?session_id=cs_test_abc",
+      ]);
+    });
+
+    // Store flipped to active and the modal is dismissed.
+    const state = useConsumerStore.getState();
+    expect(state.entitlement?.status).toBe("active");
+    expect(state.subscribeModal).toBeNull();
+  });
+
   it("swallows a stale/invalid token instead of blowing up the UI", async () => {
     vi.mocked(commands.consumerCompleteSignIn).mockRejectedValue(
       new Error("token already used"),
@@ -714,5 +737,68 @@ describe("Trial-start race guard", () => {
     });
 
     expect(commands.consumerNotifyIssueStarted).not.toHaveBeenCalled();
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Monotonic entitlement merge (guards against late-arriving stale GET)
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("Consumer store — monotonic entitlement", () => {
+  // Regression: MainApp's refresh GET /entitlement can race with useAgent's
+  // POST /events/issue-started. If the GET response is generated BEFORE the
+  // POST commits but arrives at the client AFTER the POST response, setting
+  // the store with the stale "none" clobbers the fresh "trialing" — and the
+  // first-fix modal never fires on the next action click.
+
+  it("refresh does not overwrite a started state with a 'none' response", async () => {
+    useConsumerStore.setState({ entitlement: TRIAL_ENTITLEMENT() });
+    vi.mocked(commands.consumerGetEntitlement).mockResolvedValue(
+      NEUTRAL_ENTITLEMENT(),
+    );
+
+    await useConsumerStore.getState().refresh();
+
+    expect(useConsumerStore.getState().entitlement?.status).toBe("trialing");
+  });
+
+  it("setEntitlement does not regress 'active' to 'none'", () => {
+    useConsumerStore.setState({ entitlement: ACTIVE_ENTITLEMENT() });
+    useConsumerStore.getState().setEntitlement(NEUTRAL_ENTITLEMENT());
+    expect(useConsumerStore.getState().entitlement?.status).toBe("active");
+  });
+
+  it("refresh DOES apply legitimate state transitions (trialing → active)", async () => {
+    useConsumerStore.setState({ entitlement: TRIAL_ENTITLEMENT() });
+    vi.mocked(commands.consumerGetEntitlement).mockResolvedValue(
+      ACTIVE_ENTITLEMENT(),
+    );
+
+    await useConsumerStore.getState().refresh();
+
+    expect(useConsumerStore.getState().entitlement?.status).toBe("active");
+  });
+
+  it("refresh accepts 'none' when there is no prior started state", async () => {
+    useConsumerStore.setState({ entitlement: null });
+    vi.mocked(commands.consumerGetEntitlement).mockResolvedValue(
+      NEUTRAL_ENTITLEMENT(),
+    );
+
+    await useConsumerStore.getState().refresh();
+
+    expect(useConsumerStore.getState().entitlement?.status).toBe("none");
+  });
+
+  it("refresh with a null response does not clobber an active user", async () => {
+    // Server unreachable / 401 / offline: consumerGetEntitlement returns null.
+    // Must not overwrite the user's valid state; otherwise a paying user would
+    // be kicked to the paywall on a single bad network call.
+    useConsumerStore.setState({ entitlement: ACTIVE_ENTITLEMENT() });
+    vi.mocked(commands.consumerGetEntitlement).mockResolvedValue(null);
+
+    await useConsumerStore.getState().refresh();
+
+    expect(useConsumerStore.getState().entitlement?.status).toBe("active");
   });
 });
