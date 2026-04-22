@@ -68,16 +68,17 @@ fn load_auth(app_dir: &std::path::Path) -> AuthMode {
         }
     }
 
-    if let Ok(Some(token)) = crate::consumer::session::get_session_token() {
+    if let Ok(Some(token)) = crate::consumer::session::get_session_token(app_dir) {
         return AuthMode::Proxy {
             base_url: crate::consumer::client::base_url(),
             auth: crate::agent::llm_client::ProxyAuth::Session(token),
         };
     }
 
-    // Device-first anonymous trial — no sign-in required. ensure_device_id
-    // creates a stable random UUID in the Keychain on first launch.
-    if let Ok(device_id) = crate::consumer::device::ensure_device_id() {
+    // Device-first anonymous trial — no sign-in required.
+    // ensure_device_id writes a UUID to a plain file in app_dir on
+    // first launch and reads it on subsequent launches.
+    if let Ok(device_id) = crate::consumer::device::ensure_device_id(app_dir) {
         return AuthMode::Proxy {
             base_url: crate::consumer::client::base_url(),
             auth: crate::agent::llm_client::ProxyAuth::Device(device_id),
@@ -113,6 +114,10 @@ pub fn save_proxy_config(app_dir: &std::path::Path, base_url: &str, token: &str)
 pub fn clear_auth_files(app_dir: &std::path::Path) {
     let _ = std::fs::remove_file(app_dir.join("api_key.txt"));
     let _ = std::fs::remove_file(app_dir.join("proxy.json"));
+    let _ = std::fs::remove_file(app_dir.join("session.txt"));
+    // Intentionally do NOT remove device_id.txt here — clear_auth is
+    // "sign me out," which should drop back to anonymous-device mode,
+    // not reset the device identity.
 }
 
 /// Migrate user data from the old `com.itman.app` directory to the new location.

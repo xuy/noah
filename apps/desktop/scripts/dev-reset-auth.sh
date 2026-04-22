@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
 # Reset Noah desktop state for local dev.
 #
-# Default (no flags):
-#   • Keychain session token
+# Default (no flags) clears auth-related files in the app data dir:
+#   • session.txt (signed-in session token)
 #   • entitlement_cache.json
 #   • api_key.txt + proxy.json (BYOK and legacy invite-code auth)
-#   Keeps journal.db so your past chat history is intact when you sign in again.
+#   Keeps journal.db so your past chat history is intact.
 #
 # --fresh adds:
 #   • Archives journal.db as journal.db.bak-<timestamp>
-#   • Archives the device_id in the Keychain so you get a brand-new device
-#   This simulates a truly first-ever install so you can preview the
-#   TilePicker onboarding. Restore with:
+#   • Removes device_id.txt so you get a brand-new anonymous device
+#   • Clears the localStorage "first-fix prompt shown" flag (via app reset)
+#   Simulates a truly first-ever install. Restore journal with:
 #       mv journal.db.bak-<ts> journal.db
 #
 # --launch adds: starts `pnpm tauri dev` with ANTHROPIC_API_KEY unset.
@@ -20,14 +20,6 @@
 set -euo pipefail
 
 APPDIR="$HOME/Library/Application Support/app.onnoah.desktop"
-KEYCHAIN_SERVICE="app.onnoah.noah"
-KEYCHAIN_ACCOUNT="session_token"
-KEYCHAIN_DEVICE_ACCOUNT="device_id"
-
-if [[ "$(uname -s)" != "Darwin" ]]; then
-  echo "This script is macOS-only (Keychain via /usr/bin/security)." >&2
-  exit 1
-fi
 
 FRESH=0
 LAUNCH=0
@@ -39,14 +31,7 @@ for arg in "$@"; do
   esac
 done
 
-echo "• Deleting Keychain entry ${KEYCHAIN_SERVICE}/${KEYCHAIN_ACCOUNT} (if present)..."
-if security delete-generic-password -s "$KEYCHAIN_SERVICE" -a "$KEYCHAIN_ACCOUNT" 2>/dev/null; then
-  echo "  ✓ removed"
-else
-  echo "  (none — nothing to delete)"
-fi
-
-for f in entitlement_cache.json api_key.txt proxy.json; do
+for f in session.txt entitlement_cache.json api_key.txt proxy.json; do
   path="$APPDIR/$f"
   if [[ -f "$path" ]]; then
     rm -f "$path"
@@ -60,14 +45,14 @@ if [[ "$FRESH" == "1" ]]; then
     mv "$APPDIR/journal.db" "$APPDIR/journal.db.bak-$ts"
     echo "• Archived journal.db → journal.db.bak-$ts"
   fi
-  # Archive WAL/SHM side-files too so SQLite starts truly clean.
   for s in journal.db-wal journal.db-shm; do
     if [[ -f "$APPDIR/$s" ]]; then
       rm -f "$APPDIR/$s"
     fi
   done
-  if security delete-generic-password -s "$KEYCHAIN_SERVICE" -a "$KEYCHAIN_DEVICE_ACCOUNT" 2>/dev/null; then
-    echo "• Removed Keychain device_id"
+  if [[ -f "$APPDIR/device_id.txt" ]]; then
+    rm -f "$APPDIR/device_id.txt"
+    echo "• Removed device_id.txt"
   fi
   echo "✓ Fresh-install state — journal archived, device_id cleared."
 else

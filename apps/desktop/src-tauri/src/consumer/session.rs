@@ -1,52 +1,44 @@
-use keyring::Entry;
+//! Session-token storage, file-based.
+//!
+//! Stores the signed-in session token as a plain file in the app
+//! data directory. Previously used the macOS Keychain, but that
+//! caused unnecessary auth prompts and the session token isn't
+//! sensitive enough to warrant the ceremony — it's functionally
+//! equivalent to a password-manager cookie, and it already lived
+//! next to `api_key.txt` (plain) in earlier versions.
 
-const SERVICE: &str = "app.onnoah.noah";
-const ACCOUNT: &str = "session_token";
+use std::path::{Path, PathBuf};
 
-fn entry() -> Result<Entry, String> {
-    Entry::new(SERVICE, ACCOUNT).map_err(|e| format!("keychain init: {e}"))
+const FILE: &str = "session.txt";
+
+fn path(app_dir: &Path) -> PathBuf {
+    app_dir.join(FILE)
 }
 
-pub fn set_session_token(token: &str) -> Result<(), String> {
-    entry()?
-        .set_password(token)
-        .map_err(|e| format!("keychain set: {e}"))
+pub fn set_session_token(app_dir: &Path, token: &str) -> Result<(), String> {
+    std::fs::write(path(app_dir), token.trim())
+        .map_err(|e| format!("write session: {e}"))
 }
 
-pub fn get_session_token() -> Result<Option<String>, String> {
-    match entry()?.get_password() {
-        Ok(t) if t.is_empty() => Ok(None),
-        Ok(t) => Ok(Some(t)),
-        Err(keyring::Error::NoEntry) => Ok(None),
-        Err(e) => Err(format!("keychain get: {e}")),
+pub fn get_session_token(app_dir: &Path) -> Result<Option<String>, String> {
+    match std::fs::read_to_string(path(app_dir)) {
+        Ok(s) => {
+            let t = s.trim().to_string();
+            if t.is_empty() { Ok(None) } else { Ok(Some(t)) }
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(format!("read session: {e}")),
     }
 }
 
-pub fn delete_session_token() -> Result<(), String> {
-    match entry()?.delete_credential() {
+pub fn delete_session_token(app_dir: &Path) -> Result<(), String> {
+    match std::fs::remove_file(path(app_dir)) {
         Ok(()) => Ok(()),
-        Err(keyring::Error::NoEntry) => Ok(()),
-        Err(e) => Err(format!("keychain delete: {e}")),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(format!("delete session: {e}")),
     }
 }
 
-pub fn has_session() -> bool {
-    matches!(get_session_token(), Ok(Some(_)))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    #[ignore] // Touches the real keychain — run manually with `cargo test -- --ignored`.
-    fn roundtrip() {
-        let token = "test-token-abc";
-        set_session_token(token).unwrap();
-        assert_eq!(get_session_token().unwrap().as_deref(), Some(token));
-        assert!(has_session());
-        delete_session_token().unwrap();
-        assert_eq!(get_session_token().unwrap(), None);
-        assert!(!has_session());
-    }
+pub fn has_session(app_dir: &Path) -> bool {
+    matches!(get_session_token(app_dir), Ok(Some(_)))
 }
