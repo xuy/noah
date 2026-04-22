@@ -88,23 +88,24 @@ export function useAgent(): UseAgentReturn {
 
       // Consumer path: check entitlement before sending.
       // Paywalled → open modal, abort.
-      // Trial not yet started (status='none') → start it (idempotent on server).
+      // Trial not yet started (ent null OR status='none') → start it.
+      // We call notifyIssueStarted even when ent is null because MainApp's
+      // refreshEntitlement() is async and may still be in flight when the
+      // seed auto-sends on fresh install. Server is idempotent — it only
+      // sets trial_started_at on the first call, so eager calls are safe.
       const consumer = useConsumerStore.getState();
       const ent = consumer.entitlement;
-      if (ent) {
-        if (isPaywalled(ent)) {
-          const variant =
-            ent.status === "active" ? "cap_hit" : "paywall";
-          consumer.openSubscribeModal(variant);
-          return;
-        }
-        if (ent.status === "none") {
-          try {
-            const started = await commands.consumerNotifyIssueStarted();
-            if (started) consumer.setEntitlement(started);
-          } catch {
-            // non-fatal — trial start is best-effort; server is authoritative
-          }
+      if (ent && isPaywalled(ent)) {
+        const variant = ent.status === "active" ? "cap_hit" : "paywall";
+        consumer.openSubscribeModal(variant);
+        return;
+      }
+      if (!ent || ent.status === "none") {
+        try {
+          const started = await commands.consumerNotifyIssueStarted();
+          if (started) consumer.setEntitlement(started);
+        } catch {
+          // non-fatal — trial start is best-effort; server is authoritative
         }
       }
 

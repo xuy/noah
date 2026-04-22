@@ -646,3 +646,73 @@ describe("Subscribe modal — first-fix prompt", () => {
     expect(useConsumerStore.getState().subscribeModal).toBeNull();
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Trial-start race on fresh install
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("Trial-start race guard", () => {
+  // Regression: on fresh install, MainApp's refreshEntitlement() is async
+  // and the ChatPanel seed auto-send can fire before ent hydrates. If
+  // sendMessage skips notifyIssueStarted when ent is null, the server never
+  // gets /events/issue-started → entitlement stays "none" → the "first fix"
+  // subscribe modal never opens when the user later clicks the action.
+  // Symptom from manual test: clicked action, no paywall, payment never
+  // triggered. Fix: call notifyIssueStarted when ent is null OR "none".
+
+  beforeEach(() => {
+    useSessionStore.setState({ sessionId: "s1", isActive: true });
+  });
+
+  it("calls notifyIssueStarted when ent is null (pre-hydration race)", async () => {
+    useConsumerStore.setState({ entitlement: null });
+    vi.mocked(commands.consumerNotifyIssueStarted).mockResolvedValue(
+      TRIAL_ENTITLEMENT(),
+    );
+
+    const { result } = renderHook(() => useAgent());
+    await act(async () => {
+      await result.current.sendMessage("I want more disk space");
+    });
+
+    expect(commands.consumerNotifyIssueStarted).toHaveBeenCalledTimes(1);
+    // Entitlement in the store should reflect the returned trialing state.
+    expect(useConsumerStore.getState().entitlement?.status).toBe("trialing");
+  });
+
+  it("calls notifyIssueStarted when ent.status is 'none'", async () => {
+    useConsumerStore.setState({ entitlement: NEUTRAL_ENTITLEMENT() });
+    vi.mocked(commands.consumerNotifyIssueStarted).mockResolvedValue(
+      TRIAL_ENTITLEMENT(),
+    );
+
+    const { result } = renderHook(() => useAgent());
+    await act(async () => {
+      await result.current.sendMessage("I want more disk space");
+    });
+
+    expect(commands.consumerNotifyIssueStarted).toHaveBeenCalledTimes(1);
+  });
+
+  it("does NOT call notifyIssueStarted when already trialing", async () => {
+    useConsumerStore.setState({ entitlement: TRIAL_ENTITLEMENT() });
+
+    const { result } = renderHook(() => useAgent());
+    await act(async () => {
+      await result.current.sendMessage("another question");
+    });
+
+    expect(commands.consumerNotifyIssueStarted).not.toHaveBeenCalled();
+  });
+
+  it("does NOT call notifyIssueStarted when already active", async () => {
+    useConsumerStore.setState({ entitlement: ACTIVE_ENTITLEMENT() });
+
+    const { result } = renderHook(() => useAgent());
+    await act(async () => {
+      await result.current.sendMessage("another question");
+    });
+
+    expect(commands.consumerNotifyIssueStarted).not.toHaveBeenCalled();
+  });
+});
