@@ -57,24 +57,19 @@ function App() {
 
   // First-launch gate: show the TilePicker onboarding only when the
   // user has never interacted with Noah before. With device-first
-  // identity, auth is no longer a hard gate — a fresh anonymous
-  // device can start a trial immediately from inside MainApp. The
-  // tile picker is purely UX (helps seed the first question) and
-  // becomes redundant once the user has any chat history.
-  //
-  // Also ensures a device id exists in the Keychain (no-op on
-  // subsequent launches) so backend calls can authenticate even
-  // when the user is not signed in.
+  // identity, auth is always present (a device id is minted on
+  // first launch), so we can't use "has auth" as the signal — we
+  // gate purely on whether any chat session exists in the journal.
+  // Empty journal = true first launch → tiles. Any prior session
+  // (BYOK or not) → straight to MainApp.
   useEffect(() => {
     commands.consumerEnsureDeviceId().catch(() => {});
-    Promise.all([
-      commands.listSessions().catch(() => [] as unknown[]),
-      commands.hasApiKey().catch(() => false),
-    ])
-      .then(([sessions, hasKey]) => {
-        const hasPastUsage = Array.isArray(sessions) && sessions.length > 0;
-        setNeedsSetup(!hasPastUsage && !hasKey);
+    commands
+      .listSessions()
+      .then((sessions) => {
+        setNeedsSetup(sessions.length === 0);
       })
+      .catch(() => setNeedsSetup(false))
       .finally(() => {
         dismissSplash();
       });
