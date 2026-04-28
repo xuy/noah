@@ -1213,7 +1213,14 @@ function MessageDisplay({
             isProcessing={isProcessing}
             timestamp={message.timestamp}
             onDoIt={() =>
-              onConfirm(message.id, parsed.actionLabel, parsed.actionType)
+              onConfirm(
+                message.id,
+                parsed.actionLabel,
+                parsed.actionType === "RUN_STEP" ||
+                  parsed.actionType === "WAIT_FOR_USER"
+                  ? parsed.actionType
+                  : undefined,
+              )
             }
           />
         );
