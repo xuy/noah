@@ -1176,7 +1176,7 @@ fn fallback_context_summary(existing_summary: Option<&str>, messages_text: &str)
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::agent::llm_client::{AuthMode, LlmClient};
+    use crate::agent::llm_client::{AuthMode, LlmClient, ProxyAuth};
     use crate::agent::tool_router::ToolRouter;
 
     fn test_orchestrator() -> Orchestrator {
@@ -1365,7 +1365,7 @@ mod tests {
     async fn test_force_compression_falls_back_when_summary_request_fails() {
         let llm = LlmClient::with_auth(AuthMode::Proxy {
             base_url: "http://127.0.0.1:9".to_string(),
-            token: "test-token".to_string(),
+            auth: ProxyAuth::Session("test-token".to_string()),
         });
         let mut orch = test_orchestrator_with_llm(llm);
         let id = orch.create_session();

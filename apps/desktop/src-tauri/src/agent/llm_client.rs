@@ -766,13 +766,13 @@ mod tests {
     fn test_friendly_api_error_401() {
         let msg = friendly_api_error(reqwest::StatusCode::UNAUTHORIZED, "");
         assert!(
-            msg.contains("API key"),
-            "401 should mention API key: {}",
+            msg.contains("session has expired"),
+            "401 should mention session expiry: {}",
             msg
         );
         assert!(
-            msg.contains("Settings"),
-            "401 should mention Settings: {}",
+            msg.contains("sign in"),
+            "401 should tell user to sign in: {}",
             msg
         );
     }
@@ -817,7 +817,7 @@ mod tests {
     fn test_friendly_api_error_502() {
         let msg = friendly_api_error(reqwest::StatusCode::BAD_GATEWAY, "");
         assert!(
-            msg.contains("temporary issues"),
+            msg.contains("hiccup") || msg.contains("temporary"),
             "502 should be friendly: {}",
             msg
         );
