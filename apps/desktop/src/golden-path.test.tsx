@@ -314,14 +314,14 @@ describe("Golden path — install → tile → SPA → action → subscribe → 
     // ── Step 5: user commits to the fix → subscribe modal appears ────────
     await user.click(fixButton);
     expect(
-      await screen.findByText(/Nice — that's one fix down/),
+      await screen.findByText(/Keep Noah, after the trial/),
     ).toBeTruthy();
     expect(useConsumerStore.getState().subscribeModal).toEqual({
       variant: "first_fix",
     });
 
     // ── Step 6: user subscribes → Stripe Checkout URL is opened ──────────
-    await user.click(screen.getByRole("button", { name: "Subscribe" }));
+    await user.click(screen.getByRole("button", { name: "Start subscription" }));
     await waitFor(() => {
       // Default plan selection is "annual" — matches en.json.
       expect(commands.consumerBillingCheckoutUrl).toHaveBeenCalledWith(
@@ -363,7 +363,7 @@ describe("Golden path — install → tile → SPA → action → subscribe → 
 
     // Switch the radio selection from annual (default) to monthly.
     await user.click(screen.getByLabelText(/Monthly/));
-    await user.click(screen.getByRole("button", { name: "Subscribe" }));
+    await user.click(screen.getByRole("button", { name: "Start subscription" }));
 
     await waitFor(() => {
       expect(commands.consumerBillingCheckoutUrl).toHaveBeenCalledWith(
@@ -372,7 +372,7 @@ describe("Golden path — install → tile → SPA → action → subscribe → 
     });
   });
 
-  it("'Not now' dismisses the modal and keeps the fix ready", async () => {
+  it("'Keep my free trial' dismisses the modal and keeps the fix ready", async () => {
     const user = userEvent.setup();
     render(<App />);
 
@@ -388,9 +388,9 @@ describe("Golden path — install → tile → SPA → action → subscribe → 
     await user.click(
       await screen.findByRole("button", { name: "Please fix it" }),
     );
-    await screen.findByText(/Nice — that's one fix down/);
+    await screen.findByText(/Keep Noah, after the trial/);
 
-    await user.click(screen.getByRole("button", { name: "Not now" }));
+    await user.click(screen.getByRole("button", { name: "Keep my free trial" }));
     expect(useConsumerStore.getState().subscribeModal).toBeNull();
     // No Stripe call was made.
     expect(commands.consumerBillingCheckoutUrl).not.toHaveBeenCalled();

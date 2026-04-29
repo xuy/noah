@@ -101,25 +101,32 @@
     "errorVerifyFailed": "Couldn't verify the link"
   },
   "subscribe": {
-    "firstFixHeadline": "Nice — that's one fix down.",
-    "firstFixBody": "Your free trial runs 7 days. Subscribe any time and keep fixing without interruption.",
-    "paywallHeadline": "Your trial has ended",
-    "paywallBody": "Subscribe to keep fixing issues with Noah.",
+    "firstFixHeadline": "Keep Noah, after the trial.",
+    "firstFixBody": "Noah is fixing this in the background. Lock in a plan now — $0 today, your card is only charged when your 7-day trial ends. Cancel any time.",
+    "paywallHeadline": "Your trial ended",
+    "paywallBody": "Pick up where you left off — $4.99/month or $50/year, cancel any time.",
     "capHitHeadline": "You've hit this month's fair-use limit",
-    "capHitBody": "Your limit resets next period. Or upgrade your plan if you need more.",
+    "capHitBody": "Your 100 fixes reset next period. Or upgrade your plan if you need more.",
+    "trustBadge": "$0 today · cancel any time · no auto-charge during trial",
     "plan": {
       "annual": {
-        "label": "Annual · $50/year",
-        "desc": "Save ~17% — best value"
+        "label": "Annual",
+        "price": "$50",
+        "priceUnit": "/yr",
+        "desc": "Save 17% vs monthly",
+        "savingsBadge": "Best value"
       },
       "monthly": {
-        "label": "Monthly · $4.99/month",
+        "label": "Monthly",
+        "price": "$4.99",
+        "priceUnit": "/mo",
         "desc": "Cancel any time"
       }
     },
-    "notNow": "Not now",
-    "subscribe": "Subscribe",
-    "opening": "Opening..."
+    "keepTrial": "Keep my free trial",
+    "subscribe": "Start subscription",
+    "opening": "Opening checkout…",
+    "fixContinuesNote": "Either way, Noah keeps fixing this in the background."
   },
   "billing": {
     "sectionTitle": "Billing",
