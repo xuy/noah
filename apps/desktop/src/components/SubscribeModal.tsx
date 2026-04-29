@@ -167,12 +167,16 @@ export function SubscribeModal({
                     {t(`subscribe.plan.${p}.desc`)}
                   </span>
                 </div>
-                {savings && selected && (
+                {savings && (
                   <span
-                    className="absolute -top-2 right-4 px-2 py-[1px] rounded-full text-[10px] font-semibold uppercase tracking-wider"
+                    className="absolute -top-2 right-4 px-2 py-[1px] rounded-full text-[10px] font-semibold uppercase tracking-wider transition-colors"
                     style={{
-                      backgroundColor: "var(--color-accent-green)",
-                      color: "var(--color-bg-primary)",
+                      backgroundColor: selected
+                        ? "var(--color-accent-green)"
+                        : "var(--color-bg-tertiary, #2a2a2a)",
+                      color: selected
+                        ? "var(--color-bg-primary)"
+                        : "var(--color-text-muted)",
                     }}
                   >
                     {savings}
