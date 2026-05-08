@@ -174,7 +174,18 @@
     "statusActive": "Active",
     "statusPastDue": "Past due",
     "statusCanceled": "Canceled",
-    "statusExpired": "Expired"
+    "statusExpired": "Expired",
+    "signInLink": "Already a subscriber? Sign in",
+    "signInPrompt": "Welcome back",
+    "signInHelp": "Type the email you used to subscribe and we'll send a sign-in link. Takes a moment to arrive.",
+    "signInEmailPlaceholder": "you@example.com",
+    "signInSendLink": "Send my link",
+    "signInSending": "Sending…",
+    "signInCancel": "Never mind",
+    "signInInvalidEmail": "Hmm, that doesn't look like an email — give it another try.",
+    "signInLinkSent": "Sign-in link sent to {email}.",
+    "signInLinkSentHint": "Check your inbox when you have a moment. The link works for a few hours and only once — for safety. We'll sign you in the moment you click.",
+    "signInUseDifferentEmail": "Use a different email"
   },
   "advanced": {
     "sectionTitle": "Advanced",
