@@ -88,3 +88,70 @@ export const useChatStore = create<ChatState>((set) => ({
 
   clearMessages: () => set({ messages: [] }),
 }));
+
+// ── Devtools helper ─────────────────────────────────────────────────
+// Inspect the chat store from the browser console without needing
+// React DevTools. Use when a card's contents seem to mutate after
+// first render — take a snapshot, switch views, take another, diff.
+//
+//   __noahChatDebug.snapshot()         → [{id, role, content, assistantUi}]
+//   __noahChatDebug.last()             → most recent message (full object)
+//   __noahChatDebug.lastAssistantUi()  → just the last assistantUi
+//   __noahChatDebug.diff(prev)         → fields that changed since `prev`
+if (typeof window !== "undefined") {
+  type Snap = {
+    id: string;
+    role: string;
+    content: string;
+    assistantUi: unknown;
+  };
+  const helper = {
+    snapshot(): Snap[] {
+      return useChatStore.getState().messages.map((m) => ({
+        id: m.id,
+        role: m.role,
+        content: (m.content ?? "").slice(0, 80),
+        assistantUi: m.assistantUi,
+      }));
+    },
+    last(): Message | undefined {
+      const msgs = useChatStore.getState().messages;
+      return msgs[msgs.length - 1];
+    },
+    lastAssistantUi(): unknown {
+      return helper.last()?.assistantUi;
+    },
+    diff(prev: Snap[]): unknown[] {
+      const cur = helper.snapshot();
+      const out: unknown[] = [];
+      for (const c of cur) {
+        const p = prev.find((x) => x.id === c.id);
+        if (!p) {
+          out.push({ id: c.id, change: "added", to: c });
+          continue;
+        }
+        if (
+          JSON.stringify(p.assistantUi) !== JSON.stringify(c.assistantUi)
+        ) {
+          out.push({
+            id: c.id,
+            change: "assistantUi",
+            from: p.assistantUi,
+            to: c.assistantUi,
+          });
+        }
+        if (p.content !== c.content) {
+          out.push({
+            id: c.id,
+            change: "content",
+            from: p.content,
+            to: c.content,
+          });
+        }
+      }
+      return out;
+    },
+  };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (window as any).__noahChatDebug = helper;
+}

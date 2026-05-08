@@ -63,10 +63,41 @@ pub struct PlaybookProgress {
     pub label: String,
 }
 
+/// Structured diagnostic fact rendered as a label/value tile.
+/// Mirror of `AssistantFinding` on the desktop TS side.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct AssistantFinding {
+    pub label: String,
+    pub value: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tone: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sub: Option<String>,
+}
+
+/// One ordered remediation step. Mirror of `AssistantStep` on the TS side.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct AssistantStep {
+    pub label: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct AssistantSpaUi {
     pub kind: String,
     pub situation: String,
+    /// Structured diagnostic facts. Forwarded as-is to the desktop UI
+    /// where they render as a tile grid. Dropping these here is a bug
+    /// — without them the card renders as a bare situation only,
+    /// regardless of what the model actually emitted.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub findings: Option<Vec<AssistantFinding>>,
+    /// Ordered remediation plan. Wins over `plan` (markdown) when present.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub steps: Option<Vec<AssistantStep>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub plan: Option<String>,
     pub action: AssistantCardAction,
@@ -176,6 +207,17 @@ fn parse_assistant_ui_json(text: &str) -> Option<AssistantUiPayload> {
         "spa" => {
             let situation = v.get("situation")?.as_str()?.to_string();
             let plan = v.get("plan").and_then(|v| v.as_str()).map(|s| s.to_string());
+            // Structured findings + steps — round-trip from the model
+            // without re-validating shape (the orchestrator's ui_payload
+            // builder already enforced schema before this string was
+            // generated). Forwarding via serde_json::from_value lets us
+            // accept any superset of fields the TS side knows about.
+            let findings = v
+                .get("findings")
+                .and_then(|f| serde_json::from_value::<Vec<AssistantFinding>>(f.clone()).ok());
+            let steps = v
+                .get("steps")
+                .and_then(|s| serde_json::from_value::<Vec<AssistantStep>>(s.clone()).ok());
             let action_v = v.get("action")?;
             let label = action_v.get("label")?.as_str()?.to_string();
             let action_type = action_v
@@ -192,6 +234,8 @@ fn parse_assistant_ui_json(text: &str) -> Option<AssistantUiPayload> {
             Some(AssistantUiPayload::Spa(AssistantSpaUi {
                 kind: "spa".to_string(),
                 situation,
+                findings,
+                steps,
                 plan,
                 action: AssistantCardAction {
                     label,
@@ -298,6 +342,8 @@ pub fn parse_assistant_ui(text: &str) -> Option<AssistantUiPayload> {
     Some(AssistantUiPayload::Spa(AssistantSpaUi {
         kind: "spa".to_string(),
         situation,
+        findings: None,
+        steps: None,
         plan: Some(plan),
         action: AssistantCardAction {
             label,
@@ -574,6 +620,128 @@ mod tests {
                 assert!(done.summary.contains("rock solid"));
             }
             _ => panic!("expected done ui, got {:?}", ui),
+        }
+    }
+
+    // ── Regression: structured findings + steps must round-trip ──
+    //
+    // History: parse_assistant_ui_json's spa branch only extracted
+    // situation/plan/action/progress/qr_data, silently dropping any
+    // findings[] and steps[] the model emitted. The desktop card then
+    // rendered as a bare situation regardless of how rich the model's
+    // tool call was. Symptom: `[noah-spa-shape] spa_bare findings=0
+    // steps=0` in devtools console even when the model populated them.
+    //
+    // These tests pin the contract: any structured ui_spa JSON that
+    // contains findings/steps MUST surface them in the parsed struct
+    // so the frontend renders FindingsGrid + StepsList.
+
+    #[test]
+    fn spa_json_preserves_findings() {
+        let text = r###"{
+            "kind":"spa",
+            "situation":"DNS is slow",
+            "findings":[
+                {"label":"DNS Resolution","value":"34ms","tone":"warn","sub":"slower than usual"},
+                {"label":"Internet Ping","value":"19ms","tone":"good","sub":"avg, 3 packets"}
+            ],
+            "action":{"label":"Fix DNS","type":"RUN_STEP"}
+        }"###;
+        let ui = parse_assistant_ui(text);
+        match ui {
+            Some(AssistantUiPayload::Spa(card)) => {
+                let findings = card.findings.expect("findings should round-trip");
+                assert_eq!(findings.len(), 2);
+                assert_eq!(findings[0].label, "DNS Resolution");
+                assert_eq!(findings[0].value, "34ms");
+                assert_eq!(findings[0].tone.as_deref(), Some("warn"));
+                assert_eq!(findings[0].sub.as_deref(), Some("slower than usual"));
+                assert_eq!(findings[1].label, "Internet Ping");
+            }
+            _ => panic!("expected spa ui, got {:?}", ui),
+        }
+    }
+
+    #[test]
+    fn spa_json_preserves_steps() {
+        let text = r###"{
+            "kind":"spa",
+            "situation":"DNS is slow",
+            "steps":[
+                {"label":"Flush DNS cache","detail":"Clear cached DNS records"},
+                {"label":"Re-test DNS performance","status":"pending","detail":"Verify improvement"}
+            ],
+            "action":{"label":"Fix DNS","type":"RUN_STEP"}
+        }"###;
+        let ui = parse_assistant_ui(text);
+        match ui {
+            Some(AssistantUiPayload::Spa(card)) => {
+                let steps = card.steps.expect("steps should round-trip");
+                assert_eq!(steps.len(), 2);
+                assert_eq!(steps[0].label, "Flush DNS cache");
+                assert_eq!(steps[0].detail.as_deref(), Some("Clear cached DNS records"));
+                assert_eq!(steps[1].label, "Re-test DNS performance");
+                assert_eq!(steps[1].status.as_deref(), Some("pending"));
+            }
+            _ => panic!("expected spa ui, got {:?}", ui),
+        }
+    }
+
+    #[test]
+    fn spa_json_with_both_findings_and_steps_renders_both() {
+        // The exact shape that produced the original bug — model emitted
+        // a rich SPA, the parser dropped the structured fields.
+        let text = r###"{
+            "kind":"spa",
+            "situation":"Internet is slow due to high latency.",
+            "findings":[
+                {"label":"Internet Ping","value":"175ms","tone":"bad","sub":"avg, highly variable"},
+                {"label":"DNS Lookup","value":"219ms","tone":"warn","sub":"slower than normal"},
+                {"label":"HTTP to Google","value":"438ms","tone":"warn","sub":"total response time"},
+                {"label":"Wi-Fi","value":"Connected","sub":"192.168.86.27"}
+            ],
+            "steps":[
+                {"label":"Power-cycle your router","detail":"Unplug for 10 seconds, then plug back in"},
+                {"label":"Restart Wi-Fi on your Mac","detail":"Turn off and back on in System Settings"},
+                {"label":"Re-test internet speed","detail":"Verify improvement with speed test"}
+            ],
+            "action":{"label":"Fix it","type":"RUN_STEP"}
+        }"###;
+        let ui = parse_assistant_ui(text);
+        match ui {
+            Some(AssistantUiPayload::Spa(card)) => {
+                assert_eq!(
+                    card.findings.as_ref().map(|f| f.len()),
+                    Some(4),
+                    "findings array dropped or wrong length",
+                );
+                assert_eq!(
+                    card.steps.as_ref().map(|s| s.len()),
+                    Some(3),
+                    "steps array dropped or wrong length",
+                );
+                assert_eq!(card.action.label, "Fix it");
+            }
+            _ => panic!("expected spa ui, got {:?}", ui),
+        }
+    }
+
+    #[test]
+    fn spa_json_without_findings_or_steps_is_still_valid() {
+        // Bare SPA (some model responses legitimately have no diagnostics
+        // to report) — both fields should parse as None, NOT Some(empty).
+        let text = r###"{
+            "kind":"spa",
+            "situation":"Restart needed.",
+            "action":{"label":"Restart","type":"RUN_STEP"}
+        }"###;
+        let ui = parse_assistant_ui(text);
+        match ui {
+            Some(AssistantUiPayload::Spa(card)) => {
+                assert!(card.findings.is_none(), "bare SPA should have no findings");
+                assert!(card.steps.is_none(), "bare SPA should have no steps");
+            }
+            _ => panic!("expected spa ui, got {:?}", ui),
         }
     }
 

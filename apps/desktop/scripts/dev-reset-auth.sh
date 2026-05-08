@@ -17,7 +17,10 @@
 #       mv journal.db.bak-<ts> journal.db
 #
 # --launch adds: starts `pnpm tauri dev` with ANTHROPIC_API_KEY unset.
-# Combine: --fresh --launch for the full "brand-new user" experience.
+# --prod   targets production noah-consumer (https://noah-consumer.fly.dev)
+#          instead of the local localhost:8788 default. Use when you want
+#          to debug the dev build against the real backend.
+# Combine: --fresh --launch --prod for "brand-new user against prod".
 
 set -euo pipefail
 
@@ -29,11 +32,13 @@ WEBDIR="$HOME/Library/WebKit/app.onnoah.desktop"
 
 FRESH=0
 LAUNCH=0
+PROD=0
 for arg in "$@"; do
   case "$arg" in
     --fresh) FRESH=1 ;;
     --launch) LAUNCH=1 ;;
-    *) echo "unknown flag: $arg (valid: --fresh --launch)" >&2; exit 2 ;;
+    --prod) PROD=1 ;;
+    *) echo "unknown flag: $arg (valid: --fresh --launch --prod)" >&2; exit 2 ;;
   esac
 done
 
@@ -72,11 +77,21 @@ fi
 if [[ "$LAUNCH" == "1" ]]; then
   SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
   cd "$SCRIPT_DIR/.."
+
+  # --prod overrides the localhost default. An explicit env-var the caller
+  # already set still wins over both, in case you're pointing at staging
+  # or a teammate's machine.
+  if [[ "$PROD" == "1" ]]; then
+    DEFAULT_CONSUMER_URL="https://noah-consumer.fly.dev"
+  else
+    DEFAULT_CONSUMER_URL="http://localhost:8788"
+  fi
+
   echo
   echo "→ Launching dev build with ANTHROPIC_API_KEY unset"
-  echo "  (NOAH_CONSUMER_URL=${NOAH_CONSUMER_URL:-http://localhost:8788})"
+  echo "  (NOAH_CONSUMER_URL=${NOAH_CONSUMER_URL:-$DEFAULT_CONSUMER_URL})"
   echo
   unset ANTHROPIC_API_KEY
-  export NOAH_CONSUMER_URL="${NOAH_CONSUMER_URL:-http://localhost:8788}"
+  export NOAH_CONSUMER_URL="${NOAH_CONSUMER_URL:-$DEFAULT_CONSUMER_URL}"
   exec pnpm tauri dev
 fi
