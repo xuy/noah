@@ -6,10 +6,8 @@ import { useLocale } from "../i18n";
 
 /**
  * Friendly billing-context date: "Mon, May 11" if same calendar year,
- * "Mon, May 11, 2027" if it's a future year. Mirrors how Apple, Stripe
- * dashboards, and most consumer SaaS surface "next billing" lines —
- * the day-of-week makes it parseable at a glance, the year is suppressed
- * unless ambiguous.
+ * "Mon, May 11, 2027" if it's a future year. Day-of-week makes it
+ * parseable at a glance, year is suppressed unless ambiguous.
  */
 function friendlyDate(ms: number | null | undefined, locale: string): string {
   if (!ms) return "—";
@@ -37,6 +35,53 @@ const PLAN_LABEL: Record<string, string> = {
   annual: "Annual plan",
 };
 
+/** Status dot + label — calm "we're here, everything's fine" signal. */
+function StatusPill({
+  color,
+  label,
+}: {
+  color: "green" | "blue" | "amber" | "muted";
+  label: string;
+}) {
+  // Map semantic intent → CSS var. Soft halo via box-shadow keeps the
+  // dot from looking pasted-on; it sits in a translucent same-color
+  // glow that softens against any card background.
+  const colorVar = {
+    green: "var(--color-accent-green)",
+    blue: "var(--color-accent-blue)",
+    amber: "var(--color-accent-amber)",
+    muted: "var(--color-text-muted)",
+  }[color];
+  return (
+    <span className="inline-flex items-center gap-2 whitespace-nowrap">
+      <span
+        className="inline-block w-[7px] h-[7px] rounded-full"
+        style={{
+          background: colorVar,
+          boxShadow: `0 0 0 3px ${colorVar}22`,
+        }}
+      />
+      <span className="text-[13px] font-semibold text-text-primary">
+        {label}
+      </span>
+    </span>
+  );
+}
+
+/** Small typographic eyebrow with the aurora hairline. Repeats across
+    Settings cards so they share a visual rhythm. */
+function SectionEyebrow({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="inline-flex items-center gap-[7px] text-[10.5px] font-bold uppercase tracking-[0.14em] text-text-muted whitespace-nowrap">
+      <span
+        className="block w-3 h-[2px] rounded-[1px]"
+        style={{ background: "var(--aurora)" }}
+      />
+      {children}
+    </span>
+  );
+}
+
 export function BillingSection() {
   const { t, locale } = useLocale();
   const entitlement = useConsumerStore((s) => s.entitlement);
@@ -47,12 +92,9 @@ export function BillingSection() {
   const [error, setError] = useState<string | null>(null);
 
   // ── "Already a subscriber? Sign in" sub-flow ─────────────────────
-  // When a user reinstalls Noah (or the dev resets state), their device
-  // forgets they paid and they land in trial. This affordance lets them
-  // recover by entering the email they paid with — we send a fresh
-  // magic link and the deep-link handler in App.tsx finishes the
-  // sign-in. It's intentionally hidden behind a small text link so the
-  // primary subscribe path stays the loudest action.
+  // Reinstall recovery: device forgets the user paid, lands them in
+  // trial. Hidden behind a small text link so the primary subscribe
+  // path stays the loudest action.
   const [signInOpen, setSignInOpen] = useState(false);
   const [signInEmail, setSignInEmail] = useState("");
   const [signInSubmitting, setSignInSubmitting] = useState(false);
@@ -93,7 +135,6 @@ export function BillingSection() {
     setOpening("signout");
     try {
       await commands.consumerSignOut();
-      // Reloading the window is the simplest way to re-trigger the App.tsx gate.
       window.location.reload();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -111,11 +152,6 @@ export function BillingSection() {
     setSignInSubmitting(true);
     setSignInError(null);
     try {
-      // Server returns null when it's gating on the email click (the
-      // expected post-fix behavior). When that happens, we transition
-      // to the "check your inbox" affirmation. App.tsx's noah://auth
-      // deep-link handler will pick up the eventual click and refresh
-      // the entitlement.
       await commands.consumerRequestMagicLink(trimmed);
       setLinkSentTo(trimmed);
       setSignInOpen(false);
@@ -128,28 +164,27 @@ export function BillingSection() {
 
   if (!entitlement) return null;
 
-  const statusLabel = ((): string => {
+  // Status dot color/label — picks the right semantic for each state.
+  const statusDot = ((): { color: "green" | "blue" | "amber" | "muted"; label: string } => {
     switch (entitlement.status) {
-      case "none":
-        return t("billing.statusNone");
-      case "trialing":
-        return t("billing.statusTrialing");
       case "active":
-        return t("billing.statusActive");
+        return { color: "green", label: t("billing.statusActive") };
+      case "trialing":
+        return { color: "blue", label: t("billing.statusTrialing") };
       case "past_due":
-        return t("billing.statusPastDue");
+        return { color: "amber", label: t("billing.statusPastDue") };
       case "canceled":
-        return t("billing.statusCanceled");
+        return { color: "muted", label: t("billing.statusCanceled") };
       case "expired":
-        return t("billing.statusExpired");
+        return { color: "muted", label: t("billing.statusExpired") };
+      case "none":
+      default:
+        return { color: "muted", label: t("billing.statusNone") };
     }
   })();
 
-  // Heuristic for "is the active sub still inside its first billing
-  // period (Stripe trial)?" After Stripe charges, period_end advances
-  // by a month or a year, putting it well beyond trial_ends_at. Before
-  // that first charge, period_end ≈ trial_ends_at. Within 2 days of
-  // each other = still in the paid-trial window.
+  // Heuristic: still in the first billing period (Stripe trial) after
+  // checkout? Within 2 days = yes; past that = real renewal cycle.
   const isInPaidTrial = (() => {
     if (entitlement.status !== "active") return false;
     if (!entitlement.period_end || !entitlement.trial_ends_at) return false;
@@ -163,9 +198,8 @@ export function BillingSection() {
   const planLabel = PLAN_LABEL[planKey] ?? "";
   const planPrice = PRICE_BY_PLAN[planKey] ?? "";
 
-  // One human line that captures what's happening — replaces both the
-  // old "Renews X" and the duplicated trial-ends line. Mirrors Apple,
-  // Stripe Dashboard, Setapp conventions.
+  // Page-hero sentence — the one human line that explains where you
+  // are in the billing arc.
   const billingLine = ((): string => {
     if (entitlement.status === "trialing" && entitlement.trial_ends_at) {
       return t("billing.lineTrial", {
@@ -196,85 +230,133 @@ export function BillingSection() {
     return "";
   })();
 
-  // Show the "Already a subscriber?" affordance whenever the user is
-  // NOT currently active. Active users wouldn't need it (and showing
-  // it would be confusing).
-  const showSignInAffordance = entitlement.status !== "active";
+  const isActive = entitlement.status === "active";
+  // Manage-vs-Upgrade split: anything where the user has a live Stripe
+  // customer (active, canceled-with-period-left, past_due) goes through
+  // the portal. Anything before payment (none, trialing) gets the
+  // Upgrade CTA. Keeps the aurora moment aimed at the right action.
+  const showsManageCta =
+    entitlement.status === "active" ||
+    entitlement.status === "past_due" ||
+    entitlement.status === "canceled";
+  const ctaHint = ((): string => {
+    if (entitlement.status === "active") return t("billing.manageHint");
+    if (entitlement.status === "past_due") return t("billing.pastDueHint");
+    if (entitlement.status === "canceled") return t("billing.canceledHint");
+    return t("billing.upgradeHint");
+  })();
+  // Reinstall-recovery affordance: only when *not* active. Active users
+  // wouldn't need it and showing it would confuse them.
+  const showSignInAffordance = !isActive;
 
   return (
-    <section className="rounded-2xl border border-border-primary bg-bg-secondary p-5">
-      <h2 className="text-xs font-semibold text-text-primary uppercase tracking-wider mb-3">
-        {t("billing.sectionTitle")}
-      </h2>
-      <div className="space-y-2.5 text-sm">
-        <div className="flex justify-between items-baseline">
-          <span className="text-text-muted">{t("billing.status")}</span>
-          <span className="text-text-primary font-medium">{statusLabel}</span>
+    <section
+      className="rounded-2xl bg-bg-secondary overflow-hidden"
+      style={{
+        border: "1px solid var(--color-surface-card-border)",
+        boxShadow: "var(--shadow-card)",
+      }}
+    >
+      {/* ── Top content area ──────────────────────────────────────── */}
+      <div className="px-5 pt-5 pb-4">
+        <div className="flex items-center justify-between mb-3.5">
+          <SectionEyebrow>{t("billing.sectionTitle")}</SectionEyebrow>
+          <StatusPill color={statusDot.color} label={statusDot.label} />
         </div>
-        {planLabel && (
-          <div className="flex justify-between items-baseline">
-            <span className="text-text-muted">{t("billing.plan")}</span>
-            <span className="text-text-primary">
+
+        {/* Plan headline — large name + small price, tabular nums so
+            the $ aligns nicely if the user opens this twice in a row. */}
+        {planLabel ? (
+          <div className="flex items-baseline gap-2.5 mb-0.5">
+            <div className="text-[22px] font-bold text-text-primary tracking-[-0.022em]">
               {planLabel}
-              {planPrice && (
-                <span className="text-text-muted ml-1.5">· {planPrice}</span>
-              )}
-            </span>
+            </div>
+            {planPrice && (
+              <div
+                className="text-[13.5px] font-medium text-text-muted"
+                style={{ fontVariantNumeric: "tabular-nums" }}
+              >
+                {planPrice}
+              </div>
+            )}
+          </div>
+        ) : (
+          // Trial / no-plan state: still give the card a typographic
+          // anchor so it doesn't read as empty. Reuses the same
+          // hierarchy slot the plan name would occupy.
+          <div className="text-[22px] font-bold text-text-primary tracking-[-0.022em] mb-0.5">
+            {entitlement.status === "trialing"
+              ? t("billing.trialHeadline")
+              : t("billing.noPlanHeadline")}
           </div>
         )}
+
         {billingLine && (
-          <p className="text-[12.5px] text-text-secondary leading-relaxed pt-1">
+          <p className="text-[13px] text-text-secondary leading-[1.55] max-w-[480px] mt-0.5">
             {billingLine}
           </p>
         )}
-        {/* Per design rule: never show the per-period cap unless they
-            actually hit it. Most users won't, and exposing the number
-            invites questions ("why 100? why not more?"). */}
-      </div>
 
-      {error && <p className="text-xs text-accent-red mt-3">{error}</p>}
-
-      <div className="mt-4 flex flex-wrap gap-2">
-        {entitlement.status === "active" ? (
-          <button
-            onClick={handleManage}
-            disabled={opening === "portal"}
-            className="px-3 py-1.5 rounded-lg bg-bg-tertiary text-xs text-text-primary hover:bg-bg-hover transition-colors disabled:opacity-50"
-          >
-            {opening === "portal"
-              ? t("subscribe.opening")
-              : t("billing.manage")}
-          </button>
-        ) : (
-          <button
-            onClick={handleUpgrade}
-            disabled={opening === "upgrade"}
-            className="btn-launch px-3 py-1.5 rounded-lg text-xs font-medium disabled:opacity-50"
-          >
-            {opening === "upgrade"
-              ? t("subscribe.opening")
-              : t("billing.upgrade")}
-          </button>
+        {error && (
+          <p className="text-xs text-accent-red mt-3">{error}</p>
         )}
-        <button
-          onClick={handleSignOut}
-          disabled={opening === "signout"}
-          className="px-3 py-1.5 rounded-lg text-xs text-text-muted hover:text-text-primary transition-colors disabled:opacity-50"
-        >
-          {t("billing.signOut")}
-        </button>
       </div>
 
+      {/* ── Action strip — single aurora commit moment ────────────── */}
+      <div
+        className="flex items-center justify-between gap-3 px-5 py-3"
+        style={{
+          borderTop: "1px solid var(--color-surface-card-border)",
+          background: "var(--aurora-soft)",
+        }}
+      >
+        <span className="text-[11.5px] text-text-muted whitespace-nowrap overflow-hidden text-ellipsis">
+          {ctaHint}
+        </span>
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={handleSignOut}
+            disabled={opening === "signout"}
+            className="px-2.5 py-1.5 rounded-lg text-[12px] font-medium text-text-muted hover:text-text-secondary transition-colors disabled:opacity-50 cursor-pointer whitespace-nowrap"
+          >
+            {t("billing.signOut")}
+          </button>
+          {showsManageCta ? (
+            <button
+              onClick={handleManage}
+              disabled={opening === "portal"}
+              className="btn-commit px-3.5 py-2 rounded-[10px] text-[12.5px] font-semibold disabled:opacity-50 cursor-pointer whitespace-nowrap"
+            >
+              {opening === "portal"
+                ? t("subscribe.opening")
+                : t("billing.manage")}
+            </button>
+          ) : (
+            <button
+              onClick={handleUpgrade}
+              disabled={opening === "upgrade"}
+              className="btn-commit px-3.5 py-2 rounded-[10px] text-[12.5px] font-semibold disabled:opacity-50 cursor-pointer whitespace-nowrap"
+            >
+              {opening === "upgrade"
+                ? t("subscribe.opening")
+                : t("billing.upgrade")}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* ── Reinstall sign-in recovery (collapsed by default) ─────── */}
       {showSignInAffordance && (
-        <div className="mt-4 pt-4 border-t border-border-primary">
+        <div
+          className="px-5 py-4"
+          style={{ borderTop: "1px solid var(--color-surface-card-border)" }}
+        >
           {linkSentTo ? (
-            // After a successful magic-link request — friendly, never
-            // pressuring. The user goes to their inbox at their own pace.
             <div className="space-y-2">
               <p className="text-[13px] text-text-primary">
                 {t("billing.signInLinkSent", { email: linkSentTo })}
               </p>
-              <p className="text-[12.5px] text-text-muted">
+              <p className="text-[12.5px] text-text-muted leading-[1.55]">
                 {t("billing.signInLinkSentHint")}
               </p>
               <button
@@ -283,17 +365,17 @@ export function BillingSection() {
                   setSignInEmail("");
                   setSignInOpen(true);
                 }}
-                className="text-[12.5px] text-accent-blue hover:underline"
+                className="text-[12.5px] text-accent-blue hover:underline cursor-pointer"
               >
                 {t("billing.signInUseDifferentEmail")}
               </button>
             </div>
           ) : signInOpen ? (
             <div className="space-y-2">
-              <p className="text-[13px] text-text-primary font-medium">
+              <p className="text-[13px] font-medium text-text-primary">
                 {t("billing.signInPrompt")}
               </p>
-              <p className="text-[12.5px] text-text-muted">
+              <p className="text-[12.5px] text-text-muted leading-[1.55]">
                 {t("billing.signInHelp")}
               </p>
               <div className="flex items-stretch gap-2 mt-2">
@@ -315,7 +397,7 @@ export function BillingSection() {
                 <button
                   onClick={handleRequestMagicLink}
                   disabled={signInSubmitting || !signInEmail.trim()}
-                  className="btn-action px-3 py-2 rounded-xl text-[12.5px] font-semibold disabled:opacity-50 whitespace-nowrap"
+                  className="btn-action px-3 py-2 rounded-xl text-[12.5px] font-semibold disabled:opacity-50 whitespace-nowrap cursor-pointer"
                 >
                   {signInSubmitting
                     ? t("billing.signInSending")
@@ -330,7 +412,7 @@ export function BillingSection() {
                   setSignInOpen(false);
                   setSignInError(null);
                 }}
-                className="text-[12px] text-text-muted hover:text-text-secondary mt-1"
+                className="text-[12px] text-text-muted hover:text-text-secondary mt-1 cursor-pointer"
               >
                 {t("billing.signInCancel")}
               </button>
@@ -338,7 +420,7 @@ export function BillingSection() {
           ) : (
             <button
               onClick={() => setSignInOpen(true)}
-              className="text-[13px] text-accent-blue hover:underline"
+              className="text-[13px] text-accent-blue hover:underline cursor-pointer"
             >
               {t("billing.signInLink")}
             </button>

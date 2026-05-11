@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Noah",
-  "version": "0.20.3",
+  "version": "0.21.0",
   "identifier": "app.onnoah.desktop",
   "build": {
     "beforeDevCommand": "pnpm dev",
@@ -13,10 +13,10 @@
     "windows": [
       {
         "title": "Noah — Your Trusted Support",
-        "width": 900,
-        "height": 700,
+        "width": 960,
+        "height": 780,
         "minWidth": 600,
-        "minHeight": 500,
+        "minHeight": 560,
         "backgroundColor": "#0f172a",
         "titleBarStyle": "Overlay",
         "hiddenTitle": true

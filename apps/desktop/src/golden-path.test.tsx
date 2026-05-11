@@ -59,6 +59,7 @@ vi.mock("@tauri-apps/plugin-deep-link", () => ({
       deepLinkRef.current = null;
     });
   }),
+  getCurrent: vi.fn(() => Promise.resolve(null)),
 }));
 
 vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl: openUrlMock }));

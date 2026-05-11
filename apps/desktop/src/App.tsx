@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { onOpenUrl } from "@tauri-apps/plugin-deep-link";
+import { onOpenUrl, getCurrent as getCurrentDeepLink } from "@tauri-apps/plugin-deep-link";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import * as commands from "./lib/tauri-commands";
 import { useSession } from "./hooks/useSession";
@@ -57,20 +57,30 @@ function App() {
   useTheme(); // Apply saved theme on mount (before setup screen too)
 
   // First-launch gate: show the TilePicker onboarding only when the
-  // user has never interacted with Noah before. With device-first
-  // identity, auth is always present (a device id is minted on
-  // first launch), so we can't use "has auth" as the signal — we
-  // gate purely on whether any chat session exists in the journal.
-  // Empty journal = true first launch → tiles. Any prior session
-  // (BYOK or not) → straight to MainApp.
+  // user is *both* unsigned-in AND has no chat history. Either signal
+  // alone is enough to declare "this is a returning user, skip tiles":
+  //   • Session token present → user has signed in on this device,
+  //     even if the local journal is empty (fresh install / dev build
+  //     alongside the shipping app / reset journal).
+  //   • Journal has any prior session → user has chatted before, even
+  //     anonymously on the device-id trial.
+  // Without this, a user who reinstalls or runs the dev build with an
+  // empty journal lands back on the 8-tile picker after sign-in,
+  // which feels broken — they already onboarded.
   useEffect(() => {
     commands.consumerEnsureDeviceId().catch(() => {});
-    commands
-      .listSessions()
-      .then((sessions) => {
-        setNeedsSetup(sessions.length === 0);
+    // Use a sentinel so an errored probe fails *open* (skip tiles).
+    // Stranding the user on the gate is worse than skipping it once.
+    Promise.all([
+      commands.consumerHasSession().catch(() => null),
+      commands.listSessions().catch(() => null),
+    ])
+      .then(([hasSession, sessions]) => {
+        const knownReturning =
+          hasSession === true || (sessions != null && sessions.length > 0);
+        const probeFailed = hasSession === null || sessions === null;
+        setNeedsSetup(!knownReturning && !probeFailed);
       })
-      .catch(() => setNeedsSetup(false))
       .finally(() => {
         dismissSplash();
       });
@@ -81,20 +91,30 @@ function App() {
   //   noah://auth?token=…           — magic-link sign-in
   //   noah://subscribed?session_id=… — return from Stripe Checkout
   //
-  // Registered at the app root so it fires regardless of which screen
-  // is mounted, and never drops the user back on the tile picker.
+  // Two delivery paths cover both cold-start and warm-start cases:
+  //   • onOpenUrl — fires when the URL arrives while Noah is running.
+  //   • getCurrent — returns the URL that *launched* Noah, when the
+  //     user clicked the link before Noah was running. Without this,
+  //     a cold-start magic-link click leaves the user on the tile
+  //     picker, which feels broken.
   useEffect(() => {
     let unlisten: (() => void) | undefined;
-    onOpenUrl(async (urls) => {
+    const handleUrls = async (urls: string[]) => {
       const authUrl = urls.find((u) => u.startsWith("noah://auth"));
       if (authUrl) {
         const token = extractDeepLinkToken(authUrl, "token");
         if (!token) return;
         try {
           await commands.consumerCompleteSignIn(token);
+          // Refresh entitlement so MainApp's banners/billing reflect
+          // the signed-in state on first paint, not after a poll.
+          await useConsumerStore.getState().refresh();
           setNeedsSetup(false);
-        } catch {
-          // Stale / already-consumed token — leave the UI alone.
+        } catch (err) {
+          // Surface to console so users can pull a log if it happens
+          // again — silent failures here are why "click magic link →
+          // stuck on tiles" was so hard to diagnose.
+          console.error("[noah] complete-sign-in failed", err);
         }
         return;
       }
@@ -106,18 +126,22 @@ function App() {
           const ent = await commands.consumerConfirmCheckout(sid);
           const consumer = useConsumerStore.getState();
           if (ent) consumer.setEntitlement(ent);
-          // Re-fetch in case the server has newer state than what confirm
-          // returned (e.g. webhook raced ahead and already set period_end).
           consumer.refresh();
-          // Dismiss the subscribe modal — the user just paid; don't leave
-          // the "Subscribe" CTA on screen.
           consumer.closeSubscribeModal();
           setNeedsSetup(false);
-        } catch {
-          // Confirm failed — user can retry from the paywall modal.
+        } catch (err) {
+          console.error("[noah] confirm-checkout failed", err);
         }
       }
-    })
+    };
+    // Drain any URL that launched the app (cold-start path).
+    getCurrentDeepLink()
+      .then((urls) => {
+        if (urls && urls.length > 0) handleUrls(urls);
+      })
+      .catch(() => {});
+    // Subscribe for URLs delivered while running (warm-start path).
+    onOpenUrl(handleUrls)
       .then((fn) => {
         unlisten = fn;
       })

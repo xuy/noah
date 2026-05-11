@@ -137,13 +137,14 @@ function PickStage({
 
   return (
     <div
-      className="flex flex-col items-center justify-center min-h-screen px-6 py-10 relative overflow-hidden"
+      // Layered scroll: outer fixes the aurora wash + drag region to
+      // the viewport, inner scrolls so the sign-in link is reachable
+      // on shorter windows (≤ ~720px tall) instead of being silently
+      // clipped below the fold. At the default window size everything
+      // still fits without a scrollbar.
+      className="relative h-screen overflow-hidden"
       style={{
         background:
-          // Aurora-tinted ambient wash: indigo from top-center bleeding
-          // down, faint violet glow from the bottom-right. Replaces the
-          // legacy teal/amber pair so the welcome surface lives inside
-          // the aurora launch identity.
           "radial-gradient(ellipse 80% 55% at 50% 0%, rgba(99, 102, 241, 0.16) 0%, transparent 70%), " +
           "radial-gradient(ellipse 50% 45% at 90% 100%, rgba(139, 92, 246, 0.08) 0%, transparent 65%), " +
           "var(--color-bg-primary)",
@@ -151,10 +152,12 @@ function PickStage({
     >
       {/* Window drag region — MainTitleBar (which normally owns this)
           doesn't render on unauthenticated screens, so without this
-          the window becomes unmovable on macOS overlay title bars. */}
+          the window becomes unmovable on macOS overlay title bars.
+          Pinned to the outer (viewport-anchored) so scrolling content
+          doesn't move it out of the macOS overlay region. */}
       <div
         data-tauri-drag-region=""
-        className="absolute top-0 left-0 right-0 h-9 z-10"
+        className="absolute top-0 left-0 right-0 h-9 z-20"
       />
 
       {/* Noise / subtle vignette to avoid banding on the gradient */}
@@ -167,71 +170,75 @@ function PickStage({
         }}
       />
 
-      <div className="relative w-full max-w-[660px]">
-        <div className="flex flex-col items-center mb-10">
-          <div className="relative mb-5">
-            {/* Aurora-tinted glow behind the logo — same indigo as the
-                page wash, keeps Noah's mark anchored to the launch
-                identity rather than floating in legacy teal. */}
-            <div
-              aria-hidden
-              className="absolute inset-0 rounded-2xl blur-2xl opacity-70"
-              style={{ background: "rgba(99, 102, 241, 0.32)" }}
-            />
-            <NoahIcon
-              className="relative w-20 h-20 rounded-2xl shadow-xl"
-              alt="Noah"
-            />
-          </div>
-          <span className="eyebrow mb-3">{t("onboarding.eyebrow")}</span>
-          <h1 className="text-2xl font-semibold text-text-primary tracking-tight">
-            {t("onboarding.greeting")}
-          </h1>
-          <p className="text-sm text-text-muted mt-2 text-center leading-relaxed max-w-md">
-            {t("onboarding.subgreeting")}
-          </p>
-          <p className="text-xs text-text-muted mt-3">
-            {tagline}
-          </p>
-        </div>
-
-        <div className="grid grid-cols-2 gap-2">
-          {TILES.map((tile) => (
-            <button
-              key={tile.id}
-              onClick={() => onPick(tile)}
-              className="card-soft interactive aurora-focus group relative flex items-start gap-3 text-left px-4 py-4 cursor-pointer transition-all duration-200"
-            >
-              <span
-                className="flex items-center justify-center w-11 h-11 rounded-lg shrink-0 transition-colors"
-                style={{
-                  background: "var(--color-accent-blue-soft)",
-                  color: "var(--color-accent-indigo)",
-                  border: "1px solid var(--color-accent-border)",
-                }}
-                aria-hidden
-              >
-                <tile.Icon size={19} strokeWidth={1.75} />
-              </span>
-              <div className="min-w-0 flex-1 pt-0.5">
-                <div className="text-sm font-medium text-text-primary leading-snug">
-                  {t(tile.titleKey)}
-                </div>
-                <div className="text-[11.5px] text-text-muted leading-relaxed mt-1">
-                  {t(tile.descKey)}
-                </div>
+      {/* Scrollable content layer — flex-center so it stays centered
+          when it fits, scrolls naturally when it doesn't. */}
+      <div className="absolute inset-0 overflow-y-auto">
+        <div className="min-h-full flex flex-col items-center justify-center px-6 py-8">
+          <div className="relative w-full max-w-[660px]">
+            <div className="flex flex-col items-center mb-8">
+              <div className="relative mb-4">
+                {/* Aurora-tinted glow behind the logo — same indigo as the
+                    page wash, keeps Noah's mark anchored to the launch
+                    identity rather than floating in legacy teal. */}
+                <div
+                  aria-hidden
+                  className="absolute inset-0 rounded-2xl blur-2xl opacity-70"
+                  style={{ background: "rgba(99, 102, 241, 0.32)" }}
+                />
+                <NoahIcon
+                  className="relative w-20 h-20 rounded-2xl shadow-xl"
+                  alt="Noah"
+                />
               </div>
-            </button>
-          ))}
-        </div>
+              <span className="eyebrow mb-3">{t("onboarding.eyebrow")}</span>
+              <h1 className="text-2xl font-semibold text-text-primary tracking-tight">
+                {t("onboarding.greeting")}
+              </h1>
+              <p className="text-sm text-text-muted mt-2 text-center leading-relaxed max-w-md">
+                {t("onboarding.subgreeting")}
+              </p>
+              <p className="text-xs text-text-muted mt-3">{tagline}</p>
+            </div>
 
-        <div className="mt-10 text-center">
-          <button
-            onClick={onSignInClick}
-            className="text-xs text-text-muted hover:text-text-secondary underline"
-          >
-            {t("onboarding.alreadyHaveAccount")}
-          </button>
+            <div className="grid grid-cols-2 gap-2">
+              {TILES.map((tile) => (
+                <button
+                  key={tile.id}
+                  onClick={() => onPick(tile)}
+                  className="card-soft interactive aurora-focus group relative flex items-start gap-3 text-left px-4 py-4 cursor-pointer transition-all duration-200"
+                >
+                  <span
+                    className="flex items-center justify-center w-11 h-11 rounded-lg shrink-0 transition-colors"
+                    style={{
+                      background: "var(--color-accent-blue-soft)",
+                      color: "var(--color-accent-indigo)",
+                      border: "1px solid var(--color-accent-border)",
+                    }}
+                    aria-hidden
+                  >
+                    <tile.Icon size={19} strokeWidth={1.75} />
+                  </span>
+                  <div className="min-w-0 flex-1 pt-0.5">
+                    <div className="text-sm font-medium text-text-primary leading-snug">
+                      {t(tile.titleKey)}
+                    </div>
+                    <div className="text-[11.5px] text-text-muted leading-relaxed mt-1">
+                      {t(tile.descKey)}
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+
+            <div className="mt-6 text-center">
+              <button
+                onClick={onSignInClick}
+                className="text-xs text-text-muted hover:text-text-secondary underline cursor-pointer"
+              >
+                {t("onboarding.alreadyHaveAccount")}
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     </div>

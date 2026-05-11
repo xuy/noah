@@ -53,6 +53,8 @@ vi.mock("@tauri-apps/plugin-deep-link", () => ({
       deepLinkCallback = null;
     });
   }),
+  // No URL launched the app in tests — return null to mimic warm-start.
+  getCurrent: vi.fn(() => Promise.resolve(null)),
 }));
 
 vi.mock("@tauri-apps/plugin-opener", () => ({
@@ -241,6 +243,7 @@ function resetAllStores() {
 function resetTauriMocks() {
   vi.clearAllMocks();
   vi.mocked(commands.listSessions).mockResolvedValue([]);
+  vi.mocked(commands.consumerHasSession).mockResolvedValue(false);
   vi.mocked(commands.consumerGetEntitlement).mockResolvedValue(null);
   vi.mocked(commands.consumerEnsureDeviceId).mockResolvedValue("device-abc");
   vi.mocked(commands.consumerRequestMagicLink).mockResolvedValue(null);
@@ -306,6 +309,18 @@ describe("Onboarding gate", () => {
     );
     render(<App />);
     expect(await screen.findByTestId("chat-panel")).toBeTruthy();
+  });
+
+  // Regression: previously the gate only consulted the local journal,
+  // so a signed-in user whose journal was empty (fresh install, dev
+  // build alongside the shipping app, or reset journal) would be
+  // dropped on the 8-tile picker after clicking the magic link.
+  it("skips onboarding when signed in, even with no journal sessions", async () => {
+    vi.mocked(commands.consumerHasSession).mockResolvedValue(true);
+    vi.mocked(commands.listSessions).mockResolvedValue([]);
+    render(<App />);
+    expect(await screen.findByTestId("chat-panel")).toBeTruthy();
+    expect(screen.queryByText(/What's going on with your Mac/)).toBeNull();
   });
 
   it("ensures a device id is minted on first launch", async () => {
