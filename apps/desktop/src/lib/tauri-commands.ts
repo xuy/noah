@@ -499,24 +499,15 @@ export interface Entitlement {
   status: "none" | "trialing" | "active" | "past_due" | "canceled" | "expired";
   trial_started_at: number | null;
   trial_ends_at: number | null;
-  trial_extended_at?: number | null;
   tz_offset_minutes?: number | null;
   /** Soft-captured email from the in-app trial nudge. Drives the
       day-5 trial-ending recovery email. */
   email?: string | null;
-  /** "License key" issued at trial extension; cosmetic artifact for the user. */
-  bonus_code?: string | null;
   period_start: number | null;
   period_end: number | null;
   usage_used: number;
   usage_limit: number;
   fix_count_total: number;
-}
-
-export interface TrialExtendResult {
-  ok: boolean;
-  entitlement?: Entitlement | null;
-  error?: string | null;
 }
 
 export interface FixCompletedResult {
@@ -573,12 +564,6 @@ export async function consumerNotifyIssueStarted(
         ? tzOffsetMinutes
         : new Date().getTimezoneOffset(),
   });
-}
-
-export async function consumerTrialExtend(
-  email: string,
-): Promise<TrialExtendResult> {
-  return await invoke<TrialExtendResult>("consumer_trial_extend", { email });
 }
 
 /**

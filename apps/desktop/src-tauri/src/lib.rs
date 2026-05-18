@@ -727,7 +727,6 @@ pub fn run() {
             commands::consumer::consumer_billing_checkout_url,
             commands::consumer::consumer_billing_portal_url,
             commands::consumer::consumer_confirm_checkout,
-            commands::consumer::consumer_trial_extend,
             commands::consumer::consumer_trial_link_email,
         ])
         .run(tauri::generate_context!())

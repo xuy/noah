@@ -140,19 +140,7 @@
     "keepTrial": "Not yet — keep my free trial",
     "subscribe": "Keep Noah",
     "opening": "Opening checkout…",
-    "fixContinuesNote": "Either way, Noah keeps fixing this in the background.",
-    "extend": {
-      "prompt": "Need more time?",
-      "subprompt": "Drop your email — we'll send a bonus code that adds another day.",
-      "emailPlaceholder": "you@example.com",
-      "submit": "Add another day",
-      "submitting": "Adding...",
-      "success": "Another day added. Your bonus code is on the way.",
-      "codeLabel": "Your code",
-      "errorAlreadyExtended": "Already extended this trial.",
-      "errorEmailTaken": "That email's already used another extension.",
-      "errorGeneric": "Something went wrong — try again."
-    }
+    "fixContinuesNote": "Either way, Noah keeps fixing this in the background."
   },
   "trialBanner": {
     "lead": "Noah is yours to use",

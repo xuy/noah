@@ -19,10 +19,9 @@ type Plan = "annual" | "monthly";
 /**
  * Subscribe modal. Three customer-visible surfaces:
  *
- *  - second_issue: "you're on a trial, plan options". The dismiss path
- *    swaps to a one-time email→extension form. Customer never sees
- *    countdown timers or hour counts — only a date.
- *  - paywall: trial ended, no extension available.
+ *  - second_issue: "you're on a trial, plan options". Customer never
+ *    sees countdown timers or hour counts — only a date.
+ *  - paywall: trial ended.
  *  - cap_hit: hidden 10-issue cap tripped during trial. Headline
  *    "you've hit your trial quota" — no specifics on what the cap was.
  *
@@ -36,7 +35,6 @@ export function SubscribeModal({
 }: SubscribeModalProps) {
   const { t } = useLocale();
   const ent = useConsumerStore((s) => s.entitlement);
-  const setEntitlement = useConsumerStore((s) => s.setEntitlement);
   // Truthy only when the user has clicked Subscribe within the last 15
   // minutes and the post-checkout poll loop hasn't yet seen status
   // flip to "active". Drives the quiet reassurance footnote — we
@@ -51,23 +49,6 @@ export function SubscribeModal({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Extension path state — only used on dismiss surface.
-  const [extending, setExtending] = useState(false);
-  const [email, setEmail] = useState("");
-  const [extendError, setExtendError] = useState<string | null>(null);
-  const [extendSuccess, setExtendSuccess] = useState(false);
-  const [showExtendForm, setShowExtendForm] = useState(false);
-
-  // Already-extended trials (or non-trial states) skip the offer entirely;
-  // the dismiss path falls back to a plain text-link.
-  const canExtend =
-    !!ent &&
-    ent.status === "trialing" &&
-    !ent.trial_extended_at &&
-    (variant === "second_issue" ||
-      variant === "first_fix" ||
-      variant === "cap_hit");
-
   const handleSubscribe = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -81,27 +62,6 @@ export function SubscribeModal({
       setLoading(false);
     }
   }, [plan, onCheckoutOpened]);
-
-  const handleExtend = useCallback(async () => {
-    const trimmed = email.trim();
-    if (!trimmed) return;
-    setExtending(true);
-    setExtendError(null);
-    try {
-      const result = await commands.consumerTrialExtend(trimmed);
-      if (result.ok && result.entitlement) {
-        setEntitlement(result.entitlement);
-        setExtendSuccess(true);
-      } else {
-        const code = result.error ?? "errorGeneric";
-        setExtendError(extendErrorKey(code));
-      }
-    } catch (err) {
-      setExtendError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setExtending(false);
-    }
-  }, [email, setEntitlement]);
 
   // i18n strings carry a {device} placeholder ("Keep Noah on your {device}")
   // so the same key works on Mac and Windows builds. Substitute here based
@@ -266,91 +226,12 @@ export function SubscribeModal({
               : t("subscribe.footnote")}
           </p>
 
-          {/* Dismiss area: always shows a "Keep my free trial" link.
-              When the user is eligible for the one-time extension, an
-              additional "Need more time?" affordance sits above the
-              dismiss — never replaces it. */}
-          {canExtend && !showExtendForm && !extendSuccess && (
-            <button
-              onClick={() => setShowExtendForm(true)}
-              className="w-full mt-2 py-2 text-[12.5px] text-accent-green hover:underline transition-colors cursor-pointer"
-            >
-              {t("subscribe.extend.prompt")}
-            </button>
-          )}
-          {!extendSuccess && (
-            <button
-              onClick={onDismiss}
-              className="w-full mt-1 py-2 text-[12.5px] text-text-muted hover:text-text-secondary transition-colors cursor-pointer"
-            >
-              {t("subscribe.keepTrial")}
-            </button>
-          )}
-
-          {showExtendForm && !extendSuccess && (
-            <div className="mt-3 space-y-2">
-              <p className="text-[12px] text-text-secondary text-center">
-                {t("subscribe.extend.subprompt")}
-              </p>
-              <div className="flex items-stretch gap-2">
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => {
-                    setEmail(e.target.value);
-                    setExtendError(null);
-                  }}
-                  placeholder={t("subscribe.extend.emailPlaceholder")}
-                  disabled={extending}
-                  className="flex-1 min-w-0 px-3 py-2 rounded-xl bg-bg-secondary border border-border-primary text-[13px] text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent-green disabled:opacity-50"
-                />
-                <button
-                  onClick={handleExtend}
-                  disabled={extending || !email.trim()}
-                  className="px-3 py-2 rounded-xl bg-bg-secondary border border-border-primary text-[12.5px] font-medium text-text-primary hover:bg-bg-tertiary transition-all disabled:opacity-50 cursor-pointer whitespace-nowrap"
-                >
-                  {extending
-                    ? t("subscribe.extend.submitting")
-                    : t("subscribe.extend.submit")}
-                </button>
-              </div>
-              {extendError && (
-                <p className="text-[11.5px] text-accent-red text-center">
-                  {t(`subscribe.extend.${extendError}`)}
-                </p>
-              )}
-            </div>
-          )}
-
-          {extendSuccess && (
-            <div className="mt-3 space-y-2">
-              <p className="text-[12.5px] text-accent-green text-center font-medium">
-                {t("subscribe.extend.success")}
-              </p>
-              {ent?.bonus_code && (
-                <div
-                  className="rounded-xl px-3 py-3 text-center"
-                  style={{
-                    background: "var(--aurora-soft)",
-                    border: "1px solid rgba(99, 102, 241, 0.25)",
-                  }}
-                >
-                  <div className="text-[10.5px] uppercase tracking-[0.08em] text-text-muted mb-1">
-                    {t("subscribe.extend.codeLabel")}
-                  </div>
-                  <code className="font-mono text-[15px] font-semibold tracking-[0.05em] text-text-primary">
-                    {ent.bonus_code}
-                  </code>
-                </div>
-              )}
-              <button
-                onClick={onDismiss}
-                className="w-full py-2 text-[12.5px] text-text-muted hover:text-text-secondary transition-colors cursor-pointer"
-              >
-                {t("subscribe.keepTrial")}
-              </button>
-            </div>
-          )}
+          <button
+            onClick={onDismiss}
+            className="w-full mt-2 py-2 text-[12.5px] text-text-muted hover:text-text-secondary transition-colors cursor-pointer"
+          >
+            {t("subscribe.keepTrial")}
+          </button>
         </div>
 
         {showFixContinuesNote && (
@@ -365,13 +246,3 @@ export function SubscribeModal({
   );
 }
 
-function extendErrorKey(serverCode: string): string {
-  switch (serverCode) {
-    case "already_extended":
-      return "errorAlreadyExtended";
-    case "email_taken":
-      return "errorEmailTaken";
-    default:
-      return "errorGeneric";
-  }
-}

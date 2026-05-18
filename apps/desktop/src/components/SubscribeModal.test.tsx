@@ -8,7 +8,6 @@ vi.mock("@tauri-apps/plugin-opener", () => ({
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("../lib/tauri-commands", () => ({
   consumerBillingCheckoutUrl: vi.fn().mockResolvedValue("https://example/checkout"),
-  consumerTrialExtend: vi.fn(),
   consumerGetEntitlement: vi.fn().mockResolvedValue(null),
 }));
 vi.mock("../lib/platform", () => ({
