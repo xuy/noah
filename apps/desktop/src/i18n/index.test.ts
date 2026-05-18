@@ -45,7 +45,10 @@ describe("i18n locale resolution", () => {
     setNavigatorLanguage("es-MX");
     const i18n = await loadI18n();
 
-    expect(i18n.t("chat.submit")).toBe("Submit");
+    // Pick a key that's English-only — `signIn.welcomeTitle` is not in
+    // es.json today, so the fallback path is exercised. Update this
+    // assertion if/when the key gets translated.
+    expect(i18n.t("signIn.welcomeTitle")).toBe("Sign in to Noah");
   });
 
   it("exposes Spanish as a selectable language option", async () => {
@@ -61,6 +64,15 @@ describe("i18n locale resolution", () => {
 });
 
 describe("i18n platform token substitution", () => {
+  beforeEach(() => {
+    // Tests in the prior describe block leave navigator.language as
+    // "es-MX" or similar; force English here so we're testing the
+    // {device} substitution against known en.json strings rather than
+    // whatever locale happens to load.
+    localStorage.clear();
+    setNavigatorLanguage("en-US");
+  });
+
   afterEach(() => {
     // Restore the test-setup default so other test files aren't surprised.
     setNavigatorPlatform("MacIntel");

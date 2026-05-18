@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Noah">
+  <title>Noah</title>
+  <defs>
+    <!-- Aurora wash for the rounded square backplate. -->
+    <linearGradient id="bgWash" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%"  stop-color="#5b9bd5"/>
+      <stop offset="50%" stop-color="#6366f1"/>
+      <stop offset="100%" stop-color="#8b5cf6"/>
+    </linearGradient>
+    <!-- Per-ring tinted gradients pulled from the same arc so the two
+         loops feel like two passes of the same aurora sweep rather than
+         two arbitrary brand colors. -->
+    <linearGradient id="ringCool" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%"  stop-color="#5b9bd5"/>
+      <stop offset="100%" stop-color="#6366f1"/>
+    </linearGradient>
+    <linearGradient id="ringWarm" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%"  stop-color="#6366f1"/>
+      <stop offset="100%" stop-color="#8b5cf6"/>
+    </linearGradient>
+    <radialGradient id="focalGlow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0%"  stop-color="#6366f1" stop-opacity="0.55"/>
+      <stop offset="100%" stop-color="#6366f1" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Backplate. Soft white with a faint aurora wash on top gives depth
+       without fighting the rings. Matches the NoahLogo pattern in
+       previews.jsx (warm bg with faint aurora overlay). -->
+  <rect width="64" height="64" rx="14" fill="#ffffff"/>
+  <rect width="64" height="64" rx="14" fill="url(#bgWash)" opacity="0.16"/>
+
+  <!-- Focal halo behind the dot — gives the mark its "lit from within"
+       quality and reads even at favicon size (16px) where individual
+       strokes blur into one shape. -->
+  <circle cx="32" cy="32" r="14" fill="url(#focalGlow)"/>
+
+  <!-- Cool ring (top-left). A half-arc, stroked, tilted so it reads as
+       one loop of an interlocking pair. -->
+  <g transform="rotate(-35 23 23)">
+    <circle cx="23" cy="23" r="14" fill="none"
+            stroke="url(#ringCool)" stroke-width="5"
+            stroke-linecap="round"
+            stroke-dasharray="46 90"
+            stroke-dashoffset="-11"/>
+  </g>
+
+  <!-- Violet ring (bottom-right). Mirror of the cool ring. -->
+  <g transform="rotate(145 41 41)">
+    <circle cx="41" cy="41" r="14" fill="none"
+            stroke="url(#ringWarm)" stroke-width="5"
+            stroke-linecap="round"
+            stroke-dasharray="46 90"
+            stroke-dashoffset="-11"/>
+  </g>
+
+  <!-- Focal dot — aurora-indigo. The single most-saturated point on
+       the mark; everything else recedes around it. -->
+  <circle cx="32" cy="32" r="4.5" fill="#6366f1"/>
+</svg>

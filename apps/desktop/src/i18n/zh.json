@@ -5,6 +5,10 @@
     "situation": "情况",
     "plan": "方案",
     "result": "结果",
+    "question": "问题",
+    "whatIChecked": "我检查了什么",
+    "whatIdDo": "我打算这样做",
+    "whatIFixed": "我修好了什么",
     "sent": "已发送",
     "submit": "提交",
     "continue": "继续",
@@ -293,6 +297,65 @@
     "win_move_file": "已移动文件",
     "win_restart_service": "已重启服务",
     "write_knowledge": "已保存笔记"
+  },
+  "subscribe": {
+    "firstFixHeadline": "继续在你的{device}上使用 Noah",
+    "firstFixBody": "选一个套餐，Noah 就能继续为你修问题。今天不收费。",
+    "secondIssueHeadline": "继续在你的{device}上使用 Noah",
+    "secondIssueBody": "选一个套餐，Noah 就能继续为你修问题。{date}之前不收费。",
+    "paywallHeadline": "欢迎回来",
+    "paywallBody": "继续你之前的修复。$4.99/月 或 $50/年 — 随时取消。",
+    "capHitHeadline": "你的试用额度已用完",
+    "capHitBody": "继续使用 Noah — $4.99/月 或 $50/年，随时取消。",
+    "trustBadge": "今天 $0 · 随时取消 · 试用期不会自动扣款",
+    "trustPill": "7 天试用 · 无需信用卡",
+    "planAriaLabel": "选择套餐",
+    "footnote": "今天 $0 · 随时取消 · 试用期内绝不收费。",
+    "alreadyPaidNote": "已经订阅了？你的账户会在几分钟内更新。",
+    "plan": {
+      "annual": {
+        "label": "年付",
+        "price": "$50",
+        "priceUnit": "/年",
+        "desc": "比月付省 17%",
+        "savingsBadge": "最划算"
+      },
+      "monthly": {
+        "label": "月付",
+        "price": "$4.99",
+        "priceUnit": "/月",
+        "desc": "随时取消"
+      }
+    },
+    "keepTrial": "暂时不用 — 继续我的免费试用",
+    "subscribe": "继续使用 Noah",
+    "opening": "正在打开结账…",
+    "fixContinuesNote": "不管怎样，Noah 都会在后台继续修复这个问题。",
+    "extend": {
+      "prompt": "需要更多时间？",
+      "subprompt": "留下你的邮箱 — 我们会发送一个加一天的奖励码。",
+      "emailPlaceholder": "you@example.com",
+      "submit": "再加一天",
+      "submitting": "添加中...",
+      "success": "已添加一天。奖励码正在路上。",
+      "codeLabel": "你的奖励码",
+      "errorAlreadyExtended": "此试用已经延长过了。",
+      "errorEmailTaken": "这个邮箱已经用过其他延长。",
+      "errorGeneric": "出了点问题 — 请重试。"
+    }
+  },
+  "trialBanner": {
+    "lead": "Noah 是你的",
+    "activeUntil": "免费使用至 {date}",
+    "subscribeCta": "订阅以继续使用"
+  },
+  "onboarding": {
+    "eyebrow": "开始",
+    "greeting": "你好，我是 Noah。你的电脑出什么问题了？",
+    "subgreeting": "选择最接近的描述 — 你可以稍后告诉我更多。",
+    "backLabel": "返回",
+    "continue": "继续",
+    "alreadyHaveAccount": "已经有账号？登录"
   },
   "shellChanges": {
     "organized": "整理了文件",

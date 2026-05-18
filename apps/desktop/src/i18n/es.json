@@ -1,6 +1,19 @@
 {
   "chat": {
-    "placeholder": "Dile a Noah en qué necesitas ayuda..."
+    "placeholder": "¿Qué se rompió? Cuéntale a Noah y dale enviar.",
+    "situation": "Situación",
+    "plan": "Plan",
+    "result": "Resultado",
+    "question": "Pregunta",
+    "whatIChecked": "Qué revisé",
+    "whatIdDo": "Esto es lo que haría",
+    "whatIFixed": "Qué arreglé",
+    "sent": "Enviado",
+    "submit": "Enviar",
+    "continue": "Continuar",
+    "fixed": "¿Arreglado?",
+    "yes": "Sí",
+    "notQuite": "No del todo"
   },
   "welcome": {
     "greeting": "Hola, soy Noah",
@@ -10,6 +23,53 @@
       "line1": "Cuéntame qué pasa.",
       "line2": "Yo me encargo del resto."
     }
+  },
+  "onboarding": {
+    "eyebrow": "Empezar",
+    "greeting": "Hola, soy Noah. ¿Qué le pasa a tu computadora?",
+    "subgreeting": "Elige lo más parecido — me puedes contar más en un momento.",
+    "backLabel": "Volver",
+    "continue": "Continuar",
+    "alreadyHaveAccount": "¿Ya tienes cuenta? Inicia sesión"
+  },
+  "subscribe": {
+    "firstFixHeadline": "Mantén Noah en tu {device}",
+    "firstFixBody": "Elige un plan y Noah seguirá arreglando problemas para ti. Hoy no se cobra nada.",
+    "secondIssueHeadline": "Mantén Noah en tu {device}",
+    "secondIssueBody": "Elige un plan y Noah seguirá arreglando problemas. Sin cargo hasta el {date}.",
+    "paywallHeadline": "Bienvenido de vuelta",
+    "paywallBody": "Continúa donde lo dejaste. $4,99/mes o $50/año — cancela cuando quieras.",
+    "capHitHeadline": "Llegaste al límite de tu prueba",
+    "capHitBody": "Sigue con Noah — $4,99/mes o $50/año, cancela cuando quieras.",
+    "trustBadge": "$0 hoy · cancela cuando quieras · sin cargos durante la prueba",
+    "trustPill": "Prueba de 7 días · sin tarjeta",
+    "planAriaLabel": "Elige un plan",
+    "footnote": "$0 hoy · cancela cuando quieras · nunca cobramos durante tu prueba.",
+    "alreadyPaidNote": "¿Ya estás suscrito? Tu cuenta se actualizará en unos minutos.",
+    "plan": {
+      "annual": {
+        "label": "Anual",
+        "price": "$50",
+        "priceUnit": "/año",
+        "desc": "Ahorra 17% vs mensual",
+        "savingsBadge": "Mejor valor"
+      },
+      "monthly": {
+        "label": "Mensual",
+        "price": "$4,99",
+        "priceUnit": "/mes",
+        "desc": "Cancela cuando quieras"
+      }
+    },
+    "keepTrial": "Aún no — mantener mi prueba gratuita",
+    "subscribe": "Mantener Noah",
+    "opening": "Abriendo el pago…",
+    "fixContinuesNote": "Igual, Noah sigue arreglando esto en segundo plano."
+  },
+  "trialBanner": {
+    "lead": "Noah es tuyo para usar",
+    "activeUntil": "gratis hasta el {date}",
+    "subscribeCta": "Suscríbete para conservarlo"
   },
   "sidebar": {
     "newChat": "Nuevo chat",
