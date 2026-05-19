@@ -229,8 +229,8 @@
         "hint": "e.g. Zoom crashes about 5 minutes into every call"
       },
       "storage": {
-        "title": "Storage almost full",
-        "desc": "Can't save, downloads piling up",
+        "title": "Clean up my storage",
+        "desc": "Find what's taking room",
         "hint": "e.g. {osName} says my disk is almost full and I don't know what to delete"
       },
       "battery": {
@@ -272,6 +272,17 @@
     "followsOSShort": "Follows your OS",
     "alwaysLightShort": "Always light",
     "alwaysDarkShort": "Always dark",
+    "about": "About",
+    "versionLine": "Version {version}",
+    "upToDate": "Up to date",
+    "updateAvailable": "Update available",
+    "newVersion": "v{version} is available",
+    "checkForUpdates": "Check for updates",
+    "checking": "Checking…",
+    "updateNow": "Update to v{version}",
+    "downloading": "Downloading…",
+    "installing": "Restarting…",
+    "updateError": "Couldn't update — try again?",
     "connection": "Connection",
     "apiKey": "API Key",
     "connectedViaProxy": "Connected via Noah Beta (invite code).",

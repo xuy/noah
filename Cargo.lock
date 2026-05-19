@@ -2361,7 +2361,7 @@ dependencies = [
 
 [[package]]
 name = "noah-desktop"
-version = "1.0.3"
+version = "1.0.4"
 dependencies = [
  "anyhow",
  "async-trait",
