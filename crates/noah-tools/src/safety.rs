@@ -44,10 +44,16 @@ pub struct ProtectedTree {
 }
 
 const fn app(path: &'static str) -> ProtectedTree {
-    ProtectedTree { path, content: false }
+    ProtectedTree {
+        path,
+        content: false,
+    }
 }
 const fn content(path: &'static str) -> ProtectedTree {
-    ProtectedTree { path, content: true }
+    ProtectedTree {
+        path,
+        content: true,
+    }
 }
 
 /// Protected trees — an approximation of "irreplaceable user data / app state."
@@ -176,12 +182,39 @@ fn strip_firmlink(lower: &str) -> String {
     lower.to_string()
 }
 
+/// Collapse `.` / `..` path segments after home expansion and firmlink
+/// stripping. Destructive operands containing dot segments are rejected before
+/// this, but normalising here keeps comparisons stable for inspected paths.
+fn collapse_dot_segments(path: &str) -> String {
+    if !path.starts_with('/') {
+        return path.to_string();
+    }
+
+    let mut parts: Vec<&str> = Vec::new();
+    for seg in path.split('/') {
+        match seg {
+            "" | "." => {}
+            ".." => {
+                parts.pop();
+            }
+            _ => parts.push(seg),
+        }
+    }
+
+    if parts.is_empty() {
+        "/".to_string()
+    } else {
+        format!("/{}", parts.join("/"))
+    }
+}
+
 /// Normalise for comparison: expand home, lowercase (macOS default volumes are
 /// case-insensitive), strip the firmlink prefix, drop a trailing slash. Root
 /// `/` is preserved (not collapsed to empty).
 fn norm(path: &str, home: &str) -> String {
     let expanded = expand_home(path, home).to_lowercase();
     let stripped = strip_firmlink(&expanded);
+    let stripped = collapse_dot_segments(&stripped);
     let trimmed = stripped.trim_end_matches('/');
     if trimmed.is_empty() && stripped.starts_with('/') {
         return "/".to_string();
@@ -191,7 +224,14 @@ fn norm(path: &str, home: &str) -> String {
 
 /// True if `child` is `ancestor` or a descendant of it (both pre-normalised).
 fn is_within(child: &str, ancestor: &str) -> bool {
+    if ancestor == "/" {
+        return child.starts_with('/');
+    }
     child == ancestor || child.starts_with(&format!("{}/", ancestor))
+}
+
+fn has_dot_segment(path: &str) -> bool {
+    path.split('/').any(|seg| seg == "." || seg == "..")
 }
 
 fn has_glob(seg: &str) -> bool {
@@ -290,16 +330,110 @@ fn split_commands(cmd: &str) -> Vec<String> {
         .collect()
 }
 
-/// Leader of a simple command, with a leading `sudo` (and its flags) stripped.
-fn leader_and_args(part: &str) -> (String, Vec<String>) {
-    let toks = tokenize(part);
-    let mut idx = 0;
-    if toks.first().map(|s| s.as_str()) == Some("sudo") {
-        idx = 1;
-        while toks.get(idx).map(|s| s.starts_with('-')).unwrap_or(false) {
+fn is_assignment(tok: &str) -> bool {
+    let Some((name, _)) = tok.split_once('=') else {
+        return false;
+    };
+    !name.is_empty()
+        && name.chars().all(|c| c == '_' || c.is_ascii_alphanumeric())
+        && !name.as_bytes()[0].is_ascii_digit()
+}
+
+fn skip_sudo(toks: &[String], mut idx: usize) -> usize {
+    if toks.get(idx).map(|s| s.as_str()) != Some("sudo") {
+        return idx;
+    }
+    idx += 1;
+    while let Some(tok) = toks.get(idx) {
+        if !tok.starts_with('-') {
+            break;
+        }
+        let needs_arg = matches!(
+            tok.as_str(),
+            "-u" | "--user"
+                | "-g"
+                | "--group"
+                | "-h"
+                | "--host"
+                | "-p"
+                | "--prompt"
+                | "-C"
+                | "--close-from"
+                | "-D"
+                | "--chdir"
+        );
+        idx += 1;
+        if needs_arg && toks.get(idx).is_some() {
             idx += 1;
         }
     }
+    idx
+}
+
+fn skip_command_prefixes(toks: &[String], mut idx: usize) -> usize {
+    loop {
+        while toks.get(idx).is_some_and(|tok| is_assignment(tok)) {
+            idx += 1;
+        }
+
+        match toks.get(idx).map(|s| s.as_str()) {
+            Some("sudo") => {
+                idx = skip_sudo(toks, idx);
+            }
+            Some("command" | "builtin" | "noglob" | "nocorrect" | "time" | "nohup") => {
+                idx += 1;
+            }
+            Some("env") => {
+                idx += 1;
+                while let Some(tok) = toks.get(idx) {
+                    if tok.starts_with('-') || is_assignment(tok) {
+                        idx += 1;
+                    } else {
+                        break;
+                    }
+                }
+            }
+            Some("nice") => {
+                idx += 1;
+                while let Some(tok) = toks.get(idx) {
+                    if tok == "-n" || tok == "--adjustment" {
+                        idx += 1;
+                        if toks.get(idx).is_some() {
+                            idx += 1;
+                        }
+                    } else if tok.starts_with('-') {
+                        idx += 1;
+                    } else {
+                        break;
+                    }
+                }
+            }
+            Some("arch") => {
+                idx += 1;
+                while toks.get(idx).is_some_and(|tok| tok.starts_with('-')) {
+                    idx += 1;
+                }
+            }
+            _ => break,
+        }
+    }
+    idx
+}
+
+/// Leader of a simple command, with common shell prefixes normalised.
+fn leader_and_args(part: &str) -> (String, Vec<String>) {
+    let toks = tokenize(part);
+    let idx = skip_command_prefixes(&toks, 0);
+    let leader = toks.get(idx).cloned().unwrap_or_default();
+    let args = toks.get(idx + 1..).map(|s| s.to_vec()).unwrap_or_default();
+    (leader, args)
+}
+
+/// Raw leader after `sudo`, before other wrappers. Used to reject wrapped
+/// deletions rather than silently canonicalising them.
+fn leader_after_sudo(part: &str) -> (String, Vec<String>) {
+    let toks = tokenize(part);
+    let idx = skip_sudo(&toks, 0);
     let leader = toks.get(idx).cloned().unwrap_or_default();
     let args = toks.get(idx + 1..).map(|s| s.to_vec()).unwrap_or_default();
     (leader, args)
@@ -307,7 +441,10 @@ fn leader_and_args(part: &str) -> (String, Vec<String>) {
 
 /// Non-flag operands (for `rm`/`unlink`).
 fn path_operands(args: &[String]) -> Vec<String> {
-    args.iter().filter(|a| !a.starts_with('-')).cloned().collect()
+    args.iter()
+        .filter(|a| !a.starts_with('-'))
+        .cloned()
+        .collect()
 }
 
 /// Leading path operands of a `find` (before the first predicate/flag/`(`/`!`).
@@ -338,6 +475,23 @@ fn find_args_destructive(args: &[String]) -> bool {
         }
     }
     false
+}
+
+fn shell_script_arg(args: &[String]) -> Option<&str> {
+    for (i, arg) in args.iter().enumerate() {
+        if arg == "-c" || arg == "-lc" {
+            return args.get(i + 1).map(|s| s.as_str());
+        }
+    }
+    None
+}
+
+fn is_shell_leader(leader: &str) -> bool {
+    matches!(leader, "sh" | "bash" | "zsh")
+}
+
+fn is_delete_leader(leader: &str) -> bool {
+    matches!(leader, "rm" | "unlink" | "srm" | "shred" | "rmdir")
 }
 
 /// Whole-command: is there an `xargs` that runs `rm`/`unlink`? (the `find | xargs
@@ -384,7 +538,8 @@ fn delete_targets_raw(cmd: &str) -> Vec<String> {
 pub fn hard_denied(cmd: &str, home: &str) -> Option<String> {
     let home_n = norm(home, home);
     for op in delete_targets_raw(cmd) {
-        let n = norm(&op, home);
+        let (base, _) = base_and_glob(&op);
+        let n = norm(&base, home);
         // root / system / whole-Users / home-root wipes
         if n == "/"
             || n == "/system"
@@ -446,12 +601,17 @@ fn mentions_deletion(cmd: &str) -> bool {
     for part in split_commands(cmd) {
         let (leader, args) = leader_and_args(&part);
         match leader.as_str() {
-            "rm" | "unlink" | "srm" | "shred" | "rmdir" => return true,
+            leader if is_delete_leader(leader) => return true,
             "find" if find_args_destructive(&args) || xargs_rm => return true,
             "xargs" if xargs_rm => return true,
             "eval" => return true,
             // pipe-to-shell laundering (`… | sh`)
             "sh" | "bash" | "zsh" if has_pipe(cmd) => return true,
+            leader if is_shell_leader(leader) => {
+                if shell_script_arg(&args).is_some_and(|script| mentions_deletion(script)) {
+                    return true;
+                }
+            }
             _ => {}
         }
     }
@@ -477,6 +637,9 @@ fn valid_rm_flag(a: &str) -> bool {
 /// paths, other variables, and command substitution are not.
 fn canonical_operand(op: &str) -> bool {
     if op.contains("$(") || op.contains('`') {
+        return false;
+    }
+    if has_dot_segment(op) {
         return false;
     }
     if op.starts_with('/') || op == "~" || op.starts_with("~/") {
@@ -508,6 +671,8 @@ fn operand_why(op: &str) -> String {
         "command substitution"
     } else if op.contains('$') {
         "a shell variable"
+    } else if has_dot_segment(op) {
+        "a `.` or `..` path segment"
     } else {
         "a relative path"
     };
@@ -527,7 +692,17 @@ fn canonical_violation(cmd: &str) -> Option<String> {
         return Some(tip_noncanonical("command substitution `$(...)`"));
     }
     for part in split_commands(cmd) {
+        let (raw_leader, _) = leader_after_sudo(&part);
         let (leader, args) = leader_and_args(&part);
+        if raw_leader != leader {
+            let wrapped_delete = is_delete_leader(&leader)
+                || (leader == "find" && find_args_destructive(&args))
+                || (is_shell_leader(&leader)
+                    && shell_script_arg(&args).is_some_and(|script| mentions_deletion(script)));
+            if wrapped_delete {
+                return Some(tip_noncanonical(&format!("the wrapper `{}`", raw_leader)));
+            }
+        }
         match leader.as_str() {
             "rm" | "unlink" => {
                 for a in &args {
@@ -560,6 +735,14 @@ fn canonical_violation(cmd: &str) -> Option<String> {
             // Secure/dir deleters and indirection: funnel to the plain forms.
             "srm" | "shred" | "rmdir" | "xargs" | "eval" => {
                 return Some(tip_noncanonical(&format!("`{}`", leader)));
+            }
+            leader if is_shell_leader(leader) => {
+                if shell_script_arg(&args).is_some_and(|script| mentions_deletion(script)) {
+                    return Some(tip_noncanonical(&format!(
+                        "a nested `{}` shell script",
+                        leader
+                    )));
+                }
             }
             _ => {}
         }
@@ -600,9 +783,7 @@ pub fn gate_decision(cmd: &str, home: &str, inspected: &HashSet<String>) -> Gate
 
             // Regenerable cache/log strictly inside an app-state tree → not gated.
             let strictly_inside = within && !contains;
-            if strictly_inside
-                && !tree.content
-                && REGENERABLE_HINTS.iter().any(|h| nop.contains(h))
+            if strictly_inside && !tree.content && REGENERABLE_HINTS.iter().any(|h| nop.contains(h))
             {
                 break; // this operand is fine; move to next operand
             }
@@ -702,7 +883,11 @@ mod tests {
     #[test]
     fn incident_sudo_wildcard_app_support() {
         assert!(matches!(
-            gate_decision("sudo rm -rf ~/Library/Application\\ Support/*", HOME, &empty()),
+            gate_decision(
+                "sudo rm -rf ~/Library/Application\\ Support/*",
+                HOME,
+                &empty()
+            ),
             GateDecision::RejectSweep { .. }
         ));
     }
@@ -716,7 +901,11 @@ mod tests {
     #[test]
     fn incident_messages_container_specific() {
         assert!(matches!(
-            gate_decision("rm -rf ~/Library/Containers/com.apple.MobileSMS", HOME, &empty()),
+            gate_decision(
+                "rm -rf ~/Library/Containers/com.apple.MobileSMS",
+                HOME,
+                &empty()
+            ),
             GateDecision::RejectNeedsInspection { .. }
         ));
     }
@@ -754,7 +943,11 @@ mod tests {
             HOME,
             &empty(),
         );
-        assert!(matches!(d, GateDecision::RejectNeedsInspection { .. }), "{:?}", d);
+        assert!(
+            matches!(d, GateDecision::RejectNeedsInspection { .. }),
+            "{:?}",
+            d
+        );
     }
     #[test]
     fn firmlink_inspection_clears_firmlink_delete() {
@@ -793,6 +986,23 @@ mod tests {
             GateDecision::HardDeny { .. }
         ));
     }
+    #[test]
+    fn root_globs_are_hard_denied() {
+        for cmd in [
+            "rm -rf /*",
+            "rm -rf /Users/*",
+            "rm -rf /System/Volumes/Data/*",
+            "rm -rf /System/Volumes/Data/Users/fbob/*",
+        ] {
+            assert!(
+                matches!(
+                    gate_decision(cmd, HOME, &empty()),
+                    GateDecision::HardDeny { .. }
+                ),
+                "should hard-deny root/system glob: {cmd}"
+            );
+        }
+    }
 
     // ── Visible-root find: permitted, then gated on the root ─────────────
 
@@ -814,7 +1024,11 @@ mod tests {
             HOME,
             &empty(),
         );
-        assert!(matches!(d, GateDecision::RejectNeedsInspection { .. }), "{:?}", d);
+        assert!(
+            matches!(d, GateDecision::RejectNeedsInspection { .. }),
+            "{:?}",
+            d
+        );
     }
     #[test]
     fn find_delete_in_unprotected_age_filtered_allowed() {
@@ -840,13 +1054,20 @@ mod tests {
             HOME,
             &empty(),
         );
-        assert!(matches!(d, GateDecision::RejectNonCanonical { .. }), "{:?}", d);
+        assert!(
+            matches!(d, GateDecision::RejectNonCanonical { .. }),
+            "{:?}",
+            d
+        );
     }
     #[test]
     fn find_with_relative_root_is_non_canonical() {
         for cmd in ["find . -name '*.tmp' -delete", "find Library -delete"] {
             assert!(
-                matches!(gate_decision(cmd, HOME, &empty()), GateDecision::RejectNonCanonical { .. }),
+                matches!(
+                    gate_decision(cmd, HOME, &empty()),
+                    GateDecision::RejectNonCanonical { .. }
+                ),
                 "should reject relative find root: {cmd}"
             );
         }
@@ -854,7 +1075,11 @@ mod tests {
     #[test]
     fn find_with_no_explicit_root_is_non_canonical() {
         let d = gate_decision("find -name '*.log' -delete", HOME, &empty());
-        assert!(matches!(d, GateDecision::RejectNonCanonical { .. }), "{:?}", d);
+        assert!(
+            matches!(d, GateDecision::RejectNonCanonical { .. }),
+            "{:?}",
+            d
+        );
     }
     #[test]
     fn rmdir_shred_srm_are_non_canonical() {
@@ -864,7 +1089,10 @@ mod tests {
             "srm -rf ~/Documents/x",
         ] {
             assert!(
-                matches!(gate_decision(cmd, HOME, &empty()), GateDecision::RejectNonCanonical { .. }),
+                matches!(
+                    gate_decision(cmd, HOME, &empty()),
+                    GateDecision::RejectNonCanonical { .. }
+                ),
                 "should be non-canonical: {cmd}"
             );
         }
@@ -873,12 +1101,20 @@ mod tests {
     fn unlink_canonical_then_gated() {
         // unlink IS a canonical leader; the path is then gated by the tree logic.
         let d = gate_decision("unlink ~/Documents/taxes.pdf", HOME, &empty());
-        assert!(matches!(d, GateDecision::RejectNeedsInspection { .. }), "{:?}", d);
+        assert!(
+            matches!(d, GateDecision::RejectNeedsInspection { .. }),
+            "{:?}",
+            d
+        );
     }
     #[test]
     fn nondestructive_find_is_not_a_delete() {
         assert_eq!(
-            gate_decision("find ~/Library/Application\\ Support -name '*.log'", HOME, &empty()),
+            gate_decision(
+                "find ~/Library/Application\\ Support -name '*.log'",
+                HOME,
+                &empty()
+            ),
             GateDecision::Allow
         );
     }
@@ -892,43 +1128,144 @@ mod tests {
     #[test]
     fn relative_path_delete_is_non_canonical() {
         // The cd-then-relative bypass.
-        let d = gate_decision("cd ~ && rm -rf Library/Application\\ Support/Adobe", HOME, &empty());
-        assert!(matches!(d, GateDecision::RejectNonCanonical { .. }), "{:?}", d);
+        let d = gate_decision(
+            "cd ~ && rm -rf Library/Application\\ Support/Adobe",
+            HOME,
+            &empty(),
+        );
+        assert!(
+            matches!(d, GateDecision::RejectNonCanonical { .. }),
+            "{:?}",
+            d
+        );
     }
     #[test]
     fn command_substitution_delete_is_non_canonical() {
         let d = gate_decision("rm -rf $(cat ~/to-delete.txt)", HOME, &empty());
-        assert!(matches!(d, GateDecision::RejectNonCanonical { .. }), "{:?}", d);
+        assert!(
+            matches!(d, GateDecision::RejectNonCanonical { .. }),
+            "{:?}",
+            d
+        );
     }
     #[test]
     fn variable_operand_is_non_canonical() {
         let d = gate_decision("rm -rf $TARGET/cache", HOME, &empty());
-        assert!(matches!(d, GateDecision::RejectNonCanonical { .. }), "{:?}", d);
+        assert!(
+            matches!(d, GateDecision::RejectNonCanonical { .. }),
+            "{:?}",
+            d
+        );
     }
     #[test]
     fn pipe_in_delete_is_non_canonical() {
         let d = gate_decision("ls ~/Library | rm -rf ~/Library/Caches", HOME, &empty());
-        assert!(matches!(d, GateDecision::RejectNonCanonical { .. }), "{:?}", d);
+        assert!(
+            matches!(d, GateDecision::RejectNonCanonical { .. }),
+            "{:?}",
+            d
+        );
     }
     #[test]
     fn eval_is_non_canonical() {
-        let d = gate_decision("eval \"rm -rf ~/Library/Application Support\"", HOME, &empty());
-        assert!(matches!(d, GateDecision::RejectNonCanonical { .. }), "{:?}", d);
+        let d = gate_decision(
+            "eval \"rm -rf ~/Library/Application Support\"",
+            HOME,
+            &empty(),
+        );
+        assert!(
+            matches!(d, GateDecision::RejectNonCanonical { .. }),
+            "{:?}",
+            d
+        );
     }
     #[test]
     fn pipe_to_shell_is_non_canonical() {
         let d = gate_decision("echo cm0gLXJmIH4v | base64 -d | sh", HOME, &empty());
-        assert!(matches!(d, GateDecision::RejectNonCanonical { .. }), "{:?}", d);
+        assert!(
+            matches!(d, GateDecision::RejectNonCanonical { .. }),
+            "{:?}",
+            d
+        );
     }
     #[test]
     fn no_preserve_root_flag_is_non_canonical() {
         let d = gate_decision("rm -rf --no-preserve-root /tmp/x", HOME, &empty());
-        assert!(matches!(d, GateDecision::RejectNonCanonical { .. }), "{:?}", d);
+        assert!(
+            matches!(d, GateDecision::RejectNonCanonical { .. }),
+            "{:?}",
+            d
+        );
+    }
+    #[test]
+    fn wrapped_deletes_are_non_canonical() {
+        for cmd in [
+            "command rm -rf ~/Library/Application\\ Support/Adobe",
+            "env FOO=1 rm -rf ~/Library/Application\\ Support/Adobe",
+            "VAR=1 rm -rf ~/Library/Application\\ Support/Adobe",
+            "nice -n 10 rm -rf ~/Library/Application\\ Support/Adobe",
+        ] {
+            assert!(
+                matches!(
+                    gate_decision(cmd, HOME, &empty()),
+                    GateDecision::RejectNonCanonical { .. }
+                ),
+                "should reject wrapped delete: {cmd}"
+            );
+        }
+    }
+    #[test]
+    fn sudo_option_delete_still_hits_redline() {
+        let d = gate_decision(
+            "sudo -u root rm -rf ~/Library/Application\\ Support/Adobe",
+            HOME,
+            &empty(),
+        );
+        assert!(
+            matches!(d, GateDecision::RejectNeedsInspection { .. }),
+            "{:?}",
+            d
+        );
+    }
+    #[test]
+    fn nested_shell_deletes_are_non_canonical() {
+        for cmd in [
+            "bash -c 'rm -rf ~/Library/Application Support/Adobe'",
+            "zsh -lc 'find ~/Library/Application Support -delete'",
+            "sudo bash -c 'rm -rf /'",
+        ] {
+            assert!(
+                matches!(
+                    gate_decision(cmd, HOME, &empty()),
+                    GateDecision::RejectNonCanonical { .. }
+                ),
+                "should reject nested shell delete: {cmd}"
+            );
+        }
+    }
+    #[test]
+    fn dot_segment_operands_are_non_canonical() {
+        for cmd in [
+            "rm -rf ~/Library/Caches/../Application\\ Support/*",
+            "rm -rf /Users/fbob/Library/./Messages/Attachments",
+            "find ~/Library/Caches/../Application\\ Support -delete",
+        ] {
+            assert!(
+                matches!(
+                    gate_decision(cmd, HOME, &empty()),
+                    GateDecision::RejectNonCanonical { .. }
+                ),
+                "should reject dot-segment operand: {cmd}"
+            );
+        }
     }
     #[test]
     fn canonical_absolute_rm_outside_protected_allowed() {
         // The blessed form, in a safe location → just runs.
-        assert_eq!(gate_decision("rm -rf /tmp/build-cache", HOME, &empty()), GateDecision::Allow);
+        assert_eq!(
+            gate_decision("rm -rf /tmp/build-cache", HOME, &empty()),
+            GateDecision::Allow
+        );
     }
 
     // ── New protected trees ──────────────────────────────────────────────
@@ -964,7 +1301,11 @@ mod tests {
     fn specific_app_delete_allowed_after_inspecting_it() {
         let inspected = set(&["~/Library/Application Support/Adobe"]);
         assert_eq!(
-            gate_decision("rm -rf ~/Library/Application\\ Support/Adobe", HOME, &inspected),
+            gate_decision(
+                "rm -rf ~/Library/Application\\ Support/Adobe",
+                HOME,
+                &inspected
+            ),
             GateDecision::Allow
         );
     }
@@ -972,7 +1313,11 @@ mod tests {
     fn specific_app_delete_allowed_after_inspecting_parent_tree() {
         let inspected = set(&["~/Library/Application Support"]);
         assert_eq!(
-            gate_decision("rm -rf ~/Library/Application\\ Support/Adobe", HOME, &inspected),
+            gate_decision(
+                "rm -rf ~/Library/Application\\ Support/Adobe",
+                HOME,
+                &inspected
+            ),
             GateDecision::Allow
         );
     }
@@ -988,7 +1333,11 @@ mod tests {
     fn inspecting_home_does_not_clear_protected_child() {
         let inspected = set(&["~"]);
         assert!(matches!(
-            gate_decision("rm -rf ~/Library/Application\\ Support/Adobe", HOME, &inspected),
+            gate_decision(
+                "rm -rf ~/Library/Application\\ Support/Adobe",
+                HOME,
+                &inspected
+            ),
             GateDecision::RejectNeedsInspection { .. }
         ));
     }
@@ -999,7 +1348,11 @@ mod tests {
             HOME,
             &empty(),
         );
-        assert!(matches!(d, GateDecision::RejectNeedsInspection { .. }), "{:?}", d);
+        assert!(
+            matches!(d, GateDecision::RejectNeedsInspection { .. }),
+            "{:?}",
+            d
+        );
     }
 
     // ── Regenerable: scoped to app trees only ────────────────────────────
@@ -1023,10 +1376,14 @@ mod tests {
         );
     }
     #[test]
-    fn cache_named_folder_under_documents_NOT_exempt() {
+    fn cache_named_folder_under_documents_not_exempt() {
         // The over-broad-hint hole: a user folder literally named "cache".
         let d = gate_decision("rm -rf ~/Documents/cache/report", HOME, &empty());
-        assert!(matches!(d, GateDecision::RejectNeedsInspection { .. }), "{:?}", d);
+        assert!(
+            matches!(d, GateDecision::RejectNeedsInspection { .. }),
+            "{:?}",
+            d
+        );
     }
 
     // ── Non-protected and non-delete: untouched ──────────────────────────
@@ -1121,14 +1478,22 @@ mod tests {
     #[test]
     fn careful_flow_inspect_then_delete_succeeds() {
         let mut inspected: HashSet<String> = HashSet::new();
-        let d1 = gate_decision("rm -rf ~/Library/Application\\ Support/Adobe", HOME, &inspected);
+        let d1 = gate_decision(
+            "rm -rf ~/Library/Application\\ Support/Adobe",
+            HOME,
+            &inspected,
+        );
         assert!(matches!(d1, GateDecision::RejectNeedsInspection { .. }));
 
         for p in inspected_paths("du -sh ~/Library/Application\\ Support/Adobe", HOME) {
             inspected.insert(p);
         }
 
-        let d2 = gate_decision("rm -rf ~/Library/Application\\ Support/Adobe", HOME, &inspected);
+        let d2 = gate_decision(
+            "rm -rf ~/Library/Application\\ Support/Adobe",
+            HOME,
+            &inspected,
+        );
         assert_eq!(d2, GateDecision::Allow);
     }
 }

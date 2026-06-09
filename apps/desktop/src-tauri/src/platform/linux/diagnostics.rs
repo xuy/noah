@@ -467,7 +467,7 @@ impl Tool for ShellRun {
 
         let timeout_secs = if needs_admin { 120 } else { 60 };
 
-        let output = match tokio::time::timeout(
+        let (output, exit_code) = match tokio::time::timeout(
             std::time::Duration::from_secs(timeout_secs),
             tokio::process::Command::new(&exec_program)
                 .args(&exec_args)
@@ -482,7 +482,10 @@ impl Tool for ShellRun {
 
                 // Handle user cancellation of the pkexec dialog (exit code 126)
                 if needs_admin && exit_code == 126 {
-                    "User declined administrator access. The command was not executed.".to_string()
+                    (
+                        "User declined administrator access. The command was not executed.".to_string(),
+                        Some(exit_code),
+                    )
                 } else {
                     let mut result = String::new();
                     if !stdout.is_empty() {
@@ -499,11 +502,17 @@ impl Tool for ShellRun {
                     } else {
                         result.push_str(&format!("\n\n[exit code: {}]", exit_code));
                     }
-                    result
+                    (result, Some(exit_code))
                 }
             }
-            Ok(Err(e)) => format!("Failed to execute command: {}", e),
-            Err(_) => format!("Command timed out after {} seconds. The command was taking too long and has been stopped.", timeout_secs),
+            Ok(Err(e)) => (format!("Failed to execute command: {}", e), None),
+            Err(_) => (
+                format!(
+                    "Command timed out after {} seconds. The command was taking too long and has been stopped.",
+                    timeout_secs
+                ),
+                None,
+            ),
         };
 
         let truncated = if output.len() > 10_000 {
@@ -514,7 +523,7 @@ impl Tool for ShellRun {
 
         Ok(ToolResult::with_changes(
             truncated,
-            json!({ "command": command }),
+            json!({ "command": command, "exit_code": exit_code }),
             vec![ChangeRecord {
                 description: format!("Executed shell command: {}", command),
                 undo_tool: String::new(),

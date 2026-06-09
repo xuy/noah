@@ -540,7 +540,7 @@ impl Tool for ShellRun {
             }
         };
 
-        let output = match tokio::time::timeout(
+        let (output, exit_code) = match tokio::time::timeout(
             std::time::Duration::from_secs(60),
             child,
         )
@@ -566,10 +566,13 @@ impl Tool for ShellRun {
                 } else {
                     result.push_str(&format!("\n\n[exit code: {}]", exit_code));
                 }
-                result
+                (result, Some(exit_code))
             }
-            Ok(Err(e)) => format!("Failed to execute command: {}", e),
-            Err(_) => "Command timed out after 60 seconds. The command was taking too long and has been stopped.".to_string(),
+            Ok(Err(e)) => (format!("Failed to execute command: {}", e), None),
+            Err(_) => (
+                "Command timed out after 60 seconds. The command was taking too long and has been stopped.".to_string(),
+                None,
+            ),
         };
 
         // Limit output length
@@ -583,6 +586,7 @@ impl Tool for ShellRun {
             truncated,
             json!({
                 "command": command,
+                "exit_code": exit_code,
             }),
             vec![ChangeRecord {
                 description: format!("Executed shell command: {}", command),

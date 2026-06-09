@@ -1014,18 +1014,26 @@ impl Orchestrator {
         // Execute the tool.
         let tool_result = tool.execute(tool_input).await?;
 
-        // Record read-class inspections (ls/du/find/stat/...) so a later
-        // delete inside a protected tree can clear the gate above. This is
-        // the "read" half of read-before-delete.
+        // Record successful read-class inspections (ls/du/find/stat/...) so a
+        // later delete inside a protected tree can clear the gate above. Failed
+        // reads (TCC denial, permissions, missing path, timeout) do not prove
+        // Noah looked at the target.
         if tool_name == "shell_run" {
             if let Some(command) = tool_input.get("command").and_then(|v| v.as_str()) {
-                let home = std::env::var("HOME").unwrap_or_default();
-                let paths = noah_tools::safety::inspected_paths(command, &home);
-                if !paths.is_empty() {
-                    let mut map = self.inspected_paths.lock().await;
-                    let set = map.entry(session_id.to_string()).or_default();
-                    for p in paths {
-                        set.insert(p);
+                let succeeded = tool_result
+                    .data
+                    .get("exit_code")
+                    .and_then(|v| v.as_i64())
+                    == Some(0);
+                if succeeded {
+                    let home = std::env::var("HOME").unwrap_or_default();
+                    let paths = noah_tools::safety::inspected_paths(command, &home);
+                    if !paths.is_empty() {
+                        let mut map = self.inspected_paths.lock().await;
+                        let set = map.entry(session_id.to_string()).or_default();
+                        for p in paths {
+                            set.insert(p);
+                        }
                     }
                 }
             }
