@@ -103,16 +103,49 @@ A friction gradient, not a set of absolutes:
 
 ### Protected trees (approximation; irreplaceable user data / app state)
 
-`~/Library/Application Support`, `~/Library/Containers`,
-`~/Library/Group Containers`, `~/Library/Messages`, `~/Library/Mail`,
-`~/Library/Mobile Documents`, `~/Library/CloudStorage`,
-`~/Library/Photos`, `~/Pictures`, `~/Documents`, `~/Desktop`,
-`~/Movies`, `~/Music`.
+Tracks Apple's TCC-protected locations plus credential stores. Two classes:
 
-### Regenerable hints (defeat the gate even inside a protected tree)
+- **App-state (Library)** — cache/log subdirs *are* regenerable-exempt:
+  `~/Library/Application Support`, `~/Library/Containers`,
+  `~/Library/Group Containers`, `~/Library/Messages`, `~/Library/Mail`,
+  `~/Library/Safari`, `~/Library/Calendars`, `~/Library/Mobile Documents`
+  (iCloud), `~/Library/CloudStorage` (Google Drive/Dropbox/OneDrive),
+  `~/Library/Photos`.
+- **Credentials/keys** — `~/.ssh`, `~/.gnupg`, `~/.aws`, `~/.kube`,
+  `~/.docker`, `~/.config` (the Keychain itself is *hard-deny*).
+- **User content** — *no* regenerable exemption (a folder literally named
+  "cache" under `~/Documents` is still the user's): `~/Documents`, `~/Desktop`,
+  `~/Pictures`, `~/Movies`, `~/Music`, `~/Downloads`.
+
+### Path normalisation — closing the bypasses (verified)
+
+The match would be worthless if the same data could be addressed by another
+spelling. So before matching, paths are normalised:
+
+- **Firmlinks.** Every user path is *also* reachable under
+  `/System/Volumes/Data` — confirmed same inode on a live machine
+  (`stat -f %d:%i ~/Library` == `…/System/Volumes/Data/Users/<u>/Library`; see
+  `/usr/share/firmlinks`). The real incident trace used this long form for `du`.
+  We strip the `/System/Volumes/Data` prefix so both spellings hit the same tree.
+- **Home / case.** `~`, `$HOME`, and the absolute `/Users/<u>/…` form all
+  resolve together; comparison is lowercased (macOS default volumes are
+  case-insensitive).
+- **Ancestors & whole-tree roots.** Deleting `~/Library` (an *ancestor* of every
+  protected tree) or `~/Library/Application Support` (the root itself) is a
+  **sweep** — rejected even with inspection; only specific *sub*-paths are
+  inspect-clearable. Wiping `~` or `/Users/<u>` is hard-deny.
+
+### Deletion vectors (not just `rm`)
+
+`rm`, `unlink`/`srm`, and `find` used destructively — `find … -delete`,
+`find … -exec rm`, and `find … | xargs rm` — are all classified as deletes. A
+non-destructive `find` still counts as *inspection*; a destructive one does not.
+
+### Regenerable hints (defeat the gate only inside app-state trees)
 
 A path segment matching `/Caches/`, `/Cache/`, `/Logs/`, `/.cache/` is treated
-as regenerable → `confirm` tier, no inspection required.
+as regenerable → no inspection required — **but only** strictly inside an
+app-state tree, never in a user-content tree and never for a tree root/ancestor.
 
 ### Hard-deny floor (refused even when reaffirmed)
 
@@ -173,6 +206,21 @@ already routes cloud mentions to selective-sync; the rule to reinforce is:
 local), never straight-deleted; irreplaceable-and-critical data is left alone —
 the few GB are not worth it.** This lives in the playbook because it is
 judgment; the trees above are the floor the playbook cannot fall through.
+
+## Known limits of the approximation (stated, not hidden)
+
+- A **relative path after an un-tracked `cd`** (`cd ~ && rm -rf Library/…`) is not
+  resolved back to home. Mitigated in practice: Noah's shell runs from the app's
+  working directory, not the home dir, so a bare `Library/` rarely *is* `~/Library`.
+- Only `$HOME` is expanded; arbitrary `$VAR` interpolation is not modelled.
+- macOS APFS is case-insensitive by default; we lowercase to match. A
+  case-*sensitive* volume could in principle hide a path — rare, accepted.
+- `tmutil deletelocalsnapshots` (removing Time Machine local snapshots) is left
+  ungated: it is an Apple-sanctioned, auto-regenerating space step. Worth
+  revisiting if we want to protect the snapshot safety net during big deletes.
+
+These are the seams. They are documented because an approximation you can see the
+edges of is more trustworthy than one that pretends to be total.
 
 ## What this deliberately does NOT do
 
