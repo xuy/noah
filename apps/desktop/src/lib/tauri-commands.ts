@@ -508,6 +508,14 @@ export interface Entitlement {
   usage_used: number;
   usage_limit: number;
   fix_count_total: number;
+  /**
+   * Paywall-placement A/B arm from the server (deterministic per subject):
+   *  - "launch"    → scan-reveal paywall right after the onboarding scan.
+   *  - "after_fix" → value-first; paywall at the first proven fix.
+   * Absent on older servers — treat missing as "after_fix" (never paywall
+   * aggressively on missing data). See noah-consumer src/lib/paywall.ts.
+   */
+  paywall_placement?: "launch" | "after_fix" | null;
 }
 
 export interface FixCompletedResult {

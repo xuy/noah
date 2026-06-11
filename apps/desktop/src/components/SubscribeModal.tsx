@@ -6,8 +6,11 @@ import { useConsumerStore } from "../stores/consumerStore";
 import { formatTrialEndDate } from "../lib/trial-format";
 
 interface SubscribeModalProps {
-  /** Which trigger fired the modal — drives copy. */
-  variant?: "first_fix" | "second_issue" | "paywall" | "cap_hit";
+  /** Which trigger fired the modal — drives copy. `scan_reveal` is the
+   *  launch-arm paywall shown right after the onboarding scan reveals
+   *  findings; it reuses the proof-oriented first_fix copy ("here's what we
+   *  found — start your free trial to fix it"). */
+  variant?: "first_fix" | "second_issue" | "paywall" | "cap_hit" | "scan_reveal";
   /** Called when user dismisses (clicks "Keep my free trial" or backdrop). */
   onDismiss: () => void;
   /** Called after a Checkout URL is opened in the browser. */
@@ -72,7 +75,7 @@ export function SubscribeModal({
     : "Mac";
   const fillDevice = (s: string) => s.replace(/\{device\}/g, device);
   const headline = fillDevice(
-    variant === "first_fix"
+    variant === "first_fix" || variant === "scan_reveal"
       ? t("subscribe.firstFixHeadline")
       : variant === "second_issue"
         ? t("subscribe.secondIssueHeadline")
@@ -87,7 +90,7 @@ export function SubscribeModal({
   );
 
   const body =
-    variant === "first_fix"
+    variant === "first_fix" || variant === "scan_reveal"
       ? t("subscribe.firstFixBody")
       : variant === "second_issue"
         ? t("subscribe.secondIssueBody").replace("{date}", dateLabel)

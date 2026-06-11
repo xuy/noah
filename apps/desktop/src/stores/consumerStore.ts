@@ -6,7 +6,12 @@ export type SubscribeModalVariant =
   | "first_fix"
   | "second_issue"
   | "paywall"
-  | "cap_hit";
+  | "cap_hit"
+  // Launch-arm of the placement A/B: shown right after the onboarding scan
+  // reveals personalized findings — proof first, then "start your free trial
+  // to fix it." The card-on-file trial it opens is identical to every other
+  // variant; only the timing differs.
+  | "scan_reveal";
 
 interface ConsumerState {
   entitlement: Entitlement | null;
@@ -47,6 +52,49 @@ export function isPaywalled(ent: Entitlement | null): boolean {
   if (ent.status === "none" || ent.status === "trialing") return false;
   if (ent.status === "active") return ent.usage_used >= ent.usage_limit;
   return true;
+}
+
+/**
+ * Which paywall-placement arm this subject is in. Defaults to "after_fix"
+ * (value-first) when the server didn't send the field — we never paywall
+ * aggressively on missing/loading data.
+ */
+export function placementArm(ent: Entitlement | null): "launch" | "after_fix" {
+  return ent?.paywall_placement === "launch" ? "launch" : "after_fix";
+}
+
+/** Signals the onboarding orchestrator feeds the placement decision. */
+export interface PaywallSignals {
+  /** The onboarding scan finished and personalized findings are on screen. */
+  scanRevealed: boolean;
+  /** The user has reached at least one real fix this lifetime. */
+  firstFixReached: boolean;
+}
+
+/**
+ * The scan-reveal placement decision (pure). Returns the variant to surface
+ * *right now*, or null. The orchestrator calls this after the onboarding scan
+ * reveals findings and opens the returned variant.
+ *
+ * Launch arm: once the scan has revealed proof, a user who isn't already
+ * trialing/active sees the `scan_reveal` paywall — before spending a free fix.
+ * Already-converted users (trialing with a card, or active) never see it, and
+ * if they somehow already reached a fix we don't interrupt with it.
+ *
+ * After-fix arm: returns null here — that arm's paywall is driven by the
+ * existing first_fix / second_issue / paywall flow, not this launch hook.
+ */
+export function scanRevealPaywallVariant(
+  ent: Entitlement | null,
+  signals: PaywallSignals,
+): SubscribeModalVariant | null {
+  if (!ent) return null;
+  if (placementArm(ent) !== "launch") return null;
+  // Don't interrupt someone who's already in a trial or paying.
+  if (ent.status === "trialing" || ent.status === "active") return null;
+  if (!signals.scanRevealed) return null; // wait for proof
+  if (signals.firstFixReached) return null; // they converted via value already
+  return "scan_reveal";
 }
 
 /**
