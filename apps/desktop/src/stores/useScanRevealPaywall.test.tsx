@@ -27,7 +27,7 @@ afterEach(() => {
 
 describe("useScanRevealPaywall", () => {
   it("launch arm: opens scan_reveal once the scan reveals findings", () => {
-    useConsumerStore.setState({ entitlement: ent({ paywall_placement: "launch" }) });
+    useConsumerStore.setState({ entitlement: ent({ onboarding_paywall: true }) });
     const { rerender } = renderHook(
       (p: { scanRevealed: boolean }) =>
         useScanRevealPaywall({ scanRevealed: p.scanRevealed, firstFixReached: false }),
@@ -40,7 +40,7 @@ describe("useScanRevealPaywall", () => {
   });
 
   it("is one-shot: dismissing it does not re-pop", () => {
-    useConsumerStore.setState({ entitlement: ent({ paywall_placement: "launch" }) });
+    useConsumerStore.setState({ entitlement: ent({ onboarding_paywall: true }) });
     const { rerender } = renderHook(
       () => useScanRevealPaywall({ scanRevealed: true, firstFixReached: false }),
     );
@@ -56,14 +56,14 @@ describe("useScanRevealPaywall", () => {
   });
 
   it("after_fix arm: never opens the launch paywall", () => {
-    useConsumerStore.setState({ entitlement: ent({ paywall_placement: "after_fix" }) });
+    useConsumerStore.setState({ entitlement: ent({ onboarding_paywall: false }) });
     renderHook(() => useScanRevealPaywall({ scanRevealed: true, firstFixReached: false }));
     expect(useConsumerStore.getState().subscribeModal).toBeNull();
   });
 
   it("never interrupts a user already trialing", () => {
     useConsumerStore.setState({
-      entitlement: ent({ paywall_placement: "launch", status: "trialing" }),
+      entitlement: ent({ onboarding_paywall: true, status: "trialing" }),
     });
     renderHook(() => useScanRevealPaywall({ scanRevealed: true, firstFixReached: false }));
     expect(useConsumerStore.getState().subscribeModal).toBeNull();

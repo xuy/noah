@@ -509,13 +509,15 @@ export interface Entitlement {
   usage_limit: number;
   fix_count_total: number;
   /**
-   * Paywall-placement A/B arm from the server (deterministic per subject):
-   *  - "launch"    → scan-reveal paywall right after the onboarding scan.
-   *  - "after_fix" → value-first; paywall at the first proven fix.
-   * Absent on older servers — treat missing as "after_fix" (never paywall
-   * aggressively on missing data). See noah-consumer src/lib/paywall.ts.
+   * Card-first trial model toggle (the single backend lever). `true` →
+   * onboarding starts a card-on-file trial; the no-card auto-trial is
+   * suppressed and no-card users get `taste_free_fixes` free fixes then the
+   * paywall. Absent/false → legacy no-card model. See noah-consumer
+   * src/lib/paywall.ts.
    */
-  paywall_placement?: "launch" | "after_fix" | null;
+  onboarding_paywall?: boolean | null;
+  /** Free fixes a no-card user gets before the paywall (card-first only). */
+  taste_free_fixes?: number | null;
 }
 
 export interface FixCompletedResult {

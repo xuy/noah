@@ -55,45 +55,38 @@ export function isPaywalled(ent: Entitlement | null): boolean {
 }
 
 /**
- * Which paywall-placement arm this subject is in. Defaults to "after_fix"
- * (value-first) when the server didn't send the field — we never paywall
- * aggressively on missing/loading data.
+ * Card-first: is the onboarding paywall active? Reads the single backend lever
+ * (`onboarding_paywall`). Missing/false → no onboarding paywall (legacy no-card
+ * model, or an older/loading server) — we never paywall on missing data.
  */
-export function placementArm(ent: Entitlement | null): "launch" | "after_fix" {
-  return ent?.paywall_placement === "launch" ? "launch" : "after_fix";
+export function onboardingPaywallOn(ent: Entitlement | null): boolean {
+  return ent?.onboarding_paywall === true;
 }
 
 /** Signals the onboarding orchestrator feeds the placement decision. */
 export interface PaywallSignals {
   /** The onboarding scan finished and personalized findings are on screen. */
   scanRevealed: boolean;
-  /** The user has reached at least one real fix this lifetime. */
+  /** Kept for the caller; unused under card-first (the wall is at the reveal). */
   firstFixReached: boolean;
 }
 
 /**
- * The scan-reveal placement decision (pure). Returns the variant to surface
- * *right now*, or null. The orchestrator calls this after the onboarding scan
- * reveals findings and opens the returned variant.
+ * Card-first onboarding paywall decision (pure). Returns "scan_reveal" — the
+ * card-on-file trial paywall — to surface at the diagnosis, or null.
  *
- * Launch arm: once the scan has revealed proof, a user who isn't already
- * trialing/active sees the `scan_reveal` paywall — before spending a free fix.
- * Already-converted users (trialing with a card, or active) never see it, and
- * if they somehow already reached a fix we don't interrupt with it.
- *
- * After-fix arm: returns null here — that arm's paywall is driven by the
- * existing first_fix / second_issue / paywall flow, not this launch hook.
+ * The launch/after_fix A/B is retired: *everyone* with the backend toggle on
+ * sees it once the scan has revealed proof, except users already trialing or
+ * paying. "Maybe later" drops them into the silent 1-fix taste; the paywall
+ * returns naturally when they reach for more (no "X fixes left" counter).
  */
 export function scanRevealPaywallVariant(
   ent: Entitlement | null,
   signals: PaywallSignals,
 ): SubscribeModalVariant | null {
-  if (!ent) return null;
-  if (placementArm(ent) !== "launch") return null;
-  // Don't interrupt someone who's already in a trial or paying.
-  if (ent.status === "trialing" || ent.status === "active") return null;
+  if (!onboardingPaywallOn(ent)) return null;
+  if (ent!.status === "trialing" || ent!.status === "active") return null;
   if (!signals.scanRevealed) return null; // wait for proof
-  if (signals.firstFixReached) return null; // they converted via value already
   return "scan_reveal";
 }
 

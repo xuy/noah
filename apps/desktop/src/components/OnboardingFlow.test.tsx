@@ -32,7 +32,7 @@ function setArm(placement: "launch" | "after_fix", extra: Partial<Entitlement> =
     entitlement: {
       plan: null, status: "none", trial_started_at: null, trial_ends_at: null,
       period_start: null, period_end: null, usage_used: 0, usage_limit: 10,
-      fix_count_total: 0, paywall_placement: placement, ...extra,
+      fix_count_total: 0, onboarding_paywall: placement === "launch", ...extra,
     },
   });
 }

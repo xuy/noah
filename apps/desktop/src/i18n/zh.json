@@ -308,7 +308,7 @@
     "capHitHeadline": "你的试用额度已用完",
     "capHitBody": "继续使用 Noah — $4.99/月 或 $50/年，随时取消。",
     "trustBadge": "今天 $0 · 随时取消 · 试用期不会自动扣款",
-    "trustPill": "7 天试用 · 无需信用卡",
+    "trustPill": "7 天试用 · 随时取消",
     "planAriaLabel": "选择套餐",
     "footnote": "今天 $0 · 随时取消 · 试用期内绝不收费。",
     "alreadyPaidNote": "已经订阅了？你的账户会在几分钟内更新。",
@@ -327,7 +327,7 @@
         "desc": "随时取消"
       }
     },
-    "keepTrial": "暂时不用 — 继续我的免费试用",
+    "keepTrial": "暂不",
     "subscribe": "继续使用 Noah",
     "opening": "正在打开结账…",
     "fixContinuesNote": "不管怎样，Noah 都会在后台继续修复这个问题。",

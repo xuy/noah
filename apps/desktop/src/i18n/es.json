@@ -42,7 +42,7 @@
     "capHitHeadline": "Llegaste al límite de tu prueba",
     "capHitBody": "Sigue con Noah — $4,99/mes o $50/año, cancela cuando quieras.",
     "trustBadge": "$0 hoy · cancela cuando quieras · sin cargos durante la prueba",
-    "trustPill": "Prueba de 7 días · sin tarjeta",
+    "trustPill": "Prueba de 7 días · cancela cuando quieras",
     "planAriaLabel": "Elige un plan",
     "footnote": "$0 hoy · cancela cuando quieras · nunca cobramos durante tu prueba.",
     "alreadyPaidNote": "¿Ya estás suscrito? Tu cuenta se actualizará en unos minutos.",
@@ -61,7 +61,7 @@
         "desc": "Cancela cuando quieras"
       }
     },
-    "keepTrial": "Aún no — mantener mi prueba gratuita",
+    "keepTrial": "Ahora no",
     "subscribe": "Mantener Noah",
     "opening": "Abriendo el pago…",
     "fixContinuesNote": "Igual, Noah sigue arreglando esto en segundo plano.",

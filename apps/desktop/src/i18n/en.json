@@ -99,7 +99,7 @@
     "emailPlaceholder": "you@example.com",
     "sendLink": "Email me a sign-in link",
     "sending": "Sending...",
-    "trialHint": "No passwords. Free trial — no card needed.",
+    "trialHint": "No passwords — just a magic link.",
     "checkInbox": "We sent a sign-in link to {email}. Click the link to finish signing in — Noah will pick it up automatically.",
     "checkSpam": "Can't find it? Check your spam folder.",
     "useDifferentEmail": "Use a different email",
@@ -119,7 +119,7 @@
     "capHitHeadline": "You've hit your trial quota",
     "capHitBody": "Keep Noah going — $4.99/mo or $50/yr, cancel any time.",
     "trustBadge": "$0 today · cancel any time · no auto-charge during trial",
-    "trustPill": "7-day trial · no card",
+    "trustPill": "7-day trial · cancel anytime",
     "planAriaLabel": "Choose a plan",
     "footnote": "$0 today · cancel any time · we'll never charge during your trial.",
     "alreadyPaidNote": "Already subscribed? Your account will update in a few minutes.",
@@ -138,7 +138,7 @@
         "desc": "Cancel any time"
       }
     },
-    "keepTrial": "Not yet — keep my free trial",
+    "keepTrial": "Not now",
     "subscribe": "Keep Noah",
     "opening": "Opening checkout…",
     "fixContinuesNote": "Either way, Noah keeps fixing this in the background.",
