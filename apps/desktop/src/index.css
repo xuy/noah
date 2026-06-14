@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap");
 @import "tailwindcss";
 
 /* ── Noah — Aurora Design System ──
@@ -9,7 +9,7 @@
  *     violet) is Noah's identity. Every interactive accent lives
  *     within that arc.
  *   • Two registers — Launch (aurora gradient: aim Noah at a problem)
- *     and Commit (aurora-teal: saved, success). Distinct but
+ *     and Commit (aurora-teal: subscribe, success). Distinct but
  *     visually related, both cool.
  *   • Saturation is reserved. The most-saturated thing on screen
  *     is the one thing the user is supposed to do next.
@@ -55,7 +55,7 @@
        used together (--aurora) for launch moments only.
      • aurora-teal (--color-accent-green) is the COMMIT register —
        cool seafoam, NOT grass green. Sits next to aurora-blue in
-       hue space, so result states feel related, not foreign.
+       hue space, so subscribe/result feels related, not foreign.
      • aurora-purple is for Plan-label content (semantic hue, not action).  */
   --color-accent-blue: #5b9bd5;
   --color-accent-blue-soft: rgba(91, 155, 213, 0.12);
@@ -66,8 +66,22 @@
   --color-accent-green: #14b8a6;
   --color-accent-green-soft: rgba(20, 184, 166, 0.12);
   --color-accent-red: #f87171;
+  --color-accent-red-soft: rgba(239, 68, 68, 0.12);
   --color-accent-amber: #fbbf24;
+  --color-accent-amber-soft: rgba(245, 158, 11, 0.14);
   --color-accent-yellow: #fde68a;
+
+  /* Diagnosis tone pills/chips (bad/warn/ok) — soft bg + readable fg. */
+  --tone-bad-bg: rgba(239, 68, 68, 0.12);
+  --tone-bad-fg: #f87171;
+  --tone-warn-bg: rgba(245, 158, 11, 0.14);
+  --tone-warn-fg: #fbbf24;
+  --tone-ok-bg: rgba(16, 185, 129, 0.14);
+  --tone-ok-fg: #14b8a6;
+  /* Neutral "rest of the bar" segment in diagnosis meters (the everything-else
+     memory slice, idle login-item pips, non-leading storage rows). Token'd so
+     it follows the theme instead of being a fixed dark slate on a white card. */
+  --color-meter-rest: #aab4c8;
   --color-accent-purple: #a78bfa;
 
   /* Aurora launch identity — used by buttons, focus glows, thinking
@@ -91,7 +105,7 @@
     0 1px 2px rgba(0, 0, 0, 0.2);
 
   /* Commit moments share the launch identity — same aurora gradient,
-     same glow family. The .btn-commit class layers extra depth
+     same glow family. The .btn-commit class layers premium depth
      treatment on top (specular highlight, multi-shadow stack) so
      bigger moments feel bigger without introducing a foreign hue. */
   --commit-gradient: var(--aurora);
@@ -119,6 +133,53 @@
   /* Eyebrow text — muted neutral, NOT accent. Section labels are
      plumbing; the aurora hairline + gradient CTA carry the brand. */
   --text-eyebrow: #6f7785;
+
+  /* ── Type scale — 7 steps (canonical Noah Design System) ──
+   * One typeface (Plus Jakarta Sans), 17px root. Hierarchy comes from
+   * WEIGHT + this scale, never arbitrary px. Every text-[Npx] in the app
+   * maps to exactly one step. Size + line-height + tracking are bundled;
+   * font-weight is intentionally LEFT OUT so weight stays orthogonal
+   * (pair text-* with font-medium/semibold/bold as the design needs).
+   *
+   *   display → replaces 33/29/28/27px
+   *   title   → replaces 24/22px
+   *   heading → replaces 19px + bold body
+   *   body-l  → replaces 15.5/15px (root reading size for prose)
+   *   body    → replaces 14.5/14/13.5/13px
+   *   caption → replaces 12.5/12px
+   *   micro   → replaces 11.5/11/10.5/10px (eyebrows, badges)
+   */
+  --text-display: 33px;
+  --text-display--line-height: 1.05;
+  --text-display--letter-spacing: -0.03em;
+  --text-title: 24px;
+  --text-title--line-height: 1.15;
+  --text-title--letter-spacing: -0.02em;
+  --text-heading: 19px;
+  --text-heading--line-height: 1.3;
+  --text-heading--letter-spacing: -0.01em;
+  --text-body-l: 17px;
+  --text-body-l--line-height: 1.6;
+  --text-body: 15px;
+  --text-body--line-height: 1.55;
+  --text-caption: 13px;
+  --text-caption--line-height: 1.5;
+  --text-micro: 11px;
+  --text-micro--line-height: 1.4;
+
+  /* ── Radius scale — 4 steps + pill (collapses 9 ad-hoc variants) ──
+   * Semantic names (chip/input/btn/card) deliberately do NOT override
+   * Tailwind's built-in rounded-sm/md/lg/xl, so adding these is a no-op
+   * until a component opts in. rounded-full stays the pill.
+   *   chip  · 8px  — pills' inner, chips, code, small tags
+   *   input · 10px — small buttons, inputs
+   *   btn   · 14px — buttons, inline cards
+   *   card  · 16px — cards, tiles, modals
+   */
+  --radius-chip: 8px;
+  --radius-input: 10px;
+  --radius-btn: 14px;
+  --radius-card: 16px;
 }
 
 /* ── Light Mode ──
@@ -159,8 +220,19 @@
     --color-accent-green: #0f7b5a;
     --color-accent-green-soft: rgba(15, 123, 90, 0.1);
     --color-accent-red: #dc2626;
+    --color-accent-red-soft: rgba(220, 38, 38, 0.1);
     --color-accent-amber: #b86e12;
+    --color-accent-amber-soft: rgba(184, 110, 18, 0.12);
     --color-accent-yellow: #f59e0b;
+
+    /* Diagnosis tone pills/chips — daylight values (deeper fg for contrast). */
+    --tone-bad-bg: rgba(220, 38, 38, 0.1);
+    --tone-bad-fg: #dc2626;
+    --tone-warn-bg: rgba(184, 110, 18, 0.12);
+    --tone-warn-fg: #b86e12;
+    --tone-ok-bg: rgba(15, 123, 90, 0.12);
+    --tone-ok-fg: #0f7b5a;
+    --color-meter-rest: #b9c1d1;
     --color-accent-purple: #7c3aed;
 
     /* Aurora launch — light mode tuned for white-card contrast.
@@ -229,7 +301,7 @@ body,
   /* 17px root means Tailwind's text-sm = 14.9px and text-base = 17px,
      up from the previous 13.1/15. Reads as "calm and confident" for
      stressed non-technical users instead of "tight and technical".
-     Sidebar and form descriptions benefit uniformly
+     Trial banner / sidebar / form descriptions all benefit uniformly
      without touching component code. */
   font-size: 17px;
   line-height: 1.65;
@@ -298,9 +370,12 @@ h1, h2, h3, h4 {
   cursor: not-allowed;
 }
 
-/* The "commit" button — save API key, install update, confirm a major action.
-   Same aurora identity as the launch button (no foreign greens), but with a
-   more substantial treatment for moments that change app state. */
+/* The "commit" button — subscribe, extend trial.
+   Same aurora identity as the launch button (no foreign greens), but
+   with a more substantial premium treatment: specular highlight strip,
+   multi-layer shadow depth, deeper saturation. The user reads:
+   "this is the same Noah I trust, but this is a bigger moment."
+   Think Apple Pay button — luminous, alive, never plastic. */
 .btn-commit {
   position: relative;
   background: var(--aurora);
@@ -479,6 +554,66 @@ h1, h2, h3, h4 {
   }
 }
 
+/* ── Problem tile (onboarding "what's bugging you?") ──
+   A selectable card: lucide icon in a chip, title + sub, and a check
+   badge that springs in on select. Selection is an indigo ring + aurora
+   glow (not a fill) so the card stays calm. Chip flips to the aurora
+   gradient when chosen. Mirrors the Onboarding Redesign mock. */
+.tile {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 13px;
+  text-align: left;
+  padding: 15px 16px;
+  cursor: pointer;
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-surface-card-border);
+  border-radius: 16px;
+  box-shadow: var(--shadow-card);
+  transition: box-shadow 0.22s ease, border-color 0.22s ease, transform 0.12s ease;
+}
+.tile:hover { box-shadow: var(--shadow-card-hover); transform: translateY(-1px); }
+.tile.sel {
+  border-color: transparent;
+  box-shadow: 0 0 0 2px var(--color-accent-indigo), var(--aurora-glow);
+}
+.tile .chip {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 11px;
+  background: var(--color-accent-blue-soft);
+  color: var(--color-accent-indigo);
+  border: 1px solid var(--color-accent-border);
+  transition: background 0.22s ease, color 0.22s ease, border-color 0.22s ease;
+}
+.tile.sel .chip { background: var(--aurora); color: #fff; border-color: transparent; }
+.tile .check {
+  position: absolute;
+  top: 11px;
+  right: 11px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--aurora);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transform: scale(0.6);
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+.tile.sel .check { opacity: 1; transform: scale(1); }
+
+/* Slow rotation for the aurora orb during the scan ("Diagnosing…"). */
+.reveal-spin { animation: reveal-spin 14s linear infinite; }
+@keyframes reveal-spin { to { transform: rotate(360deg); } }
+
 /* ── Animations ── */
 @keyframes indeterminate {
   0% { transform: translateX(-100%); }
@@ -609,4 +744,158 @@ h1, h2, h3, h4 {
 :root.light .findings-container {
   background: transparent;
   border-color: transparent;
+}
+
+/* ════════════════════════════════════════════════════════════
+   CANONICAL COMPONENTS — Noah Design System consolidation
+   New primitives the system defines; composed from existing tokens.
+   ════════════════════════════════════════════════════════════ */
+
+/* btn-soft — in-panel / SPA-widget secondary action ("Run diagnostic",
+   "Save settings"). Carries the aurora identity (soft tinted fill +
+   accent hairline) instead of a flat blue "Submit", and never competes
+   with the one launch button on screen. Retires bare btn-action inside
+   widgets (principle #28: even secondary actions feel like Noah). */
+.btn-soft {
+  background: var(--aurora-soft);
+  color: var(--color-accent-indigo);
+  border: 1px solid var(--color-accent-border);
+  transition: border-color 0.18s ease, transform 0.12s ease, box-shadow 0.2s ease;
+}
+.btn-soft:hover:not(:disabled) {
+  border-color: rgba(99, 102, 241, 0.4);
+  transform: translateY(-0.5px);
+}
+.btn-soft:active:not(:disabled) { transform: translateY(0.5px); }
+.btn-soft:disabled {
+  background: var(--color-bg-tertiary);
+  color: var(--color-text-muted);
+  border-color: var(--color-surface-card-border);
+  cursor: not-allowed;
+}
+
+/* btn-quiet — the dismiss / "Continue trial" / cancel register. Reads as
+   text-with-an-edge; never pulls the eye from the primary action. */
+.btn-quiet {
+  background: transparent;
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-surface-card-border);
+  transition: color 0.18s ease, background 0.18s ease, border-color 0.18s ease;
+}
+.btn-quiet:hover:not(:disabled) {
+  color: var(--color-text-primary);
+  background: var(--color-bg-tertiary);
+}
+
+/* Quick-start prompt chips — the row under the empty-state composer.
+   Same surface family as the selection .tile (bg-secondary + 6% hairline
+   + shadow-card, lift on hover): picking a chip and picking a tile feel
+   like the same gesture, because they are the same component at two
+   weights. The chip is the compact weight (icon + label inline). */
+.qp {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 10px 15px;
+  border-radius: var(--radius-btn);
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-surface-card-border);
+  box-shadow: var(--shadow-card);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: color 0.2s ease, border-color 0.2s ease, box-shadow 0.22s ease, transform 0.12s ease;
+}
+.qp:hover:not(:disabled) {
+  color: var(--color-text-primary);
+  border-color: var(--color-accent-border);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-card-hover);
+}
+.qp .qpi {
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-chip);
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.qp svg { display: block; }
+
+/* Semantic icon tints — a monochrome lucide line icon regains emoji-like
+   color cueing from the soft chip BEHIND it, never from a multicolor
+   glyph. One soft accent per problem domain. */
+.tint-blue   { background: var(--color-accent-blue-soft); color: var(--color-accent-blue); }
+.tint-indigo { background: rgba(99, 102, 241, 0.12);      color: var(--color-accent-indigo); }
+.tint-violet { background: rgba(139, 92, 246, 0.14);      color: var(--color-accent-violet); }
+.tint-amber  { background: var(--tone-warn-bg);           color: var(--tone-warn-fg); }
+.tint-green  { background: var(--tone-ok-bg);             color: var(--tone-ok-fg); }
+:root.light .tint-indigo { background: rgba(79, 70, 229, 0.1); }
+:root.light .tint-violet { background: rgba(124, 58, 237, 0.12); }
+
+/* Agentic progress — a live "working" headline with sub-steps that stream
+   in and check off. For multi-stage work a bare spinner under-sells what
+   Noah is doing (Principle 7); the headline stays "loading" (aurora dots)
+   while steps resolve: done → muted-green tick, active → pulsing aurora,
+   pending → dim ring. Use inline .thinking-dot for sub-second thoughts. */
+.agent-run { width: 100%; max-width: 440px; }
+.agent-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 700;
+  font-size: 16px;
+  letter-spacing: -0.01em;
+}
+.agent-steps { margin-top: 16px; display: grid; gap: 11px; }
+.agent-step { display: flex; align-items: center; gap: 12px; font-size: 14px; }
+.agent-step .ic {
+  width: 19px;
+  height: 19px;
+  border-radius: 50%;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+}
+.agent-step.done { color: var(--color-text-secondary); }
+.agent-step.done .ic { background: var(--tone-ok-bg); color: var(--tone-ok-fg); }
+.agent-step.active { color: var(--color-text-primary); font-weight: 600; }
+.agent-step.active .ic {
+  background: var(--aurora);
+  color: #fff;
+  animation: agent-pulse 1.6s ease-out infinite;
+}
+.agent-step.pending { color: var(--color-text-muted); }
+.agent-step.pending .ic { box-shadow: inset 0 0 0 1.5px var(--color-border-primary); }
+@keyframes agent-pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.45); }
+  70%  { box-shadow: 0 0 0 7px rgba(99, 102, 241, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0); }
+}
+
+/* Generic badge primitives — layout + size only; color comes from a
+   tone-/aurora- inline style or modifier. Both ride the caption step. */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 13px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.tone {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: var(--radius-chip);
+  font-size: 13px;
+  font-weight: 600;
 }
