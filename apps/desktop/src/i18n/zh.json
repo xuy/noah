@@ -104,6 +104,10 @@
     "帮助就在这里，不需要专业术语。"
   ],
   "settings": {
+    "apiKeyEmpty": "请输入 API 密钥。",
+    "apiKeyInvalid": "这看起来不像 Anthropic API 密钥（应以 sk-ant- 开头）。",
+    "apiKeyPlaceholder": "sk-ant-…",
+    "apiKeySaving": "正在保存…",
     "title": "设置",
     "subtitle": "API 密钥、隐私、外观和帮助。",
     "apiKey": "API 密钥",

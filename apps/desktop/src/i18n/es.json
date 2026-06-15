@@ -48,6 +48,10 @@
     "settings": "Configuración"
   },
   "settings": {
+    "apiKeyEmpty": "Introduce una clave de API.",
+    "apiKeyInvalid": "Eso no parece una clave de API de Anthropic (debe empezar por sk-ant-).",
+    "apiKeyPlaceholder": "sk-ant-…",
+    "apiKeySaving": "Guardando…",
     "title": "Configuración",
     "eyebrow": "Tu Noah",
     "subtitle": "Clave API, privacidad, apariencia y ayuda.",
