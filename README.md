@@ -16,6 +16,12 @@ computer problems in plain English, with a safety harness around every action.
 You bring an Anthropic API key; Noah talks to Claude directly from your machine. No
 subscription, no account, no backend.
 
+> ### 👉 Just want it to work?
+> **[onnoah.app](https://onnoah.app)** is the commercial version — the same app, fully
+> managed. No API key, no setup, nothing to configure: download, describe the problem, done.
+> Free to start. **This repo is the BYOK build** for tinkerers who'd rather bring their own
+> key, read the source, and hack on it.
+
 > **Why not just point Claude or Codex at your machine?** Raw models have no guardrails —
 > they'll happily `rm -rf` the wrong thing — and sandboxed tools can't touch the real system
 > you're trying to fix. Noah is the middle path: a real desktop agent that runs read-only
@@ -36,33 +42,13 @@ subscription, no account, no backend.
 
 Every action is logged. Dangerous operations require your explicit approval. Noah never touches boot config, firmware, security software, or system-protected files.
 
-## Beyond chat: Health and Playbooks
+## Beyond chat: Health, Playbooks, Auto-Heal
 
-Noah isn't just a chatbot. It continuously monitors your machine and can fix problems before you notice them.
+Noah isn't just a chatbot — it monitors your machine and can fix problems before you notice them.
 
-### Health Scorecards
-
-Noah runs background health checks across five categories — **Security**, **Updates**, **Performance**, **Backups**, and **Network** — and gives your machine a score (A through F). Open the Health tab to see what's passing, what's failing, and one-click fixes for each issue.
-
-### Playbooks
-
-Playbooks are step-by-step remediation scripts written in Markdown. Noah ships with 25+ built-in playbooks covering common IT problems:
-
-- Disk space recovery
-- Network diagnostics
-- Printer repair
-- Email setup
-- VPN troubleshooting
-- Backup configuration
-- Browser security audit
-- Performance forensics
-- And more
-
-You can also write your own playbooks in Markdown and drop them in — Noah runs them automatically or shows them as guided fixes.
-
-### Auto-Heal
-
-When enabled, Noah automatically triages failing health checks, picks the right playbook, runs it, and measures the result — all in the background. Your machine fixes itself.
+- **Health Scorecards** — background checks across five categories (Security, Updates, Performance, Backups, Network) grade your machine A–F, with one-click fixes for what's failing.
+- **Playbooks** — 25+ built-in Markdown remediation scripts (disk recovery, network diagnostics, printer repair, VPN, backups, browser security, performance forensics, and more). Drop in your own and Noah runs them as guided or automated fixes.
+- **Auto-Heal** — when enabled, Noah triages failing checks, picks the right playbook, runs it, and measures the result in the background. Your machine fixes itself.
 
 ## What Noah can do
 
@@ -85,12 +71,15 @@ When enabled, Noah automatically triages failing health checks, picks the right 
 
 ### Download
 
-Grab the latest build from the [Releases page](https://github.com/xuy/noah/releases):
+Grab the BYOK build from the [Releases page](https://github.com/xuy/noah/releases):
 - **macOS** — `.dmg` (universal, Apple Silicon + Intel)
 - **Windows** — `.msi` / `.exe` (x64)
 - **Linux** — `.AppImage`
 
 Noah keeps itself up to date after install.
+
+> Don't want to manage an API key? The managed version at **[onnoah.app](https://onnoah.app)**
+> is the same app with nothing to set up — download and go.
 
 ### Bring your own Anthropic key
 
