@@ -316,6 +316,30 @@ function loadSigningEnv() {
   console.log(`==> Loaded ${loaded} signing var(s) from ${envPath} (authoritative over shell)`);
 }
 
+// Tauri notarizes + staples the .app but only *signs* the .dmg it then bundles.
+// A downloaded dmg carries the quarantine bit and Gatekeeper assesses the dmg
+// itself — so the dmg must also be notarized + stapled, or users hit
+// "Apple could not verify…" on open. Tauri doesn't do this; we do it here.
+async function notarizeAndStapleDmgs(artifacts) {
+  if (process.platform !== "darwin") return;
+  const { APPLE_ID, APPLE_PASSWORD, APPLE_TEAM_ID } = process.env;
+  if (!APPLE_ID || !APPLE_PASSWORD || !APPLE_TEAM_ID) {
+    console.warn("==> Skipping dmg notarization — APPLE_ID/APPLE_PASSWORD/APPLE_TEAM_ID not set");
+    return;
+  }
+  const dmgs = artifacts.filter((a) => a.endsWith(".dmg"));
+  for (const dmg of dmgs) {
+    console.log(`==> Notarizing dmg (submit + wait): ${path.basename(dmg)}`);
+    await runCommand("xcrun", [
+      "notarytool", "submit", dmg,
+      "--apple-id", APPLE_ID, "--password", APPLE_PASSWORD, "--team-id", APPLE_TEAM_ID,
+      "--wait",
+    ]);
+    console.log(`==> Stapling dmg: ${path.basename(dmg)}`);
+    await runCommand("xcrun", ["stapler", "staple", dmg]);
+  }
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   loadSigningEnv();
@@ -385,6 +409,9 @@ async function main() {
   for (const artifact of artifacts) {
     console.log(`    ${artifact}`);
   }
+
+  // Notarize + staple the dmg(s) — Tauri only signs them (see notarizeAndStapleDmgs).
+  await notarizeAndStapleDmgs(artifacts);
 
   if (!uploading) {
     console.log("==> Build-only mode complete.");
